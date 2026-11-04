@@ -1,0 +1,71 @@
+node_modules/
+dist/
+dist-electron/
+out/
+release/
+RELEASE_BODY.md
+docs/
+
+# Local dev — git worktrees & superpowers scratch
+.worktrees/
+.superpowers/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Scratch and throwaway scripts
+scratch/
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+.DS_Store
+**/.DS_Store
+Thumbs.db
+
+# OAuth / service account nhúng build (copy từ manga-downloader resources hoặc CI)
+# electron/data/client_secret*.json
+# electron/data/service-account*.json
+electron/data/mangadownloader*.json
+electron/data/suu-tam*.json
+
+# Google service account trong thư mục config (private key — không commit)
+config/*.json
+
+# Test artifacts
+focused-test-downloads/
+test-downloads/
+*-test-report.json
+e2e/temp-output/
+test-results/
+playwright-report/
+
+# Coverage reports
+coverage/
+
+# Supabase CLI local cache
+supabase/.temp/
+
+# Python virtual environments
+manga_ocr_venv/
+
+# AI Agents, IDE & Tools (local development only)
+.agent/
+.agents/
+AGENTS.md
+.antigravity/
+.cursor/
+.cursorignore
+.claude/
+.vscode/
+.codegraph/
+
+# Upscale NCNN-Vulkan binaries (downloaded via scripts/downloadUpscaleBinaries.js)
+resources/upscale/win-x64/
+resources/upscale/mac-x64/
+resources/upscale/mac-arm64/
+resources/upscale/.tmp/

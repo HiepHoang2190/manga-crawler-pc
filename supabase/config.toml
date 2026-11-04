@@ -1,0 +1,5 @@
+# Redeploy affected functions after changing JWT settings.
+
+# Google Apps Script calls with X-Sync-Secret only (no Supabase JWT).
+[functions.sync-membership]
+verify_jwt = false

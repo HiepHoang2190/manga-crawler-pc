@@ -1,0 +1,188 @@
+{
+  "name": "manga-crawler",
+  "version": "3.0.46",
+  "description": "Sưu Tầm Ebook Truyện Tranh — tải truyện tranh",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --testPathIgnorePatterns=\\.live\\.test\\.js$",
+    "test:watch": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --watch --testPathIgnorePatterns=\\.live\\.test\\.js$",
+    "test:connectors": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config jest.live.config.js",
+    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:build": "vite build && electron-builder --publish never",
+    "electron:build:all": "node scripts/ensureWindowsNativeModules.js && node scripts/ensureMacNativeModules.js && vite build && COPYFILE_DISABLE=1 electron-builder --mac --publish never && electron-builder --win --publish never",
+    "electron:build:mac": "node scripts/ensureMacNativeModules.js && vite build && COPYFILE_DISABLE=1 electron-builder --mac --publish never",
+    "electron:build:mac:arm64": "vite build && COPYFILE_DISABLE=1 electron-builder --mac --arm64 --publish never",
+    "electron:build:mac:x64": "node scripts/ensureMacNativeModules.js && vite build && COPYFILE_DISABLE=1 electron-builder --mac --x64 --publish never",
+    "electron:build:win": "node scripts/ensureWindowsNativeModules.js && vite build && electron-builder --win --publish never",
+    "ensure:mac-native": "node scripts/ensureMacNativeModules.js",
+    "ensure:win-native": "node scripts/ensureWindowsNativeModules.js",
+    "icons:download": "node scripts/downloadSiteIcons.js",
+    "test:e2e": "concurrently --kill-others --success first \"vite\" \"wait-on http://localhost:5173 && npx playwright test e2e/tests/ --config e2e/playwright.config.js\"",
+    "test:e2e:screenshots": "concurrently --kill-others --success first \"vite\" \"wait-on http://localhost:5173 && SCREENSHOTS=true npx playwright test e2e/tests/ --config e2e/playwright.config.js\"",
+    "test:e2e:flows": "concurrently --kill-others --success first \"vite\" \"wait-on http://localhost:5173 && npx playwright test e2e/flows/ --config e2e/playwright.config.js\"",
+    "test:e2e:all": "concurrently --kill-others --success first \"vite\" \"wait-on http://localhost:5173 && npx playwright test --config e2e/playwright.config.js\"",
+    "download:upscale": "node scripts/downloadUpscaleBinaries.js",
+    "download:upscale:all": "node scripts/downloadUpscaleBinaries.js --all",
+    "package:extras": "node scripts/packageExtras.js",
+    "package:extras:current": "node scripts/packageExtras.js --current",
+    "release:notes": "node scripts/extract-release-notes.js"
+  },
+  "supportedArchitectures": {
+    "os": [
+      "current",
+      "win32"
+    ],
+    "cpu": [
+      "current",
+      "x64"
+    ]
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "build": {
+    "appId": "org.manga-crawler.app",
+    "productName": "Manga Crawler",
+    "icon": "public/data/icon.png",
+    "npmRebuild": false,
+    "directories": {
+      "output": "release"
+    },
+    "publish": null,
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "node_modules/**/*",
+      "!node_modules/onnxruntime-node/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "files": [
+        "dist/**/*",
+        "electron/**/*",
+        "node_modules/**/*",
+        "!node_modules/onnxruntime-node/**/*",
+        "!node_modules/@img/sharp-win32-x64/**/*",
+        "!node_modules/@img/sharp-libvips-win32-x64/**/*",
+        "!node_modules/@napi-rs/canvas-win32-x64-msvc/**/*",
+        "package.json"
+      ],
+      "category": "public.app-category.utilities",
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "timestamp": "none",
+      "signIgnore": [
+        "\\._"
+      ],
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ]
+    },
+    "win": {
+      "files": [
+        "dist/**/*",
+        "electron/**/*",
+        "node_modules/**/*",
+        "!node_modules/onnxruntime-node/**/*",
+        "!node_modules/@img/sharp-darwin-*/**/*",
+        "!node_modules/@img/sharp-libvips-darwin-*/**/*",
+        "!node_modules/@napi-rs/canvas-darwin-*/**/*",
+        "package.json"
+      ],
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "asarUnpack": [
+      "node_modules/sharp/**/*",
+      "node_modules/@img/**/*",
+      "node_modules/@napi-rs/**/*",
+      "node_modules/pdf-to-png-converter/**/*"
+    ],
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "installerSidebar": "build/installerSidebar.bmp",
+      "deleteAppDataOnUninstall": true,
+      "displayLanguageSelector": false,
+      "installerLanguages": [
+        "vi_VN",
+        "en_US"
+      ],
+      "language": "1033",
+      "runAfterFinish": true
+    },
+    "asar": true
+  },
+  "dependencies": {
+    "@img/sharp-darwin-x64": "^0.34.5",
+    "@img/sharp-libvips-darwin-x64": "^1.2.4",
+    "@img/sharp-libvips-win32-x64": "^1.2.4",
+    "@img/sharp-win32-x64": "^0.34.5",
+    "@napi-rs/canvas-darwin-x64": "^1.0.0",
+    "@napi-rs/canvas-win32-x64-msvc": "^1.0.0",
+    "@noble/ciphers": "^2.4.0",
+    "@supabase/supabase-js": "^2.104.1",
+    "archiver": "^7.0.1",
+    "axios": "^1.13.5",
+    "cheerio": "^1.0.0",
+    "epub2": "^3.0.2",
+    "extract-zip": "^2.0.1",
+    "fast-glob": "^3.3.3",
+    "jimp": "^0.22.12",
+    "kindleunpack": "^1.0.5",
+    "libsodium-wrappers-sumo": "^0.8.4",
+    "node-unrar-js": "^2.0.2",
+    "onnxruntime-common": "^1.29.0",
+    "onnxruntime-node": "^1.29.0",
+    "p-limit": "^3.1.0",
+    "pdf-to-png-converter": "^3.18.0",
+    "pdfkit": "^0.15.2",
+    "protobufjs": "^8.7.1",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "sharp": "^0.34.5",
+    "yauzl": "^2.10.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": [
+      "<rootDir>/electron/lib/__tests__/**/*.test.js",
+      "<rootDir>/src/**/*.test.js",
+      "<rootDir>/src/**/*.test.mjs"
+    ]
+  },
+  "devDependencies": {
+    "@babel/core": "^8.0.1",
+    "@babel/preset-react": "^8.0.1",
+    "@playwright/test": "^1.63.0",
+    "@tailwindcss/vite": "^4.2.2",
+    "@vitejs/plugin-react": "^6.0.1",
+    "autoprefixer": "^10.4.27",
+    "concurrently": "^9.2.1",
+    "electron": "^34.0.0",
+    "electron-builder": "^24.13.3",
+    "fast-check": "^4.7.0",
+    "jest": "^30.3.0",
+    "tailwindcss": "^4.2.2",
+    "vite": "^8.0.1",
+    "wait-on": "^9.0.4"
+  }
+}

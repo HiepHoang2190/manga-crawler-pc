@@ -1,0 +1,90 @@
+name: Build & Release Manga Crawler
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  prepare-release:
+    name: Prepare GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Extract Release Notes
+        run: node scripts/extract-release-notes.js
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+
+      - name: Create or Initialize Release in Public Repo
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: suutamebooktruyentranh2025-hub/manga-crawler-pc-releases
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          token: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          body_path: RELEASE_BODY.md
+          generate_release_notes: false
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+
+  build:
+    name: Build & Release (${{ matrix.name }})
+    needs: prepare-release
+    if: always() && (needs.prepare-release.result == 'success' || needs.prepare-release.result == 'skipped')
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: windows
+            build_cmd: npm run electron:build:win
+            artifact_pattern: release/*.exe
+          - os: macos-latest
+            name: macos
+            build_cmd: npm run electron:build:mac
+            artifact_pattern: release/*.dmg
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --force
+
+      - name: Build Electron App
+        run: ${{ matrix.build_cmd }}
+
+      - name: Upload to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: suutamebooktruyentranh2025-hub/manga-crawler-pc-releases
+          tag_name: ${{ github.ref_name }}
+          token: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          files: ${{ matrix.artifact_pattern }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
