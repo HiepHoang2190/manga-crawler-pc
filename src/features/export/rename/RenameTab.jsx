@@ -992,9 +992,7 @@ export default function RenameTab({
 
   return (
     <div className="flex-1 flex min-h-0 min-w-0 overflow-hidden bg-surface">
-      <ToolsStudioCenterSlot active={isActive} />
-
-      <ToolsStudioActionSlot active={isActive}>
+      <ToolsStudioCenterSlot active={isActive}>
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -1027,7 +1025,8 @@ export default function RenameTab({
             </span>
           </button>
         </div>
-      </ToolsStudioActionSlot>
+      </ToolsStudioCenterSlot>
+      <ToolsStudioActionSlot active={isActive}></ToolsStudioActionSlot>
 
       {showSidebar && (
         <div
