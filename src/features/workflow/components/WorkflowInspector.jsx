@@ -4,6 +4,10 @@ import { ResizeSplitter, SearchableSelect, OutputFormatSelector } from '../../..
 import { NODE_DEFINITIONS } from '../engine/nodeDefinitions';
 import { loadThreads } from '../../../utils/appSettings';
 import { useShellNav } from '../../shell';
+import PdfConfigForm from '../../ebook-studio/components/forms/PdfConfigForm';
+import CbzConfigForm from '../../ebook-studio/components/forms/CbzConfigForm';
+import EpubConfigForm from '../../ebook-studio/components/forms/EpubConfigForm';
+import MobiConfigForm from '../../ebook-studio/components/forms/MobiConfigForm';
 
 function FolderPickerInput({
   value = '',
@@ -273,6 +277,11 @@ export default function WorkflowInspector({
   const handleChange = (field, value) => {
     if (!selectedNode) return;
     onUpdateData(selectedNode.id, { [field]: value });
+  };
+
+  const handleUpdateOptions = (patch) => {
+    if (!selectedNode) return;
+    onUpdateData(selectedNode.id, patch);
   };
 
   // Upstream node & chapter detection
@@ -948,6 +957,25 @@ export default function WorkflowInspector({
               />
             </div>
 
+            {/* Config Form according to node type */}
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-semibold text-on-surface-variant">
+                Tùy Chọn Đóng Gói {selectedNode.type.replace('export_', '').toUpperCase()}
+              </label>
+              {selectedNode.type === 'export_pdf' && (
+                <PdfConfigForm options={data} onChange={handleUpdateOptions} />
+              )}
+              {selectedNode.type === 'export_cbz' && (
+                <CbzConfigForm options={data} onChange={handleUpdateOptions} />
+              )}
+              {selectedNode.type === 'export_epub' && (
+                <EpubConfigForm options={data} onChange={handleUpdateOptions} />
+              )}
+              {selectedNode.type === 'export_mobi' && (
+                <MobiConfigForm options={data} onChange={handleUpdateOptions} />
+              )}
+            </div>
+
             <label className="flex items-start gap-2 pt-1 cursor-pointer">
               <input
                 type="checkbox"
@@ -1035,18 +1063,52 @@ export default function WorkflowInspector({
               />
             </div>
 
-            {/* Rotate double pages checkbox */}
-            <label className="flex items-start gap-2 pt-1 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={Boolean(data.rotateDoublePage)}
-                onChange={(e) => handleChange('rotateDoublePage', e.target.checked)}
-                className="mt-0.5 rounded accent-primary cursor-pointer"
-              />
-              <span className="text-[11px] text-on-surface-variant leading-tight">
-                Tự động phát hiện và xoay trang đôi (nếu có)
-              </span>
-            </label>
+            {/* Format specific config options */}
+            {(data.targetFormat || 'epub') === 'pdf' && (
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold text-on-surface-variant">
+                  Tùy Chọn File PDF Đầu Ra
+                </label>
+                <PdfConfigForm options={data} onChange={handleUpdateOptions} />
+              </div>
+            )}
+            {(data.targetFormat || 'epub') === 'cbz' && (
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold text-on-surface-variant">
+                  Tùy Chọn File CBZ Đầu Ra
+                </label>
+                <CbzConfigForm options={data} onChange={handleUpdateOptions} />
+              </div>
+            )}
+            {(data.targetFormat || 'epub') === 'epub' && (
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold text-on-surface-variant">
+                  Tùy Chọn File EPUB Đầu Ra
+                </label>
+                <EpubConfigForm options={data} onChange={handleUpdateOptions} />
+              </div>
+            )}
+            {(data.targetFormat || 'epub') === 'mobi' && (
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold text-on-surface-variant">
+                  Tùy Chọn File MOBI Đầu Ra
+                </label>
+                <MobiConfigForm options={data} onChange={handleUpdateOptions} />
+              </div>
+            )}
+            {(data.targetFormat || 'epub') === 'folder' && (
+              <label className="flex items-start gap-2 pt-1 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={Boolean(data.rotateDoublePage)}
+                  onChange={(e) => handleChange('rotateDoublePage', e.target.checked)}
+                  className="mt-0.5 rounded accent-primary cursor-pointer"
+                />
+                <span className="text-[11px] text-on-surface-variant leading-tight">
+                  Tự động phát hiện và xoay trang đôi (nếu có)
+                </span>
+              </label>
+            )}
           </div>
         )}
 

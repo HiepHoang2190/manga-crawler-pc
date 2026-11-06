@@ -1219,53 +1219,92 @@ function createAdapters({ connectors = null, ipc_context = null } = {}) {
       }
 
       const cbzPath = path.join(destDir, `${safeTitle}.cbz`);
-      onProgress({ message: `Đang khởi tạo tệp CBZ: ${path.basename(cbzPath)}` });
+      const mode = node.data?.packMode === 'sizeSplit' ? 'sizeSplit' : 'singleVolume';
+      const maxMb = Number(node.data?.maxMbPerFile || 200);
+      const maxBytes = Math.floor(Math.max(1, maxMb) * 1024 * 1024);
+      const rotateDoublePage = Boolean(node.data?.rotateDoublePage);
 
-      const output = fs.createWriteStream(cbzPath);
-      const archive = archiver('zip', { zlib: { level: 9 } });
-      archive.pipe(output);
+      let generatedFiles = [];
 
-      archive.on('progress', (progress) => {
-        const { entries } = progress;
-        onProgress({
-          message: `Đang nén CBZ (${entries.processed}/${entries.total})`,
-          processed: entries.processed,
-          total: entries.total,
+      // Nếu cấu hình sizeSplit hoặc xoay trang đôi, dùng exportChaptersToCbz
+      if (mode === 'sizeSplit' || rotateDoublePage) {
+        let chaptersToExport = inputs.chapter_list;
+        if (!Array.isArray(chaptersToExport) || !chaptersToExport.length) {
+          const { loadOfflineMangaFromAbsolutePath } = require('../../reader/loaders/loadOfflineMangaFromDisk');
+          const loaded = loadOfflineMangaFromAbsolutePath(imagesDir);
+          if (loaded?.ok && Array.isArray(loaded.chapters) && loaded.chapters.length > 0) {
+            chaptersToExport = loaded.chapters;
+          } else {
+            chaptersToExport = [{ title: mangaTitle, folderBasename: '.' }];
+          }
+        }
+
+        const { exportChaptersToCbz } = require('../../export/exportCbz');
+        generatedFiles = await exportChaptersToCbz({
+          mode,
+          baseSaveDir: inputs.baseSaveDir || path.dirname(imagesDir),
+          mangaTitle,
+          chapters: chaptersToExport,
+          outputDir: destDir,
+          outputFile: mode === 'singleVolume' ? cbzPath : undefined,
+          maxBytes,
+          rotateDoublePage,
+          absoluteMangaDir: imagesDir,
+          onProgress: (p) => onProgress({ message: `Đang đóng gói CBZ: ${p.label || ''} (${p.done}/${p.total})` }),
         });
-      });
+      } else {
+        // Đóng gói thông thường 1 file toàn bộ imagesDir
+        onProgress({ message: `Đang khởi tạo tệp CBZ: ${path.basename(cbzPath)}` });
 
-      function addDirToArchive(currentDir, relativePrefix = '') {
-        const items = fs.readdirSync(currentDir, { withFileTypes: true });
-        items.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+        const output = fs.createWriteStream(cbzPath);
+        const archive = archiver('zip', { zlib: { level: 9 } });
+        archive.pipe(output);
 
-        for (const item of items) {
-          if (signal?.aborted) break;
-          const fullPath = path.join(currentDir, item.name);
-          if (fullPath === cbzPath) continue;
+        archive.on('progress', (progress) => {
+          const { entries } = progress;
+          onProgress({
+            message: `Đang nén CBZ (${entries.processed}/${entries.total})`,
+            processed: entries.processed,
+            total: entries.total,
+          });
+        });
 
-          const relPath = relativePrefix ? `${relativePrefix}/${item.name}` : item.name;
-          if (item.isDirectory()) {
-            addDirToArchive(fullPath, relPath);
-          } else if (item.isFile()) {
-            const ext = path.extname(item.name).toLowerCase();
-            if (['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.avif'].includes(ext)) {
-              archive.file(fullPath, { name: relPath.replace(/\\/g, '/') });
+        function addDirToArchive(currentDir, relativePrefix = '') {
+          const items = fs.readdirSync(currentDir, { withFileTypes: true });
+          items.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+
+          for (const item of items) {
+            if (signal?.aborted) break;
+            const fullPath = path.join(currentDir, item.name);
+            if (fullPath === cbzPath) continue;
+
+            const relPath = relativePrefix ? `${relativePrefix}/${item.name}` : item.name;
+            if (item.isDirectory()) {
+              addDirToArchive(fullPath, relPath);
+            } else if (item.isFile()) {
+              const ext = path.extname(item.name).toLowerCase();
+              if (['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.avif'].includes(ext)) {
+                archive.file(fullPath, { name: relPath.replace(/\\/g, '/') });
+              }
             }
           }
         }
+
+        addDirToArchive(imagesDir);
+
+        if (signal?.aborted) {
+          archive.abort();
+          throw new Error('Đã hủy đóng gói CBZ');
+        }
+
+        await archive.finalize();
+        await finished(output);
+        generatedFiles = [cbzPath];
       }
 
-      addDirToArchive(imagesDir);
+      onProgress({ message: `Hoàn tất đóng gói CBZ: ${path.basename(generatedFiles[0] || cbzPath)}` });
 
-      if (signal?.aborted) {
-        archive.abort();
-        throw new Error('Đã hủy đóng gói CBZ');
-      }
-
-      await archive.finalize();
-      await finished(output);
-
-      onProgress({ message: `Hoàn tất đóng gói CBZ: ${path.basename(cbzPath)}` });
+      let primaryCbzPath = generatedFiles[0] || cbzPath;
 
       if (node.data?.trashSourceAfterExport && imagesDir && fs.existsSync(imagesDir)) {
         onProgress({
@@ -1273,16 +1312,26 @@ function createAdapters({ connectors = null, ipc_context = null } = {}) {
           step: 'cbz',
           type: 'info',
         });
-        let finalCbzPath = cbzPath;
         const resolvedImages = path.resolve(imagesDir);
-        const resolvedCbz = path.resolve(cbzPath);
-        if (resolvedCbz.startsWith(resolvedImages)) {
-          const parentDir = path.dirname(resolvedImages);
-          finalCbzPath = path.join(parentDir, path.basename(resolvedCbz));
-          try {
-            fs.renameSync(resolvedCbz, finalCbzPath);
-          } catch (e) {}
+        const newGeneratedFiles = [];
+        for (const f of generatedFiles) {
+          const resolvedF = path.resolve(f);
+          if (resolvedF.startsWith(resolvedImages)) {
+            const parentDir = path.dirname(resolvedImages);
+            const movedF = path.join(parentDir, path.basename(resolvedF));
+            try {
+              fs.renameSync(resolvedF, movedF);
+              newGeneratedFiles.push(movedF);
+            } catch {
+              newGeneratedFiles.push(f);
+            }
+          } else {
+            newGeneratedFiles.push(f);
+          }
         }
+        generatedFiles = newGeneratedFiles;
+        primaryCbzPath = generatedFiles[0] || primaryCbzPath;
+
         await safeTrashFolderOrFile(resolvedImages);
         onProgress({
           message: `Đã đưa thư mục ảnh vào Thùng rác: ${resolvedImages}`,
@@ -1290,14 +1339,14 @@ function createAdapters({ connectors = null, ipc_context = null } = {}) {
           type: 'success',
         });
         return {
-          book_file: { path: finalCbzPath, format: 'cbz' },
+          book_file: { path: primaryCbzPath, files: generatedFiles, format: 'cbz' },
           images_dir: null,
           signal: { status: 'success' },
         };
       }
 
       return {
-        book_file: { path: cbzPath, format: 'cbz' },
+        book_file: { path: primaryCbzPath, files: generatedFiles, format: 'cbz' },
         images_dir: imagesDir,
         signal: { status: 'success' },
       };
@@ -1320,31 +1369,58 @@ function createAdapters({ connectors = null, ipc_context = null } = {}) {
         fs.mkdirSync(destDir, { recursive: true });
       }
 
-      const pdfPath = path.join(destDir, `${safeTitle}.pdf`);
-      onProgress({ message: `Đang xuất tệp PDF: ${path.basename(pdfPath)}` });
+      const mode = ['singleVolume', 'sizeSplit', 'chapterSplit'].includes(node.data?.packMode)
+        ? node.data.packMode
+        : 'singleVolume';
+      const maxMb = Number(node.data?.maxMbPerFile || 200);
+      const maxBytes = Math.floor(Math.max(1, maxMb) * 1024 * 1024);
+      const rotateDoublePage = Boolean(node.data?.rotateDoublePage);
+      const pdfSeamless = Boolean(node.data?.pdfSeamless);
 
-      let exportedWithLib = false;
+      const defaultPdfPath = path.join(destDir, `${safeTitle}.pdf`);
+      onProgress({ message: `Đang xuất tệp PDF: ${safeTitle} (${mode})...` });
+
+      // Determine chapters
+      let chaptersToExport = inputs.chapter_list;
+      if (!Array.isArray(chaptersToExport) || !chaptersToExport.length) {
+        const { loadOfflineMangaFromAbsolutePath } = require('../../reader/loaders/loadOfflineMangaFromDisk');
+        const loaded = loadOfflineMangaFromAbsolutePath(imagesDir);
+        if (loaded?.ok && Array.isArray(loaded.chapters) && loaded.chapters.length > 0) {
+          chaptersToExport = loaded.chapters;
+        } else {
+          chaptersToExport = [{ title: mangaTitle, folderBasename: '.' }];
+        }
+      }
+
+      let generatedFiles = [];
       try {
         const { exportChaptersToPdf } = require('../../export/exportPdf');
-        if (exportChaptersToPdf && inputs.chapter_list?.length) {
-          await exportChaptersToPdf({
-            mode: 'singleVolume',
+        if (exportChaptersToPdf && chaptersToExport?.length) {
+          generatedFiles = await exportChaptersToPdf({
+            mode,
+            maxBytes,
             baseSaveDir: inputs.baseSaveDir || path.dirname(imagesDir),
             mangaTitle,
-            chapters: inputs.chapter_list,
-            outputFile: pdfPath,
+            chapters: chaptersToExport,
+            outputFile: mode === 'singleVolume' ? defaultPdfPath : undefined,
+            outputDir: destDir,
             chapterFolderFormat: ipc_context?.getChapterFolderSettings ? ipc_context.getChapterFolderSettings() : undefined,
+            rotateDoublePage,
+            pdfSeamless,
+            absoluteMangaDir: imagesDir,
             onProgress: (p) => onProgress({ message: `Đang xuất PDF: ${p.label || ''} (${p.done}/${p.total})` }),
           });
-          exportedWithLib = true;
         }
       } catch (e) {
-        // Continue to fallback if exportChaptersToPdf threw
+        // Fallback if exportChaptersToPdf threw
       }
 
-      if (!exportedWithLib) {
-        fs.writeFileSync(pdfPath, 'PDF dummy placeholder or empty file');
+      if (!generatedFiles || !generatedFiles.length) {
+        fs.writeFileSync(defaultPdfPath, 'PDF dummy placeholder or empty file');
+        generatedFiles = [defaultPdfPath];
       }
+
+      let primaryPdfPath = generatedFiles[0] || defaultPdfPath;
 
       if (node.data?.trashSourceAfterExport && imagesDir && fs.existsSync(imagesDir)) {
         onProgress({
@@ -1352,16 +1428,26 @@ function createAdapters({ connectors = null, ipc_context = null } = {}) {
           step: 'pdf',
           type: 'info',
         });
-        let finalPdfPath = pdfPath;
         const resolvedImages = path.resolve(imagesDir);
-        const resolvedPdf = path.resolve(pdfPath);
-        if (resolvedPdf.startsWith(resolvedImages)) {
-          const parentDir = path.dirname(resolvedImages);
-          finalPdfPath = path.join(parentDir, path.basename(resolvedPdf));
-          try {
-            fs.renameSync(resolvedPdf, finalPdfPath);
-          } catch (e) {}
+        const newGeneratedFiles = [];
+        for (const f of generatedFiles) {
+          const resolvedF = path.resolve(f);
+          if (resolvedF.startsWith(resolvedImages)) {
+            const parentDir = path.dirname(resolvedImages);
+            const movedF = path.join(parentDir, path.basename(resolvedF));
+            try {
+              fs.renameSync(resolvedF, movedF);
+              newGeneratedFiles.push(movedF);
+            } catch {
+              newGeneratedFiles.push(f);
+            }
+          } else {
+            newGeneratedFiles.push(f);
+          }
         }
+        generatedFiles = newGeneratedFiles;
+        primaryPdfPath = generatedFiles[0] || primaryPdfPath;
+
         await safeTrashFolderOrFile(resolvedImages);
         onProgress({
           message: `Đã đưa thư mục ảnh vào Thùng rác: ${resolvedImages}`,
@@ -1369,14 +1455,14 @@ function createAdapters({ connectors = null, ipc_context = null } = {}) {
           type: 'success',
         });
         return {
-          book_file: { path: finalPdfPath, format: 'pdf' },
+          book_file: { path: primaryPdfPath, files: generatedFiles, format: 'pdf' },
           images_dir: null,
           signal: { status: 'success' },
         };
       }
 
       return {
-        book_file: { path: pdfPath, format: 'pdf' },
+        book_file: { path: primaryPdfPath, files: generatedFiles, format: 'pdf' },
         images_dir: imagesDir,
         signal: { status: 'success' },
       };
@@ -1408,9 +1494,23 @@ function createAdapters({ connectors = null, ipc_context = null } = {}) {
         throw new Error('Không tìm thấy hình ảnh nào để đóng gói EPUB');
       }
 
+      let imagesToUse = images;
+      if (node.data?.rotateDoublePage) {
+        const { processRotateDoublePage } = require('../../export/image/rotateDoublePage');
+        const rotRes = await processRotateDoublePage(
+          images.map((img) => ({ path: img.path, full: img.path, name: img.name })),
+          true,
+          1.2,
+          (p) => onProgress({ message: `Đang xoay trang đôi EPUB (${p.done}/${p.total})...` })
+        );
+        if (rotRes?.processedItems) {
+          imagesToUse = rotRes.processedItems.map((item) => ({ ...item, path: item.path || item.full }));
+        }
+      }
+
       const { buildEpubFromImages } = require('../../export/epub/exportEpubCore');
       await buildEpubFromImages({
-        images,
+        images: imagesToUse,
         outputPath: epubPath,
         metadata: { title: mangaTitle },
         onProgress,
@@ -1420,7 +1520,7 @@ function createAdapters({ connectors = null, ipc_context = null } = {}) {
       onProgress({ message: `Hoàn tất đóng gói EPUB: ${path.basename(epubPath)}` });
 
       return {
-        book_file: { path: epubPath, format: 'epub' },
+        book_file: { path: epubPath, files: [epubPath], format: 'epub' },
         images_dir: imagesDir,
         signal: { status: 'success' },
       };
@@ -1452,9 +1552,23 @@ function createAdapters({ connectors = null, ipc_context = null } = {}) {
         throw new Error('Không tìm thấy hình ảnh nào để đóng gói MOBI');
       }
 
+      let imagesToUse = images;
+      if (node.data?.rotateDoublePage) {
+        const { processRotateDoublePage } = require('../../export/image/rotateDoublePage');
+        const rotRes = await processRotateDoublePage(
+          images.map((img) => ({ path: img.path, full: img.path, name: img.name })),
+          true,
+          1.2,
+          (p) => onProgress({ message: `Đang xoay trang đôi MOBI (${p.done}/${p.total})...` })
+        );
+        if (rotRes?.processedItems) {
+          imagesToUse = rotRes.processedItems.map((item) => ({ ...item, path: item.path || item.full }));
+        }
+      }
+
       const { buildMobiFromImages } = require('../../export/mobi/exportMobiCore');
       const res = await buildMobiFromImages({
-        images,
+        images: imagesToUse,
         outputPath: mobiPath,
         metadata: { title: mangaTitle },
         onProgress,
@@ -1468,7 +1582,7 @@ function createAdapters({ connectors = null, ipc_context = null } = {}) {
       onProgress({ message: `Hoàn tất đóng gói MOBI: ${path.basename(mobiPath)}` });
 
       return {
-        book_file: { path: mobiPath, format: 'mobi' },
+        book_file: { path: mobiPath, files: [mobiPath], format: 'mobi' },
         images_dir: imagesDir,
         signal: { status: 'success' },
       };

@@ -208,7 +208,7 @@ export const NODE_DEFINITIONS = {
     outputs: [
       { id: 'book_file', type: 'book_file', label: 'File CBZ' },
     ],
-    defaultData: { compressionLevel: 6, trashSourceAfterExport: false },
+    defaultData: { packMode: 'singleVolume', maxMbPerFile: 200, rotateDoublePage: false, trashSourceAfterExport: false },
   },
 
   export_pdf: {
@@ -222,7 +222,7 @@ export const NODE_DEFINITIONS = {
     outputs: [
       { id: 'book_file', type: 'book_file', label: 'File PDF' },
     ],
-    defaultData: { pageSize: 'fit', trashSourceAfterExport: false },
+    defaultData: { packMode: 'singleVolume', maxMbPerFile: 200, rotateDoublePage: false, pdfSeamless: false, trashSourceAfterExport: false },
   },
 
   export_epub: {
@@ -236,7 +236,7 @@ export const NODE_DEFINITIONS = {
     outputs: [
       { id: 'book_file', type: 'book_file', label: 'File EPUB' },
     ],
-    defaultData: { reflowable: true, trashSourceAfterExport: false },
+    defaultData: { packMode: 'singleVolume', maxMbPerFile: 200, quality: 95, rotateDoublePage: false, trashSourceAfterExport: false },
   },
 
   export_mobi: {
@@ -250,7 +250,7 @@ export const NODE_DEFINITIONS = {
     outputs: [
       { id: 'book_file', type: 'book_file', label: 'File MOBI' },
     ],
-    defaultData: { trashSourceAfterExport: false },
+    defaultData: { packMode: 'singleVolume', maxMbPerFile: 200, rotateDoublePage: false, trashSourceAfterExport: false },
   },
 
   convert_book: {

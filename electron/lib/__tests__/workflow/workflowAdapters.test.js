@@ -993,4 +993,79 @@ describe('Workflow Adapters & Execution', () => {
     expect(passedOpts.modelId).toBe('mangajanai-2x-1600p');
     expect(passedOpts.scale).toBe(2);
   });
+
+  test('export_pdf generates single volume PDF by default', async () => {
+    const mangaDir = path.join(tempDir, 'pdf_manga_default');
+    const ch1Dir = path.join(mangaDir, 'Chapter 1');
+    fs.mkdirSync(ch1Dir, { recursive: true });
+    const tinyPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+    fs.writeFileSync(path.join(ch1Dir, '001.png'), tinyPng);
+
+    const outDir = path.join(tempDir, 'pdf_out_default');
+    const adapters = createAdapters({});
+    const node = { data: { outputDir: outDir, packMode: 'singleVolume' } };
+    const inputs = {
+      images_dir: mangaDir,
+      baseSaveDir: tempDir,
+      mangaTitle: 'pdf_manga_default',
+      chapter_list: [{ title: 'Chapter 1', folderBasename: 'Chapter 1' }],
+    };
+
+    const result = await adapters.export_pdf(node, inputs, () => {});
+    expect(result.book_file.format).toBe('pdf');
+    expect(fs.existsSync(result.book_file.path)).toBe(true);
+    expect(result.book_file.path.endsWith('.pdf')).toBe(true);
+  });
+
+  test('export_pdf supports chapterSplit mode generating separate files for each chapter', async () => {
+    const mangaDir = path.join(tempDir, 'pdf_manga_chaptersplit');
+    const ch1Dir = path.join(mangaDir, 'Chapter 1');
+    const ch2Dir = path.join(mangaDir, 'Chapter 2');
+    fs.mkdirSync(ch1Dir, { recursive: true });
+    fs.mkdirSync(ch2Dir, { recursive: true });
+    const tinyPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+    fs.writeFileSync(path.join(ch1Dir, '001.png'), tinyPng);
+    fs.writeFileSync(path.join(ch2Dir, '001.png'), tinyPng);
+
+    const outDir = path.join(tempDir, 'pdf_out_chaptersplit');
+    const adapters = createAdapters({});
+    const node = { data: { outputDir: outDir, packMode: 'chapterSplit' } };
+    const inputs = {
+      images_dir: mangaDir,
+      baseSaveDir: tempDir,
+      mangaTitle: 'pdf_manga_chaptersplit',
+      chapter_list: [
+        { title: 'Chapter 1', folderBasename: 'Chapter 1' },
+        { title: 'Chapter 2', folderBasename: 'Chapter 2' },
+      ],
+    };
+
+    const result = await adapters.export_pdf(node, inputs, () => {});
+    expect(result.book_file.format).toBe('pdf');
+    expect(Array.isArray(result.book_file.files)).toBe(true);
+    expect(result.book_file.files.length).toBe(2);
+    expect(fs.existsSync(result.book_file.files[0])).toBe(true);
+    expect(fs.existsSync(result.book_file.files[1])).toBe(true);
+  });
+
+  test('export_pdf scans chapters from images_dir if chapter_list input is not provided', async () => {
+    const mangaDir = path.join(tempDir, 'pdf_manga_auto_scan');
+    const ch1Dir = path.join(mangaDir, 'Chapter 1');
+    fs.mkdirSync(ch1Dir, { recursive: true });
+    const tinyPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+    fs.writeFileSync(path.join(ch1Dir, '001.png'), tinyPng);
+
+    const outDir = path.join(tempDir, 'pdf_out_auto_scan');
+    const adapters = createAdapters({});
+    const node = { data: { outputDir: outDir, packMode: 'chapterSplit' } };
+    const inputs = {
+      images_dir: mangaDir,
+      mangaTitle: 'pdf_manga_auto_scan',
+    };
+
+    const result = await adapters.export_pdf(node, inputs, () => {});
+    expect(result.book_file.format).toBe('pdf');
+    expect(result.book_file.files.length).toBe(1);
+    expect(fs.existsSync(result.book_file.files[0])).toBe(true);
+  });
 });
