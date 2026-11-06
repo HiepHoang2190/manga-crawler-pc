@@ -1,6 +1,6 @@
 {
   "name": "manga-crawler",
-  "version": "3.0.46",
+  "version": "3.0.47",
   "description": "Sưu Tầm Ebook Truyện Tranh — tải truyện tranh",
   "main": "electron/main.js",
   "scripts": {
@@ -110,7 +110,8 @@
       "node_modules/sharp/**/*",
       "node_modules/@img/**/*",
       "node_modules/@napi-rs/**/*",
-      "node_modules/pdf-to-png-converter/**/*"
+      "node_modules/pdf-to-png-converter/**/*",
+      "node_modules/kindleunpack/**/*"
     ],
     "nsis": {
       "oneClick": false,
