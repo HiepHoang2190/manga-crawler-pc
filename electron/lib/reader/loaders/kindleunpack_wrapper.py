@@ -51,9 +51,16 @@ def main():
     outdir = sys.argv[2]
 
     # loaders/ -> reader/ -> lib/ -> electron/ -> repo root
-    pkg_parent = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                              '..', '..', '..', '..', 'node_modules', 'kindleunpack')
-    pkg_parent = os.path.normpath(pkg_parent)
+    pkg_parent = os.environ.get('KINDLEUNPACK_DIR')
+    if not pkg_parent or not os.path.isdir(pkg_parent):
+        pkg_parent = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                  '..', '..', '..', '..', 'node_modules', 'kindleunpack')
+        pkg_parent = os.path.normpath(pkg_parent)
+        if not os.path.isdir(pkg_parent) and 'app.asar' in pkg_parent:
+            unpacked = pkg_parent.replace('app.asar', 'app.asar.unpacked')
+            if os.path.isdir(unpacked):
+                pkg_parent = unpacked
+
     sys.path.insert(0, pkg_parent)
 
     try:
@@ -63,7 +70,7 @@ def main():
         sys.exit(1)
 
     os.makedirs(outdir, exist_ok=True)
-    unpackBook(infile, outdir, epubver='3')
+    unpackBook(infile, outdir, epubver='3', use_hd=True)
 
 
 if __name__ == '__main__':

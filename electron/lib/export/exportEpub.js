@@ -65,7 +65,9 @@ function estimateEpubPartBytes(items) {
 function collectChapterImages(chapterDir, flatten, listOptions = {}) {
   if (!flatten) {
     const result = listChapterImageFiles(chapterDir, listOptions);
-    return result.files || [];
+    if (result.ok && result.files && result.files.length > 0) {
+      return result.files;
+    }
   }
 
   function recurse(dir, base) {

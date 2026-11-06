@@ -126,4 +126,40 @@ describe('Format Converter', () => {
     expect(results[0].ok).toBe(true);
     expect(results[1].ok).toBe(true);
   });
+
+  test('convertSingleBook converts MOBI to PDF successfully', async () => {
+    const mobiPath = path.join(dir, 'DNTG - Albert Schweitzer - Suto.mobi');
+    fs.writeFileSync(mobiPath, 'dummy-mobi-data');
+
+    const mobiLoader = require('../../reader/loaders/loadMobiForOfflineRead');
+    jest.spyOn(mobiLoader, 'loadMobiFromFilePath').mockImplementation(async (filePath, opts) => {
+      // Simulate loadMobiFromFilePath returning images unpacked into tempRoot
+      const pagesDir = path.join(opts.tempRoot, '_epub_pages');
+      fs.mkdirSync(pagesDir, { recursive: true });
+      writeTinyPng(path.join(pagesDir, '001.png'));
+      writeTinyPng(path.join(pagesDir, '002.png'));
+      return {
+        ok: true,
+        chapters: [{ id: '1', title: 'Chapter 1' }],
+        cbzTempExtractDir: opts.tempRoot,
+      };
+    });
+
+    try {
+      const outDir = path.join(dir, 'output_pdf');
+      fs.mkdirSync(outDir, { recursive: true });
+
+      const result = await convertSingleBook({
+        inputPath: mobiPath,
+        targetFormat: 'pdf',
+        outputDir: outDir,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.outputPath.endsWith('.pdf')).toBe(true);
+      expect(fs.existsSync(result.outputPath)).toBe(true);
+    } finally {
+      mobiLoader.loadMobiFromFilePath.mockRestore();
+    }
+  });
 });

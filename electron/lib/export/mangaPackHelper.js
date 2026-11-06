@@ -82,15 +82,43 @@ async function prepareChaptersForPackaging({ chapters, sourceDir, onProgress = (
         onProgress({ message: `Đang trích xuất nội dung: ${path.basename(chPath)}...` });
         const extRes = await extractImagesFromBook(chPath, chTargetDir, { onProgress });
         if (extRes.ok && Array.isArray(extRes.images) && extRes.images.length > 0) {
+          // Flatten images directly into chTargetDir root so standard chapter image collectors
+          // (collectChapterImages / listChapterImageFiles) locate them without failure
+          const flatDir = `${chTargetDir}_flat_${Date.now()}`;
+          fs.mkdirSync(flatDir, { recursive: true });
+          const flattenedImages = [];
+
+          for (let i = 0; i < extRes.images.length; i++) {
+            const img = extRes.images[i];
+            const extName = path.extname(img.path || img.name || '.jpg') || '.jpg';
+            const flatName = `${String(i + 1).padStart(4, '0')}${extName.toLowerCase()}`;
+            const flatPath = path.join(flatDir, flatName);
+            try {
+              fs.copyFileSync(img.path, flatPath);
+              flattenedImages.push({
+                name: flatName,
+              });
+            } catch {
+              // fallback if copy fails
+            }
+          }
+
+          try {
+            fs.rmSync(chTargetDir, { recursive: true, force: true });
+            fs.renameSync(flatDir, chTargetDir);
+          } catch {
+            // If rename fails, fallback to copying back
+          }
+
           preparedChapters.push({
             title: ct,
             folderBasename: safeName,
             resolvedDir: chTargetDir,
             isExtracted: true,
           });
-          for (const img of extRes.images) {
+          for (const flatImg of flattenedImages) {
             allImages.push({
-              path: img.path,
+              path: path.join(chTargetDir, flatImg.name),
               title: ct,
               chapterIndex: ci,
             });

@@ -126,7 +126,20 @@ async function extractImagesFromBook(sourcePath, tempExtractDir, opts = {}) {
         return { ok: false, error: mobiResult.error || 'Không thể giải nén MOBI' };
       }
 
-      const images = findImagesRecursively(tempExtractDir);
+      let images = findImagesRecursively(tempExtractDir);
+      // If EPUB comic spine pages exist (_epub_pages), use them to avoid raw duplicate assets (e.g. OEBPS/Images)
+      const spinePages = images.filter((img) => img.path.includes('_epub_pages'));
+      if (spinePages.length > 0) {
+        images = spinePages;
+      }
+      if (!images.length && mobiResult.textEbookPath && fs.existsSync(mobiResult.textEbookPath)) {
+        try {
+          const epubExtractDir = path.join(tempExtractDir, 'epub_unpacked');
+          await extractZip(mobiResult.textEbookPath, { dir: epubExtractDir });
+          images = findImagesRecursively(epubExtractDir);
+        } catch (_) {}
+      }
+
       if (!images.length) {
         return { ok: false, error: 'Không tìm thấy ảnh sau khi giải nén MOBI.' };
       }
