@@ -131,6 +131,50 @@ describe('ExtrasManager', () => {
     }
   });
 
+  test('installFromZip on win32 extracts extras zip without attempting native symlink', async () => {
+    const archiver = require('archiver');
+    const zipPath = path.join(tempDir, 'win32-extras-test.zip');
+    const destDir = path.join(tempDir, 'win32-installed-extras');
+
+    await new Promise((resolve, reject) => {
+      const output = fs.createWriteStream(zipPath);
+      const archive = archiver('zip');
+      output.on('close', resolve);
+      archive.on('error', reject);
+      archive.pipe(output);
+
+      archive.append(JSON.stringify({ version: '1.2.0' }), { name: 'manifest.json' });
+      archive.append('binary-content', { name: 'upscale/realesrgan-ncnn-vulkan.exe' });
+      archive.append('console.log("semver")', { name: 'onnxruntime/node_modules/semver/bin/semver.js' });
+      archive.symlink('onnxruntime/node_modules/.bin/semver', '../semver/bin/semver.js');
+      archive.finalize();
+    });
+
+    const originalPlatform = process.platform;
+    const symlinkSpy = jest.spyOn(fs.promises, 'symlink');
+
+    try {
+      Object.defineProperty(process, 'platform', { value: 'win32' });
+      const mgr = new ExtrasManager(destDir);
+      const status = await mgr.installFromZip(zipPath);
+
+      expect(status.installed).toBe(true);
+      expect(status.components.upscale).toBe(true);
+      expect(status.components.onnx).toBe(true);
+
+      // On Windows, native symlink must not have been attempted
+      expect(symlinkSpy).not.toHaveBeenCalled();
+
+      // Semver file is properly copied
+      const binSemver = path.join(destDir, 'onnxruntime', 'node_modules', '.bin', 'semver');
+      expect(fs.existsSync(binSemver)).toBe(true);
+      expect(fs.readFileSync(binSemver, 'utf8')).toBe('console.log("semver")');
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform });
+      symlinkSpy.mockRestore();
+    }
+  });
+
   test('downloadAndInstall downloads via DirectDownloader and installs zip', async () => {
     const directDownloader = require('../../extras/DirectDownloader');
 

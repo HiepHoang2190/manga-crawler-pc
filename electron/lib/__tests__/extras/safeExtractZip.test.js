@@ -150,4 +150,106 @@ describe('safeExtractZip', () => {
 
     await expect(safeExtractZip(zipPath, { dir: outDir })).rejects.toThrow(/invalid relative path|Out of bound/);
   });
+
+  test('skips native fs.promises.symlink on win32 and copies file directly', async () => {
+    const zipPath = path.join(tempDir, 'win32-symlink.zip');
+    const outDir = path.join(tempDir, 'out-win32');
+
+    await createArchive(zipPath, (archive) => {
+      archive.append('win32 target content', { name: 'target.txt' });
+      archive.symlink('link.txt', 'target.txt');
+    });
+
+    const originalPlatform = process.platform;
+    const symlinkSpy = jest.spyOn(fs.promises, 'symlink');
+
+    try {
+      Object.defineProperty(process, 'platform', { value: 'win32' });
+      await safeExtractZip(zipPath, { dir: outDir });
+
+      // On win32, native fs.promises.symlink must NOT be called at all
+      expect(symlinkSpy).not.toHaveBeenCalled();
+
+      // File was copied directly to link.txt
+      const linkPath = path.join(outDir, 'link.txt');
+      expect(fs.existsSync(linkPath)).toBe(true);
+      expect(fs.readFileSync(linkPath, 'utf8')).toBe('win32 target content');
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform });
+      symlinkSpy.mockRestore();
+    }
+  });
+
+  test('sanitizes symlinks with trailing null bytes or whitespace', async () => {
+    const zipPath = path.join(tempDir, 'null-symlink.zip');
+    const outDir = path.join(tempDir, 'out-null');
+
+    await createArchive(zipPath, (archive) => {
+      archive.append('target text', { name: 'target.txt' });
+      // Symlink target containing trailing null bytes
+      archive.symlink('link.txt', 'target.txt\0\0');
+    });
+
+    const originalPlatform = process.platform;
+    try {
+      Object.defineProperty(process, 'platform', { value: 'win32' });
+      await safeExtractZip(zipPath, { dir: outDir });
+
+      const linkPath = path.join(outDir, 'link.txt');
+      expect(fs.existsSync(linkPath)).toBe(true);
+      expect(fs.readFileSync(linkPath, 'utf8')).toBe('target text');
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform });
+    }
+  });
+
+  test('safely overwrites existing dest file when copying deferred symlink', async () => {
+    const zipPath = path.join(tempDir, 'overwrite-symlink.zip');
+    const outDir = path.join(tempDir, 'out-overwrite');
+
+    await createArchive(zipPath, (archive) => {
+      archive.append('new content from target', { name: 'actual.txt' });
+      archive.symlink('alias.txt', 'actual.txt');
+    });
+
+    // Pre-create destination alias.txt with stale content
+    fs.mkdirSync(outDir, { recursive: true });
+    fs.writeFileSync(path.join(outDir, 'alias.txt'), 'old stale content');
+
+    const originalPlatform = process.platform;
+    try {
+      Object.defineProperty(process, 'platform', { value: 'win32' });
+      await safeExtractZip(zipPath, { dir: outDir });
+
+      const aliasPath = path.join(outDir, 'alias.txt');
+      expect(fs.existsSync(aliasPath)).toBe(true);
+      expect(fs.readFileSync(aliasPath, 'utf8')).toBe('new content from target');
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform });
+    }
+  });
+
+  test('handles .bin symlinks with non-existent target without throwing or warning', async () => {
+    const zipPath = path.join(tempDir, 'cli-bin-symlink.zip');
+    const outDir = path.join(tempDir, 'out-cli-bin');
+
+    await createArchive(zipPath, (archive) => {
+      archive.append('dummy content', { name: 'lib/index.js' });
+      archive.symlink('node_modules/.bin/missing-cli', '../missing-pkg/bin/cli.js');
+    });
+
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const originalPlatform = process.platform;
+
+    try {
+      Object.defineProperty(process, 'platform', { value: 'win32' });
+      await expect(safeExtractZip(zipPath, { dir: outDir })).resolves.not.toThrow();
+
+      // For .bin CLI wrappers, missing target is expected and should not produce noisy warnings
+      expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('missing-cli'));
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform });
+      warnSpy.mockRestore();
+    }
+  });
 });

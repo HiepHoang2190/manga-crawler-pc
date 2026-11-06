@@ -60,24 +60,26 @@ async function createExtrasZip({ platform, arch, rootDir, outputZipPath }) {
     const onnxSrc = path.join(rootDir, 'node_modules', 'onnxruntime-node');
     if (fs.existsSync(onnxSrc)) {
       archive.directory(onnxSrc, 'onnxruntime', (data) => {
+        const normName = data.name.replace(/\\/g, '/');
+
         // Loại bỏ hoàn toàn các symlink CLI không cần thiết trong .bin
-        if (data.name.includes('/.bin/') || data.name.endsWith('/.bin') || data.name.includes('node_modules/.bin')) {
+        if (normName.includes('/.bin/') || normName.endsWith('/.bin') || normName.includes('node_modules/.bin') || normName.startsWith('.bin/')) {
           return false;
         }
 
         // Lọc chính xác platform và arch cho native binaries trong bin/napi-v6/
-        if (data.name.includes('bin/napi-v6/')) {
+        if (normName.includes('bin/napi-v6/')) {
           if (platform === 'win32') {
-            if (!data.name.includes('bin/napi-v6/win32')) {
+            if (!normName.includes('bin/napi-v6/win32')) {
               return false;
             }
           } else if (platform === 'darwin') {
             const sub = `bin/napi-v6/darwin/${arch}`;
-            if (!data.name.includes(sub)) {
+            if (!normName.includes(sub)) {
               return false;
             }
           } else {
-            if (!data.name.includes(`bin/napi-v6/${platform}`)) {
+            if (!normName.includes(`bin/napi-v6/${platform}`)) {
               return false;
             }
           }
@@ -90,7 +92,8 @@ async function createExtrasZip({ platform, arch, rootDir, outputZipPath }) {
     const onnxCommonSrc = path.join(rootDir, 'node_modules', 'onnxruntime-common');
     if (fs.existsSync(onnxCommonSrc)) {
       archive.directory(onnxCommonSrc, 'onnxruntime/node_modules/onnxruntime-common', (data) => {
-        if (data.name.includes('/.bin/') || data.name.endsWith('/.bin') || data.name.includes('node_modules/.bin')) {
+        const normName = data.name.replace(/\\/g, '/');
+        if (normName.includes('/.bin/') || normName.endsWith('/.bin') || normName.includes('node_modules/.bin') || normName.startsWith('.bin/')) {
           return false;
         }
         return data;

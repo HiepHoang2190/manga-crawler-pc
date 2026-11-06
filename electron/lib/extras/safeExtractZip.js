@@ -47,12 +47,18 @@ async function safeExtractZip(zipPath, opts) {
     zipfile.on('close', async () => {
       if (canceled) return;
       try {
-        // Xử lý các symlink bị hoãn do lỗi EPERM trên Windows
+        // Xử lý các symlink bị hoãn do lỗi EPERM trên Windows hoặc fallback sao chép file
         for (const item of deferredSymlinks) {
-          const { dest, link } = item;
-          const targetPath = path.resolve(path.dirname(dest), link);
+          const { dest, link, isCliBin } = item;
+          const cleanLink = (link || '').replace(/\0+$/, '').trim();
+          const targetPath = path.resolve(path.dirname(dest), cleanLink);
 
           try {
+            // Xóa file/symlink đích cũ nếu đã tồn tại để tránh EEXIST / EPERM khi copy đè
+            try {
+              fs.rmSync(dest, { recursive: true, force: true });
+            } catch (_) {}
+
             if (fs.existsSync(targetPath)) {
               const stat = fs.statSync(targetPath);
               if (stat.isDirectory()) {
@@ -65,10 +71,13 @@ async function safeExtractZip(zipPath, opts) {
                 fs.copyFileSync(targetPath, dest);
               }
             } else {
-              console.warn(`[safeExtractZip] Target file does not exist, skipping non-fatal link: ${link} -> ${dest}`);
+              // Đối với các symlink CLI wrapper trong .bin, nếu target không tồn tại thì an tâm bỏ qua
+              if (!isCliBin) {
+                console.warn(`[safeExtractZip] Target file does not exist, skipping non-fatal link: ${cleanLink} -> ${dest}`);
+              }
             }
           } catch (copyErr) {
-            console.warn(`[safeExtractZip] Warning: fallback copy for symlink failed (${copyErr.message}): ${link} -> ${dest}`);
+            console.warn(`[safeExtractZip] Warning: fallback copy for symlink failed (${copyErr.message}): ${cleanLink} -> ${dest}`);
           }
         }
         resolve();
@@ -147,26 +156,46 @@ async function safeExtractZip(zipPath, opts) {
             const chunks = [];
             readStream.on('data', (chunk) => chunks.push(chunk));
             readStream.on('end', async () => {
-              const link = Buffer.concat(chunks).toString('utf8');
               try {
-                // Thử tạo native symlink trước
-                await fs.promises.symlink(link, dest);
-              } catch (symlinkErr) {
-                // Trên Windows không có quyền Admin hoặc Developer Mode, fs.symlink văng EPERM
-                // Chúng tôi đưa vào danh sách hoãn để fallback sao chép file sau khi giải nén xong
-                deferredSymlinks.push({ dest, link });
-              }
+                let link = Buffer.concat(chunks).toString('utf8');
+                // Loại bỏ null bytes (\0) hoặc khoảng trắng thừa ở cuối do một số zip archiver tạo ra
+                link = link.replace(/\0+$/, '').trim();
 
-              processedEntries++;
-              if (opts.onProgress && totalEntries > 0) {
-                opts.onProgress({
-                  percent: Math.round((processedEntries / totalEntries) * 100),
-                  current: processedEntries,
-                  total: totalEntries,
-                  fileName: entry.fileName,
-                });
+                const isCliBin = entry.fileName.includes('/.bin/') ||
+                                 entry.fileName.includes('\\.bin\\') ||
+                                 entry.fileName.endsWith('/.bin') ||
+                                 entry.fileName.endsWith('\\.bin') ||
+                                 dest.includes(path.sep + '.bin' + path.sep);
+
+                if (process.platform === 'win32') {
+                  // Trên Windows, người dùng thông thường không có Developer Mode / quyền SeCreateSymbolicLinkPrivilege.
+                  // Việc gọi fs.promises.symlink chắc chắn sẽ văng EPERM và có nguy cơ để lại handle khoá file rỗng.
+                  // Chúng tôi đưa thẳng vào deferredSymlinks để sao chép file/junction sau khi trích xuất xong toàn bộ archive.
+                  deferredSymlinks.push({ dest, link, isCliBin });
+                } else {
+                  try {
+                    // Thử tạo native symlink trước trên POSIX (macOS / Linux)
+                    await fs.promises.symlink(link, dest);
+                  } catch (symlinkErr) {
+                    deferredSymlinks.push({ dest, link, isCliBin });
+                  }
+                }
+
+                processedEntries++;
+                if (opts.onProgress && totalEntries > 0) {
+                  opts.onProgress({
+                    percent: Math.round((processedEntries / totalEntries) * 100),
+                    current: processedEntries,
+                    total: totalEntries,
+                    fileName: entry.fileName,
+                  });
+                }
+                zipfile.readEntry();
+              } catch (symlinkProcErr) {
+                canceled = true;
+                zipfile.close();
+                reject(symlinkProcErr);
               }
-              zipfile.readEntry();
             });
 
             readStream.on('error', (err) => {

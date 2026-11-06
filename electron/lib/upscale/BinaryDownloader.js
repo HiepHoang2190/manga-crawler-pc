@@ -7,7 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
-const extract = require('extract-zip');
+const { safeExtractZip } = require('../extras/safeExtractZip');
 
 const ENGINES = [
   {
@@ -173,7 +173,7 @@ async function downloadEngine(engineId, options = {}) {
     fs.mkdirSync(extractDir, { recursive: true });
 
     onLog(`[BinaryDownloader] Extracting archive...`);
-    await extract(tmpFile, { dir: path.resolve(extractDir) });
+    await safeExtractZip(tmpFile, { dir: path.resolve(extractDir) });
 
     const binaryFound = findBinaryInDir(extractDir, engine.binaryName);
     if (!binaryFound) {
