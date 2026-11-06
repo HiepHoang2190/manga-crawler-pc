@@ -29,6 +29,8 @@ const {
   collectComixChaptersViaInPageGet,
   formatComixChapterProgress,
   COMIX_SCRAPE_CHAPTERS_SCRIPT,
+  parseComixMangaMetaFromHtml,
+  extractComixCoverFromEmbeddedJson,
 } = require('../../../platform/connectors/services/comixService');
 
 const TITLE_PAGE_HTML = `<!DOCTYPE html><html><head>
@@ -355,5 +357,55 @@ describe('comix load uses one BrowserWindow', () => {
     expect(logs).toContain('Comix: đang xác minh Cloudflare…');
     expect(result.ok).toBe(true);
     expect(result.chapters).toHaveLength(1);
+  });
+
+  describe('comix cover poster extraction', () => {
+    test('extracts cover from modern Vite initial-data script with relative path', () => {
+      const html = `<!DOCTYPE html><html><head>
+        <title>Frozen Wolf, Fire Dragon - Comix</title>
+        <script id="initial-data" type="application/json">
+          {
+            "queries": {
+              "[\\"manga\\",\\"detail\\",\\"9058\\"]": {
+                "id": 1494,
+                "title": "Frozen Wolf, Fire Dragon",
+                "poster": {
+                  "medium": "/images/covers/93/ff/93ff04b8.jpg@280.jpg",
+                  "large": "/images/covers/93/ff/93ff04b8.jpg"
+                }
+              }
+            }
+          }
+        </script>
+      </head><body><h1 class="title">Frozen Wolf, Fire Dragon</h1></body></html>`;
+
+      const meta = parseComixMangaMetaFromHtml(html);
+      expect(meta.ok).toBe(true);
+      expect(meta.title).toBe('Frozen Wolf, Fire Dragon');
+      expect(meta.coverUrl).toBe('https://comix.to/images/covers/93/ff/93ff04b8.jpg');
+    });
+
+    test('extracts cover from legacy Next.js __NEXT_DATA__ script', () => {
+      const html = `<!DOCTYPE html><html><head>
+        <title>Some Title - Comix</title>
+        <script id="__NEXT_DATA__" type="application/json">
+          {
+            "props": {
+              "pageProps": {
+                "manga": {
+                  "title": "Some Title",
+                  "cover": "https://static.comix.to/covers/some-cover.webp"
+                }
+              }
+            }
+          }
+        </script>
+      </head><body><h1 class="title">Some Title</h1></body></html>`;
+
+      const meta = parseComixMangaMetaFromHtml(html);
+      expect(meta.ok).toBe(true);
+      expect(meta.title).toBe('Some Title');
+      expect(meta.coverUrl).toBe('https://static.comix.to/covers/some-cover.webp');
+    });
   });
 });

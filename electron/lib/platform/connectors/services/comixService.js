@@ -15,9 +15,15 @@ const { resolveUrl } = htmlConnectorUtils;
 const {
   decryptComixEncPayload,
   extractComixChapterId,
+  signComixApiPath,
+  serializeComixQuery,
   buildComixSignedApiUrl,
   buildComixChapterImageUrls,
 } = require('../../../download/connector/comixCrypto');
+const COMIX_CRYPTO_CORE_SRC = fs.readFileSync(
+  path.join(__dirname, '../../../download/connector/comixCryptoCore.js'),
+  'utf8',
+);
 const { descrambleComixImageBuffer } = require('../../../download/connector/comixDescramble');
 const { formatChapterTitle } = require('../../../shared/mangaUtils');
 const cookieManager = require('../../cookies/cookieManager');
@@ -225,6 +231,8 @@ function extractComixCoverUrl(html, $) {
     'img[itemprop=image]',
     'img[itemProp=image]',
     'picture img[src*="comix"]',
+    'img[src*="/images/covers/"]',
+    'img[data-src*="/images/covers/"]',
     'img[src*="static.comix.to"]',
     'img[data-src*="static.comix.to"]',
     'img[alt][src*="static.comix"]',
@@ -247,7 +255,7 @@ function extractComixCoverUrl(html, $) {
   }
 
   const re =
-    /https?:\/\/[^"'<>\s]*static\.comix\.to[^"'<>\s]*\.(?:webp|jpe?g|png|gif)(?:\?[^"'<>\s]*)?/gi;
+    /https?:\/\/[^"'<>\s]*(?:static\.comix\.to|comix\.to\/images\/covers)[^"'<>\s]*\.(?:webp|jpe?g|png|gif)(?:\?[^"'<>\s]*)?/gi;
   let m;
   while ((m = re.exec(html)) !== null) {
     const u = m[0];
@@ -256,21 +264,30 @@ function extractComixCoverUrl(html, $) {
   return '';
 }
 
+function toAbsoluteComixCoverUrl(url) {
+  if (!url) return '';
+  let u = String(url).trim();
+  if (u.startsWith('//')) return 'https:' + u;
+  if (u.startsWith('/')) return resolveUrl(DOMAIN, u.replace(/^\//, ''));
+  return u;
+}
+
 /**
  * Manga page is SPA: static HTML may lack <img itemprop="image"> before hydrate.
- * API manga returns full JSON — scan recursively for static.comix.to URL (except @ thumbnail).
+ * API manga returns full JSON — scan recursively for cover poster URL (except @ thumbnail).
  */
 function deepFindComixCoverInJson(node, depth = 0) {
   if (depth > 24) return '';
   if (typeof node === 'string') {
     const s = node.trim();
     if (
-      /^https?:\/\//i.test(s) &&
-      s.includes('static.comix.to') &&
-      /\.(webp|jpe?g|png|gif)(\?|#|$)/i.test(s) &&
+      (/\.(webp|jpe?g|png|gif)(\?|#|$)/i.test(s) &&
+        (s.includes('static.comix.to') ||
+          s.includes('/images/covers/') ||
+          s.includes('comix.to/images/covers/'))) &&
       !s.includes('@')
     ) {
-      return s;
+      return toAbsoluteComixCoverUrl(s);
     }
     return '';
   }
@@ -282,6 +299,15 @@ function deepFindComixCoverInJson(node, depth = 0) {
     }
     return '';
   }
+  if (node.poster) {
+    if (typeof node.poster === 'string' && !node.poster.includes('@')) {
+      return toAbsoluteComixCoverUrl(node.poster);
+    }
+    if (typeof node.poster === 'object') {
+      const p = node.poster.large || node.poster.medium || node.poster.small;
+      if (typeof p === 'string' && p) return toAbsoluteComixCoverUrl(p);
+    }
+  }
   for (const k of Object.keys(node)) {
     const f = deepFindComixCoverInJson(node[k], depth + 1);
     if (f) return f;
@@ -290,17 +316,42 @@ function deepFindComixCoverInJson(node, depth = 0) {
 }
 
 /**
- * Next.js embeds state in HTML — may have cover URL before SPA renders <img>.
+ * Embedded state in HTML: Vite/SPA initial-data or legacy Next.js __NEXT_DATA__.
  */
 function extractComixCoverFromEmbeddedJson(html) {
-  const m = html.match(/<script[^>]*id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i);
-  if (!m) return '';
-  try {
-    const data = JSON.parse(m[1]);
-    return deepFindComixCoverInJson(data) || '';
-  } catch {
-    return '';
+  const initMatch = html.match(
+    /<script[^>]*id=["']initial-data["'][^>]*>([\s\S]*?)<\/script>/i,
+  );
+  if (initMatch) {
+    try {
+      const data = JSON.parse(initMatch[1]);
+      if (data && data.queries && typeof data.queries === 'object') {
+        for (const [key, val] of Object.entries(data.queries)) {
+          if (key.includes('manga') && key.includes('detail') && val && val.poster) {
+            const p = val.poster.large || val.poster.medium || val.poster;
+            if (typeof p === 'string' && p) return toAbsoluteComixCoverUrl(p);
+          }
+        }
+      }
+      const cover = deepFindComixCoverInJson(data);
+      if (cover) return cover;
+    } catch {
+      /* ignore */
+    }
   }
+
+  const nextMatch = html.match(
+    /<script[^>]*id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i,
+  );
+  if (nextMatch) {
+    try {
+      const data = JSON.parse(nextMatch[1]);
+      return deepFindComixCoverInJson(data) || '';
+    } catch {
+      return '';
+    }
+  }
+  return '';
 }
 
 function isComixChallengeTitle(title) {
@@ -526,6 +577,10 @@ function formatComixChapterProgress(payload) {
  * comix.to renders chapters directly into `.mchap-list`.
  */
 const COMIX_SCRAPE_CHAPTERS_SCRIPT = `(async () => {
+  ${COMIX_CRYPTO_CORE_SRC}
+  const signComixApiPath = ${signComixApiPath.toString()};
+  const serializeComixQuery = ${serializeComixQuery.toString()};
+  const buildComixSignedApiUrl = ${buildComixSignedApiUrl.toString()};
   const rewriteComixRequestHeader = ${rewriteComixRequestHeader.toString()};
   const collectComixChaptersViaInPageGet = ${collectComixChaptersViaInPageGet.toString()};
   const originalSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
@@ -542,13 +597,41 @@ const COMIX_SCRAPE_CHAPTERS_SCRIPT = `(async () => {
   };
   reportProgress({ phase: 'start' });
   const reportCaptcha = () => reportProgress({ phase: 'captcha' });
-  window.addEventListener('waf:captcha:open', reportCaptcha);
-  window.addEventListener('waf:captcha:solved', () => reportProgress({ phase: 'captcha-solved' }));
+  if (typeof window.addEventListener === 'function') {
+    window.addEventListener('waf:captcha:open', reportCaptcha);
+    window.addEventListener('waf:captcha:solved', () => reportProgress({ phase: 'captcha-solved' }));
+  }
   const captchaFramePresent = () => Boolean(
     document.querySelector('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"], iframe[src*="/@waf/"]')
   );
   if (captchaFramePresent()) reportCaptcha();
+
+  const inPageSignedGet = async (endpoint, config) => {
+    const akHelper = window.__comixAk || (typeof __comixAk !== 'undefined' ? __comixAk : null);
+    const params = config && config.params ? config.params : {};
+    const url = buildComixSignedApiUrl(endpoint, params, location.origin);
+    const res = await fetch(url, {
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (data && data.e) {
+      const decStr = akHelper ? akHelper.vQ(data.e) : data.e;
+      const parsed = typeof decStr === 'string' ? JSON.parse(decStr) : decStr;
+      return parsed && parsed.result ? parsed.result : parsed;
+    }
+    return data && data.result ? data.result : data;
+  };
+
   const findInPageApiGet = async () => {
+    try {
+      if (typeof window.__comixAk !== 'undefined' || typeof __comixAk !== 'undefined') {
+        return inPageSignedGet;
+      }
+    } catch {
+      /* ignore */
+    }
     const inspectModule = (mod) => {
       for (const val of Object.values(mod || {})) {
         if (!val || typeof val !== 'object') continue;
@@ -577,20 +660,24 @@ const COMIX_SCRAPE_CHAPTERS_SCRIPT = `(async () => {
     const mainScript = Array.from(document.querySelectorAll('script[src]'))
       .map((s) => s.src)
       .find((src) => src.includes('/assets/build/') && src.includes('main-'));
-    if (!mainScript) return null;
+    if (!mainScript) return inPageSignedGet;
     const base = mainScript.slice(0, mainScript.lastIndexOf('/') + 1);
-    const mainText = await (await fetch(mainScript)).text();
-    const rels = Array.from(mainText.matchAll(/["']\\.\\/([^"']+\\.js)["']/g)).map((m) => m[1]);
-    for (const rel of rels) {
-      if (rel.startsWith('secure-')) continue;
-      try {
-        const found = inspectModule(await import(base + rel));
-        if (found) return found;
-      } catch {
-        // ignore chunk import error
+    try {
+      const mainText = await (await fetch(mainScript)).text();
+      const rels = Array.from(mainText.matchAll(/["']\\.\\/([^"']+\\.js)["']/g)).map((m) => m[1]);
+      for (const rel of rels) {
+        if (rel.startsWith('secure-')) continue;
+        try {
+          const found = inspectModule(await import(base + rel));
+          if (found) return found;
+        } catch {
+          // ignore chunk import error
+        }
       }
+    } catch {
+      // ignore
     }
-    return null;
+    return inPageSignedGet;
   };
   const out = [];
   const seen = new Set();
@@ -1751,8 +1838,8 @@ module.exports = {
   createComixCaptchaReveal,
   selectComixPrefetchUrls,
   warmComixChapterImageCache,
-  selectComixPrefetchUrls,
-  warmComixChapterImageCache,
+  parseComixMangaMetaFromHtml,
+  extractComixCoverFromEmbeddedJson,
   service,
   ComixService,
 };

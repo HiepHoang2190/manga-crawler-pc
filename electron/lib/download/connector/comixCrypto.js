@@ -2,25 +2,10 @@
 
 /**
  * Comix.to API request signing + response decryption.
- * Ported from the site's secure.js Io helpers (po.D / po.O).
+ * Uses current live ak HMAC-SHA256 token generator and key material decryption.
  */
 
-function b64urlEncodeBinary(binaryString) {
-  let encoded = Buffer.from(binaryString, 'binary').toString('base64');
-  return encoded.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-function b64urlDecodeToBinary(input) {
-  let padded = String(input || '');
-  const padLen = 4 - (padded.length % 4);
-  if (padLen < 4) padded += '='.repeat(padLen);
-  padded = padded.replace(/-/g, '+').replace(/_/g, '/');
-  return Buffer.from(padded, 'base64').toString('binary');
-}
-
-function b64ToBytes(b64) {
-  return Uint8Array.from(Buffer.from(b64, 'base64'));
-}
+const ak = require('./comixCryptoCore');
 
 /**
  * Sign an API path for the `_` query token (GET /api/v1/...).
@@ -28,39 +13,19 @@ function b64ToBytes(b64) {
  * @returns {string}
  */
 function signComixApiPath(apiPath) {
-  const pathOnly = String(apiPath || '');
-  let bytes = Array.from(new TextEncoder().encode(pathOnly));
-  const tables = [
-    {
-      s: 'gbicCvAMzfcXEtGAyjvvhmb2yCWzWhjqcxXZ7ZhpzANOzoQLo3nuPZ2vK9dkb9hJExC0Vni/hdQBceI+mw611gkhQFjBuf4bJg1TxYqM+SL4YDqtwjxiGSdeH7so7Fn1HiRo37Z+RNvl44twXWVhomtMjw+8bemfmv9XEXr7mS82MxaCOJZRR0oHd9PLI5O+gyBGT6hcLoduNa7yCObVVCk3bFWsoD+xcqTrBcP6dNJN/NB1Br2QGhSN2snHAqeRNKVFQiyeAFLPSKGwY8aq9EPgsi17qd4ywPMxiH8w6N1qX1tLKtzhOeemHWeJQfFQ5H23q7qSlJUcjgTEl3x2/Q==',
-      k: 'rafYl4oSAKQX+GYoic9oW4iGwiYpZzs0',
-      seed: 189,
-    },
-    {
-      s: '2lQehmgyYFAoWUi0haazZqHy5zZ34NN+VzlfsoB2Y1yY0IuMLjgVcV2xt8t4moH+AP0NMJ5qekW7DFIHEWKkOgIBIMhDdA8lbM6iHKjDlq6IChpb3CnA9NmsvQW/afdt1SfJjTdwcvpKqunCJLxBFmXX9hecm6tGb+HRxD7BC3njoxPxgnX5pdKP1IMSkd4/O3NRfZSE6DVLG2s9uexaipA05cpJzE8Qkv/z5jzHAwlEWOLd3yxA+0cvVbpOoJPFGc8f1lb4vu2HUxjuuEwEQk0GsPCVnyKvfOoh9TG2YYmZLV4I67UU2NsrrakqZ47k/O+ne25/DjPGZCMdnZcmzQ==',
-      k: '2USAq+VTo5ht4bQn+K9DUcpUQRTtrB56',
-      seed: 133,
-    },
-    {
-      s: '+mhJSFwzaV+PQPDyKp2scO/S9SdFsy/7e56UWT8XHbK3E2+19nEPwfwOgE9uVCaDtOAWTobCZX+cBCXlIbBqyDyQB1beKLspW6kGPhBCV9x0jf0KUeFhHjmlMf7qMFIB41PfDFprZ3bJiK4YxrZDv+K6dcwJmggVO8f5ktrXTM0cZL4fer0SpnkbvNajPbHxfuTz5lVEBarOI4rdc+2V6zTsjpfQYjgN1MMr6EvA6eehN6dQ1bgUogt9rZOBbQBeNnLYY00uZqSoJBnFi5gthCJsWF33ykosn9v/9KB8udMCz0YRYImrA4VHr5mMgpH4xDXLeEHRd5vZOiAalofuMg==',
-      k: 'yNHlokVEnuecesDrB/lDhVuUNiheWc3a47VtkwZ2ENg=',
-      seed: 32,
-    },
-  ];
-  for (const { s, k, seed } of tables) {
-    const sbox = b64ToBytes(s);
-    const keyBytes = b64ToBytes(k);
-    const keyLen = keyBytes.length;
-    const out = new Array(bytes.length);
-    let prev = seed;
-    for (let i = 0; i < bytes.length; i++) {
-      const next = sbox[255 & (bytes[i] ^ keyBytes[i % keyLen] ^ prev)];
-      out[i] = next;
-      prev = next;
-    }
-    bytes = out;
+  let cleanPath = String(apiPath || '')
+    .replace(/^https?:\/\/[^/]+/i, '')
+    .replace(/^\/api\/v1/i, '');
+  if (!cleanPath.startsWith('/')) cleanPath = '/' + cleanPath;
+  const akHelper =
+    (typeof __comixAk !== 'undefined' && __comixAk) ||
+    (typeof globalThis !== 'undefined' && globalThis.__comixAk) ||
+    (typeof window !== 'undefined' && window.__comixAk) ||
+    (typeof ak !== 'undefined' ? ak : null);
+  if (!akHelper || typeof akHelper.ho !== 'function') {
+    throw new Error('Comix crypto signing helper is not available');
   }
-  return b64urlEncodeBinary(Buffer.from(bytes).toString('binary'));
+  return akHelper.ho(cleanPath);
 }
 
 /**
@@ -69,40 +34,16 @@ function signComixApiPath(apiPath) {
  * @returns {string} plaintext JSON string
  */
 function decryptComixEncPayload(encPayload) {
-  let bytes = Array.from(b64urlDecodeToBinary(encPayload), (ch) => ch.charCodeAt(0));
-  const tables = [
-    {
-      s: '+mhJSFwzaV+PQPDyKp2scO/S9SdFsy/7e56UWT8XHbK3E2+19nEPwfwOgE9uVCaDtOAWTobCZX+cBCXlIbBqyDyQB1beKLspW6kGPhBCV9x0jf0KUeFhHjmlMf7qMFIB41PfDFprZ3bJiK4YxrZDv+K6dcwJmggVO8f5ktrXTM0cZL4fer0SpnkbvNajPbHxfuTz5lVEBarOI4rdc+2V6zTsjpfQYjgN1MMr6EvA6eehN6dQ1bgUogt9rZOBbQBeNnLYY00uZqSoJBnFi5gthCJsWF33ykosn9v/9KB8udMCz0YRYImrA4VHr5mMgpH4xDXLeEHRd5vZOiAalofuMg==',
-      k: 'yNHlokVEnuecesDrB/lDhVuUNiheWc3a47VtkwZ2ENg=',
-      seed: 32,
-    },
-    {
-      s: '2lQehmgyYFAoWUi0haazZqHy5zZ34NN+VzlfsoB2Y1yY0IuMLjgVcV2xt8t4moH+AP0NMJ5qekW7DFIHEWKkOgIBIMhDdA8lbM6iHKjDlq6IChpb3CnA9NmsvQW/afdt1SfJjTdwcvpKqunCJLxBFmXX9hecm6tGb+HRxD7BC3njoxPxgnX5pdKP1IMSkd4/O3NRfZSE6DVLG2s9uexaipA05cpJzE8Qkv/z5jzHAwlEWOLd3yxA+0cvVbpOoJPFGc8f1lb4vu2HUxjuuEwEQk0GsPCVnyKvfOoh9TG2YYmZLV4I67UU2NsrrakqZ47k/O+ne25/DjPGZCMdnZcmzQ==',
-      k: '2USAq+VTo5ht4bQn+K9DUcpUQRTtrB56',
-      seed: 133,
-    },
-    {
-      s: 'gbicCvAMzfcXEtGAyjvvhmb2yCWzWhjqcxXZ7ZhpzANOzoQLo3nuPZ2vK9dkb9hJExC0Vni/hdQBceI+mw611gkhQFjBuf4bJg1TxYqM+SL4YDqtwjxiGSdeH7so7Fn1HiRo37Z+RNvl44twXWVhomtMjw+8bemfmv9XEXr7mS82MxaCOJZRR0oHd9PLI5O+gyBGT6hcLoduNa7yCObVVCk3bFWsoD+xcqTrBcP6dNJN/NB1Br2QGhSN2snHAqeRNKVFQiyeAFLPSKGwY8aq9EPgsi17qd4ywPMxiH8w6N1qX1tLKtzhOeemHWeJQfFQ5H23q7qSlJUcjgTEl3x2/Q==',
-      k: 'rafYl4oSAKQX+GYoic9oW4iGwiYpZzs0',
-      seed: 189,
-    },
-  ];
-  for (const { s, k, seed } of tables) {
-    const sbox = b64ToBytes(s);
-    const inv = new Uint8Array(256);
-    for (let i = 0; i < 256; i++) inv[sbox[i]] = i;
-    const keyBytes = b64ToBytes(k);
-    const keyLen = keyBytes.length;
-    const out = new Array(bytes.length);
-    let prev = seed;
-    for (let i = 0; i < bytes.length; i++) {
-      const cur = bytes[i];
-      out[i] = 255 & (inv[cur] ^ keyBytes[i % keyLen] ^ prev);
-      prev = cur;
-    }
-    bytes = out;
+  if (!encPayload || typeof encPayload !== 'string') return '';
+  const akHelper =
+    (typeof __comixAk !== 'undefined' && __comixAk) ||
+    (typeof globalThis !== 'undefined' && globalThis.__comixAk) ||
+    (typeof window !== 'undefined' && window.__comixAk) ||
+    (typeof ak !== 'undefined' ? ak : null);
+  if (!akHelper || typeof akHelper.vQ !== 'function') {
+    throw new Error('Comix crypto decryption helper is not available');
   }
-  return new TextDecoder().decode(Uint8Array.from(bytes));
+  return akHelper.vQ(encPayload);
 }
 
 const TITLE_SLUG_RE = /\/title\/([^/]+)/;
@@ -138,39 +79,81 @@ function extractComixChapterId(chapterUrl) {
   return match ? match[1] : '';
 }
 
-function sortedComixQueryEntries(query) {
-  return Object.entries(query || {})
-    .filter(([, value]) => value != null && value !== '')
-    .map(([key, value]) => [String(key), String(value)])
-    .sort(([left_key], [right_key]) => {
-      if (left_key < right_key) return -1;
-      if (left_key > right_key) return 1;
-      return 0;
-    });
+function serializeComixQuery(params) {
+  const parts = [];
+  function pushParam(prefix, val) {
+    if (val == null) return;
+    if (Array.isArray(val)) {
+      val.forEach((item, idx) => pushParam(`${prefix}[${idx}]`, item));
+    } else if (typeof val === 'object') {
+      const keys = Object.keys(val).sort();
+      for (const k of keys) {
+        pushParam(prefix ? `${prefix}[${k}]` : k, val[k]);
+      }
+    } else {
+      parts.push(`${prefix}=${val}`);
+    }
+  }
+  const topKeys = Object.keys(params || {}).filter((k) => k !== '_').sort();
+  for (const k of topKeys) {
+    pushParam(k, params[k]);
+  }
+  return parts.join('&');
 }
 
 /**
- * Build GET /api/v1/... URL with `_` token. Query is signed unencoded and
- * sorted alphabetically (matches comix.to secure.js).
+ * Build GET /api/v1/... URL with `_` token. Query is signed and
+ * sorted alphabetically (matches live comix.to client).
  * @param {string} apiPath e.g. "/manga/9058/chapters"
- * @param {Record<string, string|number>} [query]
+ * @param {Record<string, any>} [query]
  * @param {string} [origin]
  * @returns {string}
  */
-function buildComixSignedApiUrl(apiPath, query = {}, origin = COMIX_API_ORIGIN) {
-  const path_only = String(apiPath || '').startsWith('/')
-    ? String(apiPath)
-    : `/${apiPath}`;
-  const entries = sortedComixQueryEntries(query);
-  const sign_qs = entries.map(([key, value]) => `${key}=${value}`).join('&');
-  const sign_path = sign_qs ? `${path_only}?${sign_qs}` : path_only;
+function buildComixSignedApiUrl(apiPath, query = {}, origin = 'https://comix.to') {
+  let path_only = String(apiPath || '')
+    .replace(/^https?:\/\/[^/]+/i, '')
+    .replace(/^\/api\/v1/i, '');
+  if (!path_only.startsWith('/')) path_only = '/' + path_only;
+
+  let base_path = path_only;
+  let combined_query = { ...query };
+  if (path_only.includes('?')) {
+    const [p, qs] = path_only.split('?');
+    base_path = p;
+    const search_params = new URLSearchParams(qs);
+    for (const [k, v] of search_params.entries()) {
+      if (combined_query[k] === undefined) {
+        combined_query[k] = v;
+      }
+    }
+  }
+
+  const sign_qs = serializeComixQuery(combined_query);
+  const sign_path = sign_qs ? `${base_path}?${sign_qs}` : base_path;
   const token = signComixApiPath(sign_path);
-  const request_qs = entries
-    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
-    .concat([`_=${encodeURIComponent(token)}`])
-    .join('&');
+
+  const request_parts = [];
+  function pushRequest(prefix, val) {
+    if (val == null) return;
+    if (Array.isArray(val)) {
+      val.forEach((item, idx) => pushRequest(`${prefix}[${idx}]`, item));
+    } else if (typeof val === 'object') {
+      const keys = Object.keys(val).sort();
+      for (const k of keys) {
+        pushRequest(prefix ? `${prefix}[${k}]` : k, val[k]);
+      }
+    } else {
+      request_parts.push(`${encodeURIComponent(prefix)}=${encodeURIComponent(val)}`);
+    }
+  }
+  const topKeys = Object.keys(combined_query).filter((k) => k !== '_').sort();
+  for (const k of topKeys) {
+    pushRequest(k, combined_query[k]);
+  }
+  request_parts.push(`_=${encodeURIComponent(token)}`);
+
   const base_origin = String(origin || COMIX_API_ORIGIN).replace(/\/+$/, '');
-  return `${base_origin}/api/v1${path_only}?${request_qs}`;
+  return `${base_origin}/api/v1${base_path}?${request_parts.join('&')}`;
 }
 
 /**
@@ -215,11 +198,6 @@ function getFileExtFromUrl(src) {
   return 'webp';
 }
 
-/**
- * Build ordered image list from decrypted chapter API result.
- * @param {object|null} chapterResult
- * @returns {Array<{imageUrl: string, ext: string, scramble: boolean}>}
- */
 function httpUrlFromPageRecord(item) {
   if (!item || typeof item !== 'object' || Array.isArray(item)) return '';
   const http_values = Object.values(item).filter(
@@ -230,10 +208,6 @@ function httpUrlFromPageRecord(item) {
   return http_values[0].trim();
 }
 
-/**
- * True when every record carries an absolute image URL.
- * Comix minifies the page-list field name (`pages` → a short key) between deploys.
- */
 function isObfuscatedImageRecordList(value) {
   if (!Array.isArray(value) || value.length === 0) return false;
   return value.every((item) => httpUrlFromPageRecord(item) !== '');
@@ -300,6 +274,7 @@ module.exports = {
   extractComixTitleSlug,
   extractComixMangaIdFromSlug,
   extractComixChapterId,
+  serializeComixQuery,
   buildComixSignedApiUrl,
   parseComixChapterApiItems,
   buildComixChapterImageUrls,
