@@ -106,8 +106,12 @@ async function detectPdfContentType(filePath, baseName) {
       pdfjsLib.GlobalWorkerOptions.workerSrc = pathToFileURL(resolved_worker_path).href;
     }
 
+    const { getPdfjsFactoryParams } = require('../shared/pdfjsAssets');
     const loadingTask = pdfjsLib.getDocument({
       url: filePath,
+      // CMap / standard-font data for CJK & non-embedded-font PDFs —
+      // see electron/lib/shared/pdfjsAssets.js.
+      ...getPdfjsFactoryParams(),
       useSystemFonts: true,
       disableFontFace: true,
     });

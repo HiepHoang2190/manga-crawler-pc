@@ -26,8 +26,13 @@ async function getPdfjsLib() {
  * @param {string} baseName  — for error messages
  */
 async function openPdfDoc(pdfjsLib, resolved, baseName) {
+  const { getPdfjsFactoryParams } = require('../../shared/pdfjsAssets');
   const loadingTask = pdfjsLib.getDocument({
     url: resolved,
+    // Without these, pdfjs has no CMap / standard-font data and fails on
+    // CJK or non-embedded-font PDFs ("Ensure that the `cMapUrl` API
+    // parameter is provided"). See electron/lib/shared/pdfjsAssets.js.
+    ...getPdfjsFactoryParams(),
     useSystemFonts: true,
     disableFontFace: true,
   });

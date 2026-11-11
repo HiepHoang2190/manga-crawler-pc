@@ -46,7 +46,9 @@ async function loadPdfFromFilePath(pdfPath, { tempRoot, scale = 2.0, onProgress 
     await fs.promises.mkdir(pagesDir, { recursive: true });
 
     await ensurePdfjsWorker();
-    const { pdfToPng } = require('pdf-to-png-converter');
+    // Internal renderer — see electron/lib/shared/pdfToPng.js (the
+    // pdf-to-png-converter package throws "Invalid factory url" on Windows).
+    const { pdfToPng } = require('../../shared/pdfToPng');
 
     // Step 1: get page count first so we can report accurate progress
     let totalPages = 0;
