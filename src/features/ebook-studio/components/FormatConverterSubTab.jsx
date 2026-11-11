@@ -453,7 +453,11 @@ export default function FormatConverterSubTab({
               <div
                 className="h-full bg-primary transition-all duration-300"
                 style={{
-                  width: `${Math.round(((globalProgress.index || 1) / (globalProgress.total || 1)) * 100)}%`,
+                  width: `${
+                    globalProgress.percent != null
+                      ? Math.min(100, Math.max(0, globalProgress.percent))
+                      : Math.round(((globalProgress.index || 1) / (globalProgress.total || 1)) * 100)
+                  }%`,
                 }}
               />
             </div>

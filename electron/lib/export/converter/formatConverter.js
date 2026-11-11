@@ -179,12 +179,24 @@ async function convertSingleBook({
     // 4. Chuyển sang PDF
     if (format === 'pdf') {
       const outPath = path.join(outputDir, `${safeTitle}.pdf`);
-      onProgress({ message: 'Đang tạo file PDF...', percent: 60 });
+      onProgress({ message: 'Đang tạo file PDF...', percent: 0 });
       await generatePdf({
         images: imagesToUse.map((img) => ({ path: img.path, title: img.name || title })),
         outputPath: outPath,
         metadata: { title },
-        onProgress,
+        onProgress: (p) => {
+          const done = p.done || 0;
+          const tot = p.total || imagesToUse.length;
+          const label = p.label ? `: ${p.label}` : '';
+          const percent = tot > 0 ? Math.round((done / tot) * 100) : 0;
+          onProgress({
+            message: `Đang tạo trang PDF (${done}/${tot})${label}`,
+            done,
+            total: tot,
+            index: done,
+            percent,
+          });
+        },
       });
       return { ok: true, outputPath: outPath };
     }
@@ -251,7 +263,39 @@ async function batchConvertBooks({
         targetFormat,
         outputDir,
         options,
-        onProgress: (p) => onItemProgress({ index: i + 1, total, item: inputPath, ...p }),
+        onProgress: (p) => {
+          if (total === 1 && (p.done !== undefined || p.processed !== undefined) && p.total) {
+            const currentDone = p.done !== undefined ? p.done : p.processed;
+            const percent = p.percent != null ? p.percent : Math.round((currentDone / p.total) * 100);
+            onItemProgress({
+              ...p,
+              index: currentDone,
+              total: p.total,
+              item: inputPath,
+              message: p.message || `Đang xử lý (${currentDone}/${p.total})`,
+              percent,
+            });
+          } else if (total === 1) {
+            onItemProgress({
+              ...p,
+              index: 1,
+              total: 1,
+              item: inputPath,
+              message: p.message || `Đang xử lý: ${path.basename(inputPath)}`,
+            });
+          } else {
+            const subMsg = p.message ? ` - ${p.message}` : '';
+            onItemProgress({
+              ...p,
+              index: i + 1,
+              total,
+              item: inputPath,
+              message: `Đang xử lý (${i + 1}/${total}): ${path.basename(inputPath)}${subMsg}`,
+              batchIndex: i + 1,
+              batchTotal: total,
+            });
+          }
+        },
         signal,
       });
       results.push({ input: inputPath, ...res });

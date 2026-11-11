@@ -162,4 +162,42 @@ describe('Format Converter', () => {
       mobiLoader.loadMobiFromFilePath.mockRestore();
     }
   });
+
+  test('batchConvertBooks reports page-by-page progress when converting single book to PDF', async () => {
+    const cbzPath = path.join(dir, 'single-comic.cbz');
+    await createDummyCbz(cbzPath, ['page1.png', 'page2.png', 'page3.png']);
+
+    const outDir = path.join(dir, 'output_single_pdf');
+    fs.mkdirSync(outDir, { recursive: true });
+
+    const progressEvents = [];
+    const results = await batchConvertBooks({
+      inputPaths: [cbzPath],
+      targetFormat: 'pdf',
+      outputDir: outDir,
+      onItemProgress: (p) => {
+        progressEvents.push({ ...p });
+      },
+    });
+
+    expect(results.length).toBe(1);
+    expect(results[0].ok).toBe(true);
+
+    // Verify progress events during PDF page addition
+    const pageEvents = progressEvents.filter((e) => e.done !== undefined);
+    expect(pageEvents.length).toBe(3);
+
+    // Verify index increments with done, total is 3, message contains page progress
+    expect(pageEvents[0].index).toBe(1);
+    expect(pageEvents[0].total).toBe(3);
+    expect(pageEvents[0].message).toContain('1/3');
+
+    expect(pageEvents[1].index).toBe(2);
+    expect(pageEvents[1].total).toBe(3);
+    expect(pageEvents[1].message).toContain('2/3');
+
+    expect(pageEvents[2].index).toBe(3);
+    expect(pageEvents[2].total).toBe(3);
+    expect(pageEvents[2].percent).toBe(100);
+  });
 });
