@@ -34,6 +34,17 @@ export default function MangaInfo({
   const coverUrl = manga?.coverUrl || '';
   const sourceLabel = manga?.sourceLabel?.trim();
   const author = manga?.author?.trim() || '';
+  const rating = manga?.rating;
+  const genres = Array.isArray(manga?.genres)
+    ? manga.genres
+    : manga?.genres
+      ? [manga.genres]
+      : [];
+  const altTitles = Array.isArray(manga?.altTitles)
+    ? manga.altTitles
+    : manga?.altTitles
+      ? [manga.altTitles]
+      : [];
   const description = manga?.description?.trim() || '';
 
   const [coverSrc, setCoverSrc] = useState('');
@@ -81,10 +92,10 @@ export default function MangaInfo({
 
   if (!manga) return null;
 
-  const chapter_actions_enabled = chapterCount > 0;
-  const chapter_actions_disabled_title = chapter_actions_enabled
+  const canEnqueueAll = chapterCount > 0;
+  const enqueue_disabled_title = canEnqueueAll
     ? undefined
-    : t('mangaInfo.chapterActionsDisabledTitle');
+    : t('mangaInfo.enqueueDisabledNoChapters');
   const show_chapter_action_row =
     typeof onOpenChaptersPanel === 'function' ||
     typeof onEnqueueAllToQueue === 'function';
@@ -187,6 +198,37 @@ export default function MangaInfo({
                   <span className="min-w-0 truncate text-on-surface">{author}</span>
                 </div>
               ) : null}
+              {rating != null ? (
+                <div className="flex items-center gap-2 text-[11px] leading-snug">
+                  <span className="shrink-0 font-medium text-on-surface-variant">{t('mangaInfo.rating')}</span>
+                  <span className="inline-flex items-center gap-1 font-semibold text-amber-400">
+                    <span
+                      className="material-symbols-outlined text-[13px] leading-none text-amber-400"
+                      style={{ fontVariationSettings: "'FILL' 1" }}
+                    >
+                      star
+                    </span>
+                    <span>{typeof rating === 'number' ? rating.toFixed(2) : rating}</span>
+                    <span className="text-[10px] text-on-surface-variant font-normal">/ 10</span>
+                  </span>
+                </div>
+              ) : null}
+              {genres.length > 0 ? (
+                <div className="flex items-start gap-2 text-[11px] leading-snug">
+                  <span className="shrink-0 font-medium text-on-surface-variant">{t('mangaInfo.genres')}</span>
+                  <span className="min-w-0 text-on-surface line-clamp-2">
+                    {genres.join(', ')}
+                  </span>
+                </div>
+              ) : null}
+              {altTitles.length > 0 ? (
+                <div className="flex items-start gap-2 text-[11px] leading-snug">
+                  <span className="shrink-0 font-medium text-on-surface-variant">{t('mangaInfo.altTitles')}</span>
+                  <span className="min-w-0 text-on-surface-variant/80 line-clamp-2 text-[10.5px]">
+                    {altTitles.slice(0, 3).join(' • ')}
+                  </span>
+                </div>
+              ) : null}
               {description ? (
                 <p className="text-[11px] leading-relaxed text-on-surface-variant/90 line-clamp-5 pt-0.5">
                   {description}
@@ -199,11 +241,10 @@ export default function MangaInfo({
                   <button
                     type="button"
                     data-testid="open-drawer-btn"
-                    disabled={!chapter_actions_enabled}
                     onClick={() => onOpenChaptersPanel()}
-                    data-tooltip={chapter_actions_disabled_title ?? t('chapterList.openDrawer')}
+                    data-tooltip={t('chapterList.openDrawer')}
                     aria-label={t('chapterList.openDrawerShort')}
-                    className="inline-flex min-h-[2.25rem] w-full items-center justify-center gap-1.5 rounded-md border border-primary/35 bg-primary/12 px-2 py-1.5 text-center text-xs font-semibold leading-tight text-primary shadow-sm hover:bg-primary/18 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer"
+                    className="inline-flex min-h-[2.25rem] w-full items-center justify-center gap-1.5 rounded-md border border-primary/35 bg-primary/12 px-2 py-1.5 text-center text-xs font-semibold leading-tight text-primary shadow-sm hover:bg-primary/18 cursor-pointer"
                   >
                     <span className="material-symbols-outlined shrink-0 select-none text-[17px] leading-none [line-height:1]">
                       format_list_bulleted
@@ -215,9 +256,9 @@ export default function MangaInfo({
                   <button
                     type="button"
                     data-testid="enqueue-all-btn"
-                    disabled={!chapter_actions_enabled}
+                    disabled={!canEnqueueAll}
                     onClick={() => onEnqueueAllToQueue()}
-                    data-tooltip={chapter_actions_disabled_title ?? t('mangaInfo.enqueueAllTitle')}
+                    data-tooltip={enqueue_disabled_title ?? t('mangaInfo.enqueueAllTitle')}
                     aria-label={t('mangaInfo.enqueueAllShort')}
                     className="inline-flex min-h-[2.25rem] w-full items-center justify-center gap-1.5 rounded-md border border-primary/25 bg-primary px-2 py-1.5 text-center text-xs font-semibold leading-tight text-on-primary shadow-sm hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer"
                   >

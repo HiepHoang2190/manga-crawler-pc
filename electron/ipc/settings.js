@@ -22,6 +22,11 @@ function registerSettingsIpc(ipc_context) {
     if (s) ipc_context.writeSettings({ lastSaveDir: s });
   });
 
+  ipcMain.handle('app:validateSaveDir', (_event, dir) => {
+    const { validateDirectory } = require('../lib/utils/pathValidator');
+    return validateDirectory(dir);
+  });
+
   ipcMain.handle('app:getChapterFolderSettings', () => ipc_context.getChapterFolderSettings());
 
   ipcMain.handle('app:setChapterFolderSettings', (_event, partial) => {

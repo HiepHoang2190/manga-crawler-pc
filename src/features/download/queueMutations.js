@@ -11,12 +11,16 @@ function resolveInitialWorkflowId(meta) {
 }
 
 export function createChapterEntry(ch, make_id = default_entry_id) {
-  return {
+  const entry = {
     id: make_id(),
     chapterUrl: ch.url,
     chapterTitle: ch.title,
     status: 'waiting',
   };
+  if (ch.volume != null) {
+    entry.volume = ch.volume;
+  }
+  return entry;
 }
 
 export function countNewChaptersForManga(queue, mangaUrl, chapter_list) {

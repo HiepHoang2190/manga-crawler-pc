@@ -464,4 +464,72 @@ describe('UpscaleEngine', () => {
       expect(ids).toContain('illustrationjanai-4x');
     });
   });
+
+  describe('Hardware Acceleration Dispatcher', () => {
+    test('returns structured hardware acceleration info', () => {
+      const info = engine.getHardwareAccelerationInfo();
+      expect(info).toHaveProperty('platform');
+      expect(info).toHaveProperty('arch');
+      expect(info).toHaveProperty('isAppleSilicon');
+      expect(info).toHaveProperty('hasCoreML');
+      expect(info).toHaveProperty('activeEngine');
+      expect(info).toHaveProperty('label');
+    });
+
+    test('routes batch to NcnnBatchRunner when NCNN binary exists', async () => {
+      const spyResolveBinary = jest.spyOn(engine._binaryManager, 'resolveBinaryPath').mockReturnValue('/bin/ncnn');
+      const fs = require('fs');
+      const spyExists = jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+      const spyNcnnBatch = jest.spyOn(engine._ncnnBatchRunner, 'upscaleBatch').mockResolvedValue({
+        success: true,
+        processedCount: 2,
+      });
+
+      const result = await engine.upscaleBatch({
+        images: [
+          { input: '/tmp/1.png', output: '/tmp/out/1.png' },
+          { input: '/tmp/2.png', output: '/tmp/out/2.png' },
+        ],
+        engineId: 'realcugan',
+        modelId: 'realcugan-se',
+        scale: 2,
+      });
+
+      expect(spyNcnnBatch).toHaveBeenCalled();
+      expect(result.completed).toBe(2);
+      expect(result.failed).toBe(0);
+
+      spyResolveBinary.mockRestore();
+      spyExists.mockRestore();
+      spyNcnnBatch.mockRestore();
+    });
+
+    test('routes batch to NcnnBatchRunner and forwards compress options', async () => {
+      const spyResolveBinary = jest.spyOn(engine._binaryManager, 'resolveBinaryPath').mockReturnValue('/bin/ncnn');
+      const fs = require('fs');
+      const spyExists = jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+      const spyNcnnBatch = jest.spyOn(engine._ncnnBatchRunner, 'upscaleBatch').mockResolvedValue({
+        success: true,
+        processedCount: 1,
+      });
+
+      const compressOptions = { enabled: true, resizeRatio: 0.8, quality: 85 };
+      await engine.upscaleBatch({
+        images: [{ input: '/tmp/1.png', output: '/tmp/out/1.png' }],
+        engineId: 'realcugan',
+        modelId: 'realcugan-se',
+        scale: 2,
+        compress: compressOptions,
+      });
+
+      expect(spyNcnnBatch).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.objectContaining({ compress: compressOptions })
+      );
+
+      spyResolveBinary.mockRestore();
+      spyExists.mockRestore();
+      spyNcnnBatch.mockRestore();
+    });
+  });
 });

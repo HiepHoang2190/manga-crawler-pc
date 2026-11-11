@@ -98,7 +98,7 @@ export default function HomeToolsDropdown({
         onClick={() => setIsOpen((prev) => !prev)}
         aria-haspopup="menu"
         aria-expanded={isOpen}
-        title={t('home.toolsDropdown.tooltip')}
+        data-tooltip={t('home.toolsDropdown.tooltip')}
         className={`group/tools relative flex items-center h-full gap-2 px-3.5 sm:px-5 text-sm font-medium transition-all cursor-pointer border-b-2 -mb-px select-none shrink-0 ${
           isToolActive
             ? 'bg-primary/10 text-primary border-primary font-semibold'

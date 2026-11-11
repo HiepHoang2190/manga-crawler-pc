@@ -24,7 +24,7 @@ export default function GuestCreditLowBanner({ remaining, onSignIn }) {
         <button
           type="button"
           onClick={onSignIn}
-          className="shrink-0 text-sm font-semibold text-primary underline hover:opacity-90 cursor-pointer"
+          className="shrink-0 text-sm font-semibold text-primary hover:opacity-80 transition-opacity cursor-pointer"
         >
           {t('guestCredit.bannerCta')}
         </button>

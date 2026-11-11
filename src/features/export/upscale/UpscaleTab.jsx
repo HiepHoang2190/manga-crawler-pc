@@ -2,9 +2,11 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useI18n } from '../../../context/I18nContext';
 import { SourcePicker, ResizeSplitter, useToolsSidebarResize, SearchableSelect, OutputFormatSelector, OutputDestinationSelector } from '../../../shared';
 import { ToolsStudioActionSlot, ToolsStudioCenterSlot } from '../../tools-studio/ToolsStudioActionSlot';
-import { getUpscaleSuffix, buildUpscaleOutputPath } from './upscaleNaming';
+import { getUpscaleSuffix, buildUpscaleOutputPath, getUpscaleOutputFolder, sortImages } from './upscaleNaming';
 import InteractiveUpscalePreviewModal from './InteractiveUpscalePreviewModal';
 import { ExtrasInstallModal } from '../../extras';
+import UpscaleCardItem from './UpscaleCardItem';
+import UpscaleListItem from './UpscaleListItem';
 
 const UPSCALE_MODEL_KEY = 'manga_upscale_model';
 const UPSCALE_SCALE_KEY = 'manga_upscale_scale';
@@ -15,7 +17,11 @@ const UPSCALE_OUTPUT_DIR_KEY = 'manga_upscale_output_dir';
 const UPSCALE_IN_PLACE_KEY = 'manga_upscale_in_place';
 const UPSCALE_APPEND_PARAMS_KEY = 'manga_upscale_append_params';
 const UPSCALE_SKIP_EXISTING_KEY = 'manga_upscale_skip_existing';
+const UPSCALE_VIEW_MODE_KEY = 'manga_upscale_view_mode';
 const UPSCALE_LAST_SESSION_KEY = 'manga_upscale_last_session';
+const UPSCALE_COMPRESS_ENABLED_KEY = 'manga_upscale_compress_enabled';
+const UPSCALE_COMPRESS_RATIO_KEY = 'manga_upscale_compress_ratio';
+const UPSCALE_COMPRESS_QUALITY_KEY = 'manga_upscale_compress_quality';
 
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tif', '.tiff', '.avif']);
 
@@ -88,8 +94,26 @@ export default function UpscaleTab({
   const [skipExisting, setSkipExisting] = useState(() => {
     try { const v = localStorage.getItem(UPSCALE_SKIP_EXISTING_KEY); return v === null ? true : v === 'true'; } catch { return true; }
   });
+  const [compressEnabled, setCompressEnabled] = useState(() => {
+    try { const v = localStorage.getItem(UPSCALE_COMPRESS_ENABLED_KEY); return v === null ? true : v === 'true'; } catch { return true; }
+  });
+  const [compressRatio, setCompressRatio] = useState(() => {
+    try { const v = parseFloat(localStorage.getItem(UPSCALE_COMPRESS_RATIO_KEY)); return Number.isFinite(v) && v > 0 ? v : 0.8; } catch { return 0.8; }
+  });
+  const [compressQuality, setCompressQuality] = useState(() => {
+    try { const v = parseInt(localStorage.getItem(UPSCALE_COMPRESS_QUALITY_KEY), 10); return Number.isFinite(v) && v >= 50 && v <= 100 ? v : 85; } catch { return 85; }
+  });
   const [sidebarTab, setSidebarTab] = useState('config');
   const [isExtrasModalOpen, setIsExtrasModalOpen] = useState(false);
+  const [viewMode, setViewMode] = useState(() => {
+    try { return localStorage.getItem(UPSCALE_VIEW_MODE_KEY) || 'grid'; } catch { return 'grid'; }
+  });
+  const [itemDurations, setItemDurations] = useState({});
+  const [outputSizes, setOutputSizes] = useState({});
+  const [completedOutputPaths, setCompletedOutputPaths] = useState({});
+  const [outputDirValid, setOutputDirValid] = useState(true);
+  const itemStartTimesRef = useRef({});
+  const scrollContainerRef = useRef(null);
 
   // Persist settings
   useEffect(() => { try { localStorage.setItem(UPSCALE_MODEL_KEY, selectedModelId); } catch {} }, [selectedModelId]);
@@ -101,16 +125,38 @@ export default function UpscaleTab({
   useEffect(() => { try { localStorage.setItem(UPSCALE_IN_PLACE_KEY, inPlace ? 'true' : 'false'); } catch {} }, [inPlace]);
   useEffect(() => { try { localStorage.setItem(UPSCALE_APPEND_PARAMS_KEY, appendParams ? 'true' : 'false'); } catch {} }, [appendParams]);
   useEffect(() => { try { localStorage.setItem(UPSCALE_SKIP_EXISTING_KEY, skipExisting ? 'true' : 'false'); } catch {} }, [skipExisting]);
+  useEffect(() => { try { localStorage.setItem(UPSCALE_VIEW_MODE_KEY, String(viewMode)); } catch {} }, [viewMode]);
+  useEffect(() => { try { localStorage.setItem(UPSCALE_COMPRESS_ENABLED_KEY, String(compressEnabled)); } catch {} }, [compressEnabled]);
+  useEffect(() => { try { localStorage.setItem(UPSCALE_COMPRESS_RATIO_KEY, String(compressRatio)); } catch {} }, [compressRatio]);
+  useEffect(() => { try { localStorage.setItem(UPSCALE_COMPRESS_QUALITY_KEY, String(compressQuality)); } catch {} }, [compressQuality]);
 
-  // Query discovered GPUs on mount
+  // Query discovered GPUs & hardware acceleration info on mount
+  const [hardwareInfo, setHardwareInfo] = useState(null);
+
   useEffect(() => {
-    if (!api?.upscaleGetGpuList) return;
-    api.upscaleGetGpuList().then((res) => {
-      if (res?.ok && Array.isArray(res.gpus) && res.gpus.length > 0) {
-        setDiscoveredGpus(res.gpus);
-      }
-    }).catch(() => {});
+    if (!api) return;
+    if (api.upscaleGetGpuList) {
+      api.upscaleGetGpuList().then((res) => {
+        if (res?.ok && Array.isArray(res.gpus) && res.gpus.length > 0) {
+          setDiscoveredGpus(res.gpus);
+        }
+      }).catch(() => {});
+    }
+    if (api.upscaleGetHardwareInfo) {
+      api.upscaleGetHardwareInfo().then((res) => {
+        if (res?.ok && res.info) {
+          setHardwareInfo(res.info);
+        }
+      }).catch(() => {});
+    }
   }, [api]);
+
+  const effectiveEngine = useMemo(() => {
+    return {
+      type: 'ncnn',
+      label: 'GPU Vulkan / Metal (NCNN Batch)',
+    };
+  }, []);
 
   // Images & processing state
   const [images, setImages] = useState([]);
@@ -440,6 +486,7 @@ export default function UpscaleTab({
             const fileName = fp.split(/[\\/]/).pop() || fp;
             return { absolutePath: fp, fileName, relativePath: fileName };
           });
+        imageList = sortImages(imageList, 'name_asc');
       } else if (sourceDir && api) {
         // Fast image scanner without heavy pixel decoding / crop analysis
         const scanFn = api.listImportedImages || api.duplicateListFiles;
@@ -573,16 +620,21 @@ export default function UpscaleTab({
       list = list.filter((img) => Boolean(errorMap[img.absolutePath]));
     }
 
-    list.sort((a, b) => {
-      if (sortBy === 'name_asc') return (a.relativePath || '').localeCompare(b.relativePath || '');
-      if (sortBy === 'name_desc') return (b.relativePath || '').localeCompare(a.relativePath || '');
-      if (sortBy === 'size_asc') return (a.sizeBytes || 0) - (b.sizeBytes || 0);
-      if (sortBy === 'size_desc') return (b.sizeBytes || 0) - (a.sizeBytes || 0);
-      return 0;
-    });
-
-    return list;
+    return sortImages(list, sortBy);
   }, [images, searchQuery, filterStatus, completedPaths, errorMap, sortBy]);
+
+  // Auto-scroll to currently active image in Grid / List view
+  const activeProcessingPath = processing
+    ? (progress?.inputPath || images.find((img) => img.fileName === progress?.currentFile)?.absolutePath)
+    : null;
+
+  useEffect(() => {
+    if (!activeProcessingPath || !scrollContainerRef.current) return;
+    const activeEl = scrollContainerRef.current.querySelector('[data-active="true"]');
+    if (activeEl) {
+      activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }, [activeProcessingPath]);
 
   // Master checkbox
   const allDisplayedChecked = useMemo(() => {
@@ -687,6 +739,10 @@ export default function UpscaleTab({
     const targetPathSet = new Set(imagesToProcess.map((img) => img.absolutePath));
 
     if (!isResume && !isRetry) {
+      setItemDurations({});
+      setOutputSizes({});
+      setCompletedOutputPaths({});
+      itemStartTimesRef.current = {};
       // Clear previous errors & completed status for images about to run
       setErrorMap((prev) => {
         const next = { ...prev };
@@ -706,6 +762,11 @@ export default function UpscaleTab({
     } else if (isRetry) {
       // Clear errors only for these retry images
       setErrorMap((prev) => {
+        const next = { ...prev };
+        for (const p of targetPathSet) delete next[p];
+        return next;
+      });
+      setCompletedOutputPaths((prev) => {
         const next = { ...prev };
         for (const p of targetPathSet) delete next[p];
         return next;
@@ -739,7 +800,22 @@ export default function UpscaleTab({
       const absPath = prog.inputPath || imagesToProcess.find((img) => img.fileName === prog.currentFile)?.absolutePath;
       if (!absPath) return;
 
-      if (prog.status === 'done') {
+      if (prog.status === 'processing') {
+        if (!itemStartTimesRef.current[absPath]) {
+          itemStartTimesRef.current[absPath] = Date.now();
+        }
+      } else if (prog.status === 'done') {
+        const startTime = itemStartTimesRef.current[absPath];
+        if (startTime) {
+          const durationSec = Math.max(0.1, (Date.now() - startTime) / 1000);
+          setItemDurations((prev) => ({ ...prev, [absPath]: durationSec }));
+        }
+        if (prog.outputSize) {
+          setOutputSizes((prev) => ({ ...prev, [absPath]: prog.outputSize }));
+        }
+        if (prog.outputPath) {
+          setCompletedOutputPaths((prev) => ({ ...prev, [absPath]: prog.outputPath }));
+        }
         setCompletedPaths((prev) => new Set(prev).add(absPath));
         setErrorMap((prev) => {
           if (!prev[absPath]) return prev;
@@ -749,6 +825,9 @@ export default function UpscaleTab({
         });
         updateSpeedAndEta(imagesToProcess.length);
       } else if (prog.status === 'skipped') {
+        if (prog.outputPath) {
+          setCompletedOutputPaths((prev) => ({ ...prev, [absPath]: prog.outputPath }));
+        }
         setSkippedPaths((prev) => new Set(prev).add(absPath));
         setCompletedPaths((prev) => new Set(prev).add(absPath));
         updateSpeedAndEta(imagesToProcess.length);
@@ -769,8 +848,14 @@ export default function UpscaleTab({
         denoise: availableDenoiseOptions.length > 0 ? denoise : 0,
         tileSize,
         gpuId: selectedGpu,
+        engineMode: 'ncnn',
         outputFormat,
         skipExisting,
+        compress: {
+          enabled: compressEnabled,
+          resizeRatio: compressRatio,
+          quality: compressQuality,
+        },
       });
 
       // Refresh GPU list from probe
@@ -815,8 +900,18 @@ export default function UpscaleTab({
         }
 
         if (api?.openPath && !res.cancelled) {
-          const target = inPlace ? (sourceDir || (sourceFiles[0] ? sourceFiles[0].replace(/[^\\/]+$/, '') : '')) : outputDir;
-          if (target) api.openPath(target);
+          const target = getUpscaleOutputFolder({
+            sourceDir,
+            sourceFiles,
+            inPlace,
+            outputDir,
+          });
+          if (target) {
+            const openRes = await api.openPath(target);
+            if (openRes && !openRes.ok && !inPlace && outputDir && target !== outputDir) {
+              await api.openPath(outputDir);
+            }
+          }
         }
       } else {
         setError(res?.error || t('upscale.failed'));
@@ -830,29 +925,84 @@ export default function UpscaleTab({
     }
   };
 
-  const handleStart = () => {
+  const handleStart = async () => {
+    if (!inPlace && outputDir) {
+      const clientApi = api || (typeof window !== 'undefined' ? window.electronAPI : null);
+      if (clientApi?.validateSaveDir) {
+        const valRes = await clientApi.validateSaveDir(outputDir.trim());
+        if (valRes && !valRes.ok && !valRes.canCreate) {
+          setError(valRes.error || t('sidebar.warning.invalidSavePath'));
+          setOutputDirValid(false);
+          return;
+        }
+      }
+    }
     const engineStatus = selectedModel ? binaryStatus[selectedModel.engineId] : null;
     if (engineStatus && !engineStatus.available) {
       setIsExtrasModalOpen(true);
       return;
     }
-    const checkedImages = images.filter((img) => !uncheckedPaths.has(img.absolutePath));
+    const checkedImages = sortImages(
+      images.filter((img) => !uncheckedPaths.has(img.absolutePath)),
+      sortBy
+    );
     runBatch(checkedImages, { isResume: false, isRetry: false });
   };
 
-  const handleResume = () => {
-    const pendingImages = images.filter((img) => !completedPaths.has(img.absolutePath) && !uncheckedPaths.has(img.absolutePath));
+  const handleResume = async () => {
+    if (!inPlace && outputDir) {
+      const clientApi = api || (typeof window !== 'undefined' ? window.electronAPI : null);
+      if (clientApi?.validateSaveDir) {
+        const valRes = await clientApi.validateSaveDir(outputDir.trim());
+        if (valRes && !valRes.ok && !valRes.canCreate) {
+          setError(valRes.error || t('sidebar.warning.invalidSavePath'));
+          setOutputDirValid(false);
+          return;
+        }
+      }
+    }
+    const pendingImages = sortImages(
+      images.filter((img) => !completedPaths.has(img.absolutePath) && !uncheckedPaths.has(img.absolutePath)),
+      sortBy
+    );
     runBatch(pendingImages, { isResume: true, isRetry: false });
   };
 
-  const handleRetryFailed = () => {
-    const failedImages = images.filter((img) => Boolean(errorMap[img.absolutePath]));
+  const handleRetryFailed = async () => {
+    if (!inPlace && outputDir) {
+      const clientApi = api || (typeof window !== 'undefined' ? window.electronAPI : null);
+      if (clientApi?.validateSaveDir) {
+        const valRes = await clientApi.validateSaveDir(outputDir.trim());
+        if (valRes && !valRes.ok && !valRes.canCreate) {
+          setError(valRes.error || t('sidebar.warning.invalidSavePath'));
+          setOutputDirValid(false);
+          return;
+        }
+      }
+    }
+    const failedImages = sortImages(
+      images.filter((img) => Boolean(errorMap[img.absolutePath]) && !uncheckedPaths.has(img.absolutePath)),
+      sortBy
+    );
     runBatch(failedImages, { isResume: false, isRetry: true });
   };
 
-  const handleOpenOutputDir = () => {
-    const target = inPlace ? (sourceDir || (sourceFiles[0] ? sourceFiles[0].replace(/[^\\/]+$/, '') : '')) : outputDir;
-    if (target && api?.openPath) api.openPath(target);
+  const targetOutputFolder = useMemo(() => {
+    return getUpscaleOutputFolder({
+      sourceDir,
+      sourceFiles,
+      inPlace,
+      outputDir,
+    });
+  }, [sourceDir, sourceFiles, inPlace, outputDir]);
+
+  const handleOpenOutputDir = async () => {
+    const target = targetOutputFolder;
+    if (!target || !api?.openPath) return;
+    const res = await api.openPath(target);
+    if (res && !res.ok && !inPlace && outputDir && target !== outputDir) {
+      await api.openPath(outputDir);
+    }
   };
 
   const handleStop = async () => {
@@ -860,46 +1010,82 @@ export default function UpscaleTab({
     await api.upscaleCancel();
   };
 
-  // Preview items & navigation
-  const completedItemsForPreview = useMemo(() => {
-    return images
-      .filter((img) => completedPaths.has(img.absolutePath) && !errorMap[img.absolutePath])
-      .map((img) => {
-        const outPath = buildUpscaleOutputPath({
-          inputPath: img.absolutePath,
-          relativePath: img.relativePath,
-          sourceDir,
-          inPlace,
-          outputDir,
-          outputFormat,
-          appendParams,
-          suffix: currentSuffix,
-        });
-        return {
-          input: img.absolutePath,
-          output: outPath,
-          fileName: img.fileName,
-          relativePath: img.relativePath,
-        };
-      });
-  }, [images, completedPaths, errorMap, inPlace, outputDir, outputFormat, appendParams, currentSuffix, sourceDir]);
+  // Preview items & navigation (Supports viewing both original input & upscaled output for all images)
+  const previewItems = useMemo(() => {
+    return displayedImages.map((img) => {
+      const isDone = completedPaths.has(img.absolutePath) && !errorMap[img.absolutePath];
+      const outPath = (isDone && completedOutputPaths[img.absolutePath])
+        ? completedOutputPaths[img.absolutePath]
+        : buildUpscaleOutputPath({
+            inputPath: img.absolutePath,
+            relativePath: img.relativePath,
+            sourceDir,
+            inPlace,
+            outputDir,
+            outputFormat,
+            appendParams,
+            suffix: currentSuffix,
+          });
+      return {
+        input: img.absolutePath,
+        output: isDone ? outPath : null,
+        fileName: img.fileName,
+        relativePath: img.relativePath,
+        isDone,
+        duration: itemDurations[img.absolutePath] || null,
+        outputSize: outputSizes[img.absolutePath] || null,
+      };
+    });
+  }, [displayedImages, completedPaths, completedOutputPaths, itemDurations, outputSizes, errorMap, inPlace, outputDir, outputFormat, appendParams, currentSuffix, sourceDir]);
 
   const handleOpenPreview = useCallback((img) => {
-    const idx = completedItemsForPreview.findIndex((it) => it.input === img.absolutePath);
+    const idx = previewItems.findIndex((it) => it.input === img.absolutePath);
     if (idx !== -1) {
       setPreviewIndex(idx);
     }
-  }, [completedItemsForPreview]);
+  }, [previewItems]);
 
   // Has source?
   const hasSource = Boolean(sourceDir || (sourceFiles && sourceFiles.length > 0));
-  const startDisabled = processing || scanning || images.length === 0 || (!inPlace && !outputDir);
+  const startDisabled = processing || scanning || images.length === 0 || (!inPlace && (!outputDir || !outputDirValid));
 
   // ─── RENDER ─────────────────────────────────────────────────────────
   return (
     <div className="flex-1 flex min-h-0 min-w-0 overflow-hidden bg-surface" data-testid="tab-content-upscale">
       <ToolsStudioCenterSlot active={isActive}>
         <div className="flex items-center gap-2">
+          {/* View Mode Toggle: Grid (waifu2x) vs List */}
+          <div className="flex items-center p-0.5 rounded-lg bg-surface-container-highest border border-outline-variant/20 text-xs select-none">
+            <button
+              type="button"
+              data-tooltip="Xem dạng Lưới thẻ trực quan (phong cách waifu2x)"
+              onClick={() => setViewMode('grid')}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                viewMode === 'grid'
+                  ? 'bg-primary text-on-primary shadow-xs'
+                  : 'text-on-surface-variant hover:text-on-surface'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[15px] leading-none">grid_view</span>
+              <span className="hidden sm:inline">Lưới thẻ</span>
+            </button>
+            <button
+              type="button"
+              data-tooltip="Xem dạng Danh sách dòng truyền thống"
+              onClick={() => setViewMode('list')}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                viewMode === 'list'
+                  ? 'bg-primary text-on-primary shadow-xs'
+                  : 'text-on-surface-variant hover:text-on-surface'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[15px] leading-none">view_list</span>
+              <span className="hidden sm:inline">Danh sách</span>
+            </button>
+          </div>
+
+          <div className="h-4 w-px bg-outline-variant/20 mx-0.5"></div>
+
           <button
             type="button"
             data-testid="upscale-start-btn"
@@ -968,6 +1154,9 @@ export default function UpscaleTab({
               >
                 <span className="material-symbols-outlined text-[16px] leading-none">output</span>
                 <span className="truncate">{t('upscale.sidebarTab.output')}</span>
+                {compressEnabled && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" data-tooltip="Caesium Engine đang bật" />
+                )}
               </button>
             </div>
           </div>
@@ -1012,10 +1201,10 @@ export default function UpscaleTab({
             return (
               <div className="rounded-xl border border-outline-variant/20 bg-surface-container-high/80 overflow-hidden">
                 {/* Status badges row */}
-                <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-outline-variant/10">
+                <div className="flex items-center gap-1.5 px-3 py-2 border-b border-outline-variant/10">
                   {/* Engine status */}
                   {engineStatus && (
-                    <span className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold border ${
+                    <span className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold border shrink-0 ${
                       isEngineReady
                         ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
                         : 'border-error/30 bg-error/10 text-error'
@@ -1025,7 +1214,7 @@ export default function UpscaleTab({
                     </span>
                   )}
                   {/* Bundled status */}
-                  <span className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold border ${
+                  <span className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold border shrink-0 ${
                     selectedModel.bundled
                       ? 'border-primary/30 bg-primary/10 text-primary'
                       : 'border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300'
@@ -1034,10 +1223,6 @@ export default function UpscaleTab({
                     {selectedModel.bundled
                       ? t('upscale.bundled')
                       : t('upscale.needDownload', { size: selectedModel.estimatedSizeMB })}
-                  </span>
-                  {/* Scale chips */}
-                  <span className="text-[10px] text-on-surface-variant/50 ml-auto">
-                    {selectedModel.scales.map(s => `${s}x`).join(' · ')} · ~{selectedModel.estimatedSizeMB}MB
                   </span>
                 </div>
                 {/* Description */}
@@ -1069,6 +1254,14 @@ export default function UpscaleTab({
                     ))}
                   </div>
                 )}
+                {/* Specifications footer */}
+                <div className="px-3 py-1.5 border-t border-outline-variant/10 bg-surface-container-highest/25 flex items-center justify-between text-[10.5px] text-on-surface-variant/70 font-mono select-none">
+                  <span className="flex items-center gap-1.5 font-sans">
+                    <span className="text-[10px] text-on-surface-variant/50">{isVi ? 'Tỉ lệ:' : 'Scales:'}</span>
+                    <strong className="text-on-surface font-mono font-semibold">{selectedModel.scales.map(s => `${s}x`).join(' · ')}</strong>
+                  </span>
+                  <span className="text-[10px] font-mono text-on-surface-variant/60">~{selectedModel.estimatedSizeMB}MB</span>
+                </div>
                 {/* Download button when engine missing */}
                 {engineStatus && !isEngineReady && (
                   <div className="px-3 pb-2.5 space-y-1.5">
@@ -1144,6 +1337,7 @@ export default function UpscaleTab({
           </div>
         )}
 
+
         {/* 5. Hardware Device (GPU / CPU) */}
         <div className="space-y-2">
           <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/50">
@@ -1182,7 +1376,117 @@ export default function UpscaleTab({
                 {/* 1. Output Format */}
                 <OutputFormatSelector value={outputFormat} onChange={setOutputFormat} disabled={processing} />
 
-                {/* 2. Output Destination */}
+                {(outputFormat === 'original' || outputFormat === 'webp') && (
+                  <p className="rounded-lg border border-outline-variant/20 bg-surface-container-high p-2.5 text-[11px] leading-relaxed text-on-surface-variant">
+                    💡 <strong className="text-on-surface">Mẹo tốc độ:</strong> Xuất định dạng <strong>JPG</strong> tận dụng bộ mã hóa phần cứng của GPU/Apple Silicon, xuất nhanh hơn WebP ~30–40%.
+                  </p>
+                )}
+
+                {/* 2. Caesium Engine (Nén & Tối ưu dung lượng) */}
+                <div className="space-y-3 rounded-xl border border-outline-variant/20 bg-surface-container-high/40 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="material-symbols-outlined text-primary text-[18px]">bolt</span>
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface truncate">
+                        {t('upscale.compress.title')}
+                      </span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={compressEnabled}
+                        onChange={(e) => setCompressEnabled(e.target.checked)}
+                        disabled={processing}
+                        className="sr-only peer"
+                      />
+                      <div className="w-8 h-4 bg-outline-variant/40 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3.5 after:transition-all peer-checked:bg-primary"></div>
+                    </label>
+                  </div>
+
+                  {compressEnabled ? (
+                    <div className="space-y-3 pt-1">
+                      {/* Scale / Resize Ratio Pills */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/70">
+                          <span>{t('upscale.compress.ratioLabel')}</span>
+                          <span className="text-primary font-bold">{Math.round(compressRatio * 100)}%</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {[
+                            { value: 0.8, label: '80%', sub: 'Caesium', desc: t('upscale.compress.ratio80') },
+                            { value: 0.75, label: '75%', sub: 'Siêu nhẹ', desc: t('upscale.compress.ratio75') },
+                            { value: 1.0, label: '100%', sub: 'Gốc', desc: t('upscale.compress.ratio100') },
+                          ].map((opt) => {
+                            const isSel = Math.abs(compressRatio - opt.value) < 0.01;
+                            return (
+                              <button
+                                key={opt.value}
+                                type="button"
+                                disabled={processing}
+                                onClick={() => setCompressRatio(opt.value)}
+                                data-tooltip={opt.desc}
+                                className={`flex flex-col items-center justify-center py-1.5 px-2 rounded-lg border text-xs transition-all cursor-pointer ${
+                                  isSel
+                                    ? 'border-primary bg-primary/10 text-primary font-semibold shadow-xs ring-1 ring-primary/30'
+                                    : 'border-outline-variant/30 bg-surface-container hover:bg-surface-container-highest text-on-surface-variant'
+                                }`}
+                              >
+                                <span className="text-xs">{opt.label}</span>
+                                <span className="text-[9px] opacity-75">{opt.sub}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Compression Quality Pills */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/70">
+                          <span>{t('upscale.compress.qualityLabel')}</span>
+                          <span className="text-primary font-bold">{compressQuality}</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {[
+                            { value: 85, label: '85', sub: 'Cân bằng', desc: t('upscale.compress.quality85') },
+                            { value: 90, label: '90', sub: 'Nét cao', desc: t('upscale.compress.quality90') },
+                            { value: 75, label: '75', sub: 'Tiết kiệm', desc: t('upscale.compress.quality75') },
+                          ].map((opt) => {
+                            const isSel = compressQuality === opt.value;
+                            return (
+                              <button
+                                key={opt.value}
+                                type="button"
+                                disabled={processing}
+                                onClick={() => setCompressQuality(opt.value)}
+                                data-tooltip={opt.desc}
+                                className={`flex flex-col items-center justify-center py-1.5 px-2 rounded-lg border text-xs transition-all cursor-pointer ${
+                                  isSel
+                                    ? 'border-primary bg-primary/10 text-primary font-semibold shadow-xs ring-1 ring-primary/30'
+                                    : 'border-outline-variant/30 bg-surface-container hover:bg-surface-container-highest text-on-surface-variant'
+                                }`}
+                              >
+                                <span className="text-xs">{opt.label}</span>
+                                <span className="text-[9px] opacity-75">{opt.sub}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Savings callout badge */}
+                      <p className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-2 text-[11px] leading-relaxed text-emerald-400 dark:text-emerald-300 flex items-start gap-1.5">
+                        <span className="material-symbols-outlined text-[15px] shrink-0 mt-0.5 text-emerald-400">check_circle</span>
+                        <span>{t('upscale.compress.callout')}</span>
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-on-surface-variant/60 leading-relaxed italic pt-1">
+                      Ảnh phóng to sẽ xuất nguyên kích thước đầy đủ (dung lượng có thể từ 3–10MB/ảnh).
+                    </p>
+                  )}
+                </div>
+
+                {/* 3. Output Destination */}
                 <OutputDestinationSelector
                   inPlace={inPlace}
                   onInPlaceChange={setInPlace}
@@ -1193,6 +1497,8 @@ export default function UpscaleTab({
                   showOpenFolderAfter={false}
                   overwriteWarning={inPlace && !appendParams ? t('upscale.overwriteWarning') : null}
                   radioName="upscale-output"
+                  api={api}
+                  onValidationChange={setOutputDirValid}
                   extraOptions={
                     <div className="space-y-1.5 pt-1">
                       <label className="flex cursor-pointer items-center gap-2 text-sm text-on-surface-variant hover:text-on-surface select-none">
@@ -1285,127 +1591,6 @@ export default function UpscaleTab({
           </div>
         )}
 
-        {/* Dual Progress Bar */}
-        {processing && progress && (
-          <div className="mb-3 p-3 rounded-xl border border-primary/20 bg-primary/5 space-y-2.5 shadow-xs">
-            {/* Overall batch progress */}
-            <div className="space-y-1">
-              <div className="flex justify-between items-center text-xs font-semibold text-on-surface">
-                <span className="flex items-center gap-1.5 truncate pr-2">
-                  <span className="material-symbols-outlined text-primary text-[16px] animate-spin shrink-0">progress_activity</span>
-                  <span className="truncate">{progress.currentFile || ''}</span>
-                </span>
-                <span className="font-mono text-primary shrink-0">
-                  {progress.percent || 0}% ({progress.current || 0} / {progress.total || 0})
-                </span>
-              </div>
-              <div className="h-1.5 w-full rounded-full bg-surface-container-highest overflow-hidden">
-                <div
-                  className="h-full bg-primary transition-all duration-300 rounded-full"
-                  style={{ width: `${progress.percent || 0}%` }}
-                />
-              </div>
-            </div>
-
-            {/* Per-image streaming progress */}
-            <div className="space-y-1 pt-0.5">
-              <div className="flex justify-between items-center text-[11px] text-on-surface-variant">
-                <span className="flex items-center gap-1">
-                  <span className="material-symbols-outlined text-[13px] text-primary">hourglass_top</span>
-                  <span>{t('upscale.fileProgress')}</span>
-                </span>
-                <span className="font-mono font-bold text-primary">{activeFilePercent}%</span>
-              </div>
-              <div className="h-1 w-full rounded-full bg-surface-container-highest/60 overflow-hidden">
-                <div
-                  className="h-full bg-primary/80 transition-all duration-100 rounded-full"
-                  style={{ width: `${activeFilePercent}%` }}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 4-Column Stats Dashboard Card */}
-        {images.length > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
-            {/* Box 1: Total */}
-            <div className="rounded-xl border border-outline-variant/15 bg-surface-container-low/60 p-2.5 flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-surface-container-highest flex items-center justify-center text-on-surface-variant shrink-0">
-                <span className="material-symbols-outlined text-[18px]">photo_library</span>
-              </div>
-              <div className="min-w-0">
-                <p className="text-[10px] text-on-surface-variant/70 uppercase tracking-wider font-semibold truncate">
-                  {t('upscale.statsTotal')}
-                </p>
-                <p className="text-sm font-bold text-on-surface font-mono">
-                  {stats.total}{' '}
-                  <span className="text-[10px] font-normal text-on-surface-variant/60">
-                    ({stats.pending} {t('upscale.filterPending')})
-                  </span>
-                </p>
-              </div>
-            </div>
-
-            {/* Box 2: Completed */}
-            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-2.5 flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-400 shrink-0">
-                <span className="material-symbols-outlined text-[18px]">check_circle</span>
-              </div>
-              <div className="min-w-0">
-                <p className="text-[10px] text-emerald-400/80 uppercase tracking-wider font-semibold truncate">
-                  {t('upscale.statsDone')}
-                </p>
-                <p className="text-sm font-bold text-emerald-400 font-mono">
-                  {stats.done}{' '}
-                  <span className="text-[10px] font-normal text-emerald-500/60">
-                    ({stats.total > 0 ? Math.round((stats.done / stats.total) * 100) : 0}%)
-                  </span>
-                </p>
-              </div>
-            </div>
-
-            {/* Box 3: Failed */}
-            <div className={`rounded-xl border p-2.5 flex items-center gap-2.5 transition-colors ${
-              stats.failed > 0
-                ? 'border-error/30 bg-error/10 text-error'
-                : 'border-outline-variant/15 bg-surface-container-low/60 text-on-surface-variant'
-            }`}>
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                stats.failed > 0 ? 'bg-error/20 text-error' : 'bg-surface-container-highest text-on-surface-variant/50'
-              }`}>
-                <span className="material-symbols-outlined text-[18px]">error</span>
-              </div>
-              <div className="min-w-0">
-                <p className={`text-[10px] uppercase tracking-wider font-semibold truncate ${
-                  stats.failed > 0 ? 'text-error' : 'text-on-surface-variant/70'
-                }`}>
-                  {t('upscale.statsFailed')}
-                </p>
-                <p className="text-sm font-bold font-mono">{stats.failed}</p>
-              </div>
-            </div>
-
-            {/* Box 4: Speed & ETA */}
-            <div className="rounded-xl border border-primary/20 bg-primary/5 p-2.5 flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
-                <span className="material-symbols-outlined text-[18px]">speed</span>
-              </div>
-              <div className="min-w-0">
-                <p className="text-[10px] text-primary/80 uppercase tracking-wider font-semibold truncate">
-                  {t('upscale.statsSpeed')}
-                </p>
-                <p className="text-xs font-bold text-on-surface font-mono truncate">
-                  {avgSecondsPerImage ? t('upscale.speedPerImg', { speed: avgSecondsPerImage.toFixed(1) }) : '--'}
-                </p>
-                <p className="text-[10px] text-on-surface-variant/70 font-mono truncate">
-                  {etaText || '--'}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Toolbar */}
         <div className="flex items-center justify-between gap-3 mb-3">
           <div className="flex items-center gap-2 flex-wrap">
@@ -1450,13 +1635,43 @@ export default function UpscaleTab({
           </div>
 
           <div className="flex items-center gap-2">
+            {/* View Mode Toggle: Grid vs List */}
+            <div className="flex items-center p-0.5 rounded-lg bg-surface-container-highest border border-outline-variant/20 text-xs select-none shrink-0">
+              <button
+                type="button"
+                data-tooltip="Xem dạng Lưới ảnh"
+                onClick={() => setViewMode('grid')}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                  viewMode === 'grid'
+                    ? 'bg-primary text-on-primary shadow-xs'
+                    : 'text-on-surface-variant hover:text-on-surface'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[15px] leading-none">grid_view</span>
+                <span className="hidden md:inline">Lưới</span>
+              </button>
+              <button
+                type="button"
+                data-tooltip="Xem dạng Danh sách chi tiết"
+                onClick={() => setViewMode('list')}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                  viewMode === 'list'
+                    ? 'bg-primary text-on-primary shadow-xs'
+                    : 'text-on-surface-variant hover:text-on-surface'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[15px] leading-none">view_list</span>
+                <span className="hidden md:inline">Danh sách</span>
+              </button>
+            </div>
+
             {/* Open Output Folder Button */}
             {(outputDir || inPlace) && (
               <button
                 type="button"
                 onClick={handleOpenOutputDir}
                 className="w-8 h-8 rounded-lg flex items-center justify-center bg-surface-container-highest/60 hover:bg-surface-container-high text-on-surface-variant transition-colors cursor-pointer"
-                data-tooltip={t('upscale.openOutputFolder')}
+                data-tooltip={targetOutputFolder ? `${t('upscale.openOutputFolder')}: ${targetOutputFolder}` : t('upscale.openOutputFolder')}
                 aria-label={t('upscale.openOutputFolder')}
               >
                 <span className="material-symbols-outlined text-[18px]">folder_open</span>
@@ -1502,141 +1717,115 @@ export default function UpscaleTab({
           </div>
         </div>
 
-        {/* Image List */}
+        {/* Image List / Grid */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-outline-variant/15 bg-surface-container-lowest/50 shadow-sm">
           {displayedImages.length > 0 ? (
-            <ul className="min-h-0 flex-1 overflow-y-auto py-1 pr-1 custom-scrollbar">
-              {displayedImages.map((img) => {
-                const isChecked = !uncheckedPaths.has(img.absolutePath);
-                const imgError = errorMap[img.absolutePath];
-                const isDone = completedPaths.has(img.absolutePath) && !imgError;
-                const isSkipped = skippedPaths.has(img.absolutePath);
-                const isCurrentlyProcessing = processing && (progress?.inputPath === img.absolutePath || progress?.currentFile === img.fileName);
+            viewMode === 'grid' ? (
+              <div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto p-3 custom-scrollbar">
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-3.5">
+                  {displayedImages.map((img, idx) => {
+                    const isChecked = !uncheckedPaths.has(img.absolutePath);
+                    const imgError = errorMap[img.absolutePath];
+                    const isDone = completedPaths.has(img.absolutePath) && !imgError;
+                    const isSkipped = skippedPaths.has(img.absolutePath);
+                    const isCurrentlyProcessing = processing && !isDone && !isSkipped && (progress?.inputPath ? progress.inputPath === img.absolutePath : progress?.currentFile === img.fileName);
 
-                return (
-                  <li
-                    key={img.absolutePath}
-                    className={`mx-1 relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors group overflow-hidden ${
-                      isCurrentlyProcessing
-                        ? 'bg-primary/10 border border-primary/40 ring-1 ring-primary/20'
-                        : imgError
-                        ? 'bg-error/5 border border-error/20 hover:bg-error/10'
-                        : 'hover:bg-surface-container-high'
-                    }`}
-                  >
-                    {/* Mini progress line along bottom of active row */}
-                    {isCurrentlyProcessing && (
-                      <div
-                        className="absolute bottom-0 left-0 h-0.5 bg-primary transition-all duration-100"
-                        style={{ width: `${activeFilePercent}%` }}
+                    return (
+                      <UpscaleCardItem
+                        key={img.absolutePath}
+                        img={img}
+                        api={api}
+                        index={idx + 1}
+                        isDone={isDone}
+                        isProcessing={isCurrentlyProcessing}
+                        isSkipped={isSkipped}
+                        error={imgError}
+                        duration={itemDurations[img.absolutePath]}
+                        outputPath={completedOutputPaths[img.absolutePath]}
+                        outputSize={outputSizes[img.absolutePath]}
+                        scale={selectedScale}
+                        outputFormat={outputFormat}
+                        filePercent={isCurrentlyProcessing ? activeFilePercent : isDone ? 100 : 0}
+                        isChecked={isChecked}
+                        onToggleCheck={toggleImageCheck}
+                        onPreview={handleOpenPreview}
+                        onRemove={handleRemoveImage}
                       />
-                    )}
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                {/* Table Header */}
+                <div className="flex items-center gap-3 px-3 py-2 border-b border-outline-variant/20 bg-surface-container-high/40 text-[11px] font-bold text-on-surface-variant/70 font-mono uppercase tracking-wider shrink-0 select-none">
+                  <div className="w-12 shrink-0 flex items-center gap-1.5">
+                    <span>#</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <span>Ảnh & Tên tệp</span>
+                  </div>
+                  <div className="w-44 shrink-0 text-left">
+                    <span>Độ phân giải</span>
+                  </div>
+                  <div className="w-36 shrink-0 text-left">
+                    <span>Dung lượng</span>
+                  </div>
+                  <div className="w-44 shrink-0">
+                    <span>Trạng thái</span>
+                  </div>
+                  <div className="w-16 shrink-0 text-right">
+                    <span>Thao tác</span>
+                  </div>
+                </div>
 
-                    {/* Checkbox */}
-                    <button
-                      type="button"
-                      onClick={() => toggleImageCheck(img.absolutePath)}
-                      className="shrink-0 text-on-surface-variant hover:text-primary transition-colors cursor-pointer"
-                    >
-                      <span className="material-symbols-outlined text-[20px]">
-                        {isChecked ? 'check_box' : 'check_box_outline_blank'}
-                      </span>
-                    </button>
+                {/* Table Rows */}
+                <div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto divide-y divide-outline-variant/10 custom-scrollbar">
+                  {displayedImages.map((img, idx) => {
+                    const isChecked = !uncheckedPaths.has(img.absolutePath);
+                    const imgError = errorMap[img.absolutePath];
+                    const isDone = completedPaths.has(img.absolutePath) && !imgError;
+                    const isSkipped = skippedPaths.has(img.absolutePath);
+                    const isCurrentlyProcessing = processing && !isDone && !isSkipped && (progress?.inputPath ? progress.inputPath === img.absolutePath : progress?.currentFile === img.fileName);
 
-                    {/* Icon */}
-                    <span className="material-symbols-outlined text-[18px] text-on-surface-variant/40 group-hover:text-primary shrink-0">
-                      image
-                    </span>
-
-                    {/* File name */}
-                    <span
-                      className={`truncate font-medium flex-1 min-w-0 ${imgError ? 'text-error font-semibold' : 'text-on-surface'}`}
-                      data-tooltip={
-                        appendParams && currentSuffix
-                          ? `${img.relativePath || img.fileName} → ${img.fileName.replace(/\.[^.]+$/, '')}${currentSuffix}${outputFormat === 'original' ? getExtension(img.absolutePath) : `.${outputFormat}`}`
-                          : (img.relativePath || img.fileName)
-                      }
-                    >
-                      {img.relativePath || img.fileName}
-                    </span>
-
-                    {/* Scale badge */}
-                    <span className="shrink-0 text-[11px] font-mono font-semibold text-primary">
-                      {selectedScale}x
-                    </span>
-
-                    {/* Status indicator */}
-                    {isCurrentlyProcessing ? (
-                      <span className="rounded px-1.5 py-0.5 text-[10px] font-bold border border-primary/40 bg-primary/20 text-primary font-mono shrink-0 animate-pulse">
-                        {activeFilePercent}%
-                      </span>
-                    ) : isSkipped ? (
-                      <span className="rounded px-1.5 py-0.5 text-[10px] font-bold border border-cyan-500/30 bg-cyan-500/10 text-cyan-400 shrink-0">
-                        {t('upscale.alreadyExists')}
-                      </span>
-                    ) : isDone ? (
-                      <span className="rounded px-1.5 py-0.5 text-[10px] font-bold border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 shrink-0">
-                        ✓
-                      </span>
-                    ) : !imgError ? (
-                      <span className="rounded px-1.5 py-0.5 text-[10px] font-bold border border-outline-variant/20 bg-surface-container-high text-on-surface-variant/50 shrink-0">
-                        {t('upscale.filterPending')}
-                      </span>
-                    ) : null}
-
-                    {/* Preview Button (Eye) for completed items */}
-                    {isDone && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleOpenPreview(img);
-                        }}
-                        className="shrink-0 w-7 h-7 rounded-md flex items-center justify-center hover:bg-surface-container-highest hover:text-primary text-on-surface-variant transition-all cursor-pointer"
-                        data-tooltip={t('upscale.preview')}
-                        aria-label={t('upscale.preview')}
-                      >
-                        <span className="material-symbols-outlined text-[18px]">visibility</span>
-                      </button>
-                    )}
-
-                    {/* Bug report button */}
-                    {imgError && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
+                    return (
+                      <UpscaleListItem
+                        key={img.absolutePath}
+                        img={img}
+                        api={api}
+                        index={idx + 1}
+                        isChecked={isChecked}
+                        onToggleCheck={toggleImageCheck}
+                        isDone={isDone}
+                        isProcessing={isCurrentlyProcessing}
+                        isSkipped={isSkipped}
+                        error={imgError}
+                        duration={itemDurations[img.absolutePath]}
+                        outputPath={completedOutputPaths[img.absolutePath]}
+                        outputSize={outputSizes[img.absolutePath]}
+                        scale={selectedScale}
+                        outputFormat={outputFormat}
+                        filePercent={isCurrentlyProcessing ? activeFilePercent : isDone ? 100 : 0}
+                        modelName={selectedModel?.label || selectedModelId}
+                        onPreview={handleOpenPreview}
+                        onRemove={handleRemoveImage}
+                        onErrorDetail={(targetImg, err) => {
                           setCopyDone(false);
                           setErrorModalData({
-                            fileName: img.fileName,
-                            relativePath: img.relativePath,
-                            absolutePath: img.absolutePath,
-                            error: imgError,
+                            fileName: targetImg.fileName,
+                            relativePath: targetImg.relativePath,
+                            absolutePath: targetImg.absolutePath,
+                            error: err,
                             scale: selectedScale,
                             model: selectedModel?.label || selectedModelId,
                           });
                         }}
-                        className="shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-error hover:bg-error/15 transition-all cursor-pointer"
-                        data-tooltip={t('history.bugDetailOpenTitle')}
-                        aria-label={t('history.bugDetailOpenTitle')}
-                      >
-                        <span className="material-symbols-outlined text-[18px]">bug_report</span>
-                      </button>
-                    )}
-
-                    {/* Delete */}
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); handleRemoveImage(img.absolutePath); }}
-                      className="shrink-0 opacity-0 group-hover:opacity-100 w-7 h-7 rounded-md flex items-center justify-center hover:bg-error/10 hover:text-error text-on-surface-variant/40 transition-all cursor-pointer"
-                      aria-label={t('imagePipeline.list.remove')}
-                    >
-                      <span className="material-symbols-outlined text-[16px]">delete</span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            )
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center gap-3 text-on-surface-variant/50">
               <span className="material-symbols-outlined text-[48px] opacity-40">
@@ -1645,6 +1834,58 @@ export default function UpscaleTab({
               <p className="text-sm">
                 {hasSource ? t('upscale.emptyNoMatch') : t('upscale.emptyNoSource')}
               </p>
+            </div>
+          )}
+
+          {/* Waifu2x-style Bottom Sticky Progress & Control Bar */}
+          {images.length > 0 && (
+            <div className="border-t border-outline-variant/15 bg-surface-container-low/80 backdrop-blur-xs px-4 py-2 flex items-center justify-between gap-4 shrink-0 select-none">
+              <div className="flex items-center gap-3 flex-1 max-w-xl">
+                <div className="flex items-center gap-1.5 text-xs font-bold shrink-0">
+                  <span className="font-mono text-sm text-primary">{stats.done} / {stats.total}</span>
+                  <span className="text-on-surface-variant font-normal">
+                    ({stats.total > 0 ? Math.round((stats.done / stats.total) * 100) : 0}%)
+                  </span>
+                </div>
+
+                {/* Progress Track */}
+                <div className="flex-1 h-2 rounded-full bg-surface-container-highest overflow-hidden relative border border-outline-variant/30">
+                  <div
+                    className="h-full bg-gradient-to-r from-primary to-emerald-400 transition-all duration-300"
+                    style={{
+                      width: `${stats.total > 0 ? Math.min(100, Math.round((stats.done / stats.total) * 100)) : 0}%`,
+                    }}
+                  />
+                </div>
+
+                {processing && (
+                  <div className="text-[11px] text-on-surface-variant shrink-0 hidden sm:flex items-center gap-1 font-mono">
+                    <span>⚡ {avgSecondsPerImage ? `~${avgSecondsPerImage.toFixed(1)}s/ảnh` : ''}</span>
+                    {etaText && <span>• {etaText}</span>}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs text-on-surface-variant font-mono hidden md:inline">
+                  {selectedModel?.label || ''} ({selectedScale}x)
+                </span>
+                {processing ? (
+                  <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary/10 text-primary text-xs font-semibold">
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping" />
+                    <span>Đang xử lý</span>
+                  </span>
+                ) : stats.done === stats.total && stats.total > 0 ? (
+                  <span className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 text-xs font-semibold">
+                    <span className="material-symbols-outlined text-[14px]">check_circle</span>
+                    <span>Hoàn tất</span>
+                  </span>
+                ) : (
+                  <span className="text-xs text-on-surface-variant/60 font-medium">
+                    {stats.pending} ảnh chờ
+                  </span>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -1723,9 +1964,12 @@ export default function UpscaleTab({
       <InteractiveUpscalePreviewModal
         isOpen={previewIndex !== null}
         onClose={() => setPreviewIndex(null)}
-        items={completedItemsForPreview}
+        items={previewItems}
         currentIndex={previewIndex ?? 0}
         onNavigate={setPreviewIndex}
+        scale={selectedScale}
+        modelLabel={selectedModel?.label || selectedModelId}
+        engineInfo={effectiveEngine}
         api={api}
       />
 

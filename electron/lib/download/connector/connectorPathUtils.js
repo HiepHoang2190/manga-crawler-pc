@@ -112,12 +112,17 @@ function resolveMangaDir(baseSaveDir, mangaTitle) {
  * );
  * // Returns: '/downloads/One Piece/Ch 0001'
  */
-function resolveChapterDir(baseSaveDir, mangaTitle, chapterTitle, chapterFolderFormat) {
+function resolveChapterDir(baseSaveDir, mangaTitle, chapterTitle, chapterFolderFormat, volume) {
   const mangaDir = resolveMangaDir(baseSaveDir, mangaTitle);
   if (isFlatChapterLayout(chapterFolderFormat)) {
     return mangaDir;
   }
-  return path.join(mangaDir, formatChapterFolderName(chapterTitle, chapterFolderFormat));
+  const chapterFolder = formatChapterFolderName(chapterTitle, chapterFolderFormat);
+  const volStr = volume != null ? String(volume).trim() : '';
+  if (volStr && volStr.toLowerCase() !== 'none') {
+    return path.join(mangaDir, `Vol. ${volStr}`, chapterFolder);
+  }
+  return path.join(mangaDir, chapterFolder);
 }
 
 /**

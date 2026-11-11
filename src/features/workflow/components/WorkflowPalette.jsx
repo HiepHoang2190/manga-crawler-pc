@@ -55,7 +55,7 @@ export default function WorkflowPalette({
           side="right"
           onPointerDown={onResizeStart}
           ariaLabel={t('workflow.palette.resizeTooltip')}
-          title={t('workflow.palette.resizeTooltip')}
+          data-tooltip={t('workflow.palette.resizeTooltip')}
         />
       )}
 

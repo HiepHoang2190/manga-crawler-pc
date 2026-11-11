@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useI18n } from '../../context/I18nContext';
+import { StudioLayout } from '../../shared';
 import MangaStudioEditor from './components/MangaStudioEditor';
 
 /**
@@ -37,7 +38,7 @@ export default function MangaTranslateTab({ savePath = '', onRunningChange }) {
     : t('translate.studio.disconnected');
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 w-full h-full overflow-hidden bg-surface">
+    <StudioLayout className="w-full h-full overflow-hidden bg-surface">
       <MangaStudioEditor
         isStandaloneView={true}
         chapterTitle="Manga Translation Studio"
@@ -50,6 +51,6 @@ export default function MangaTranslateTab({ savePath = '', onRunningChange }) {
         activeEngineLabel={activeEngineLabel}
         onRunningChange={onRunningChange}
       />
-    </div>
+    </StudioLayout>
   );
 }

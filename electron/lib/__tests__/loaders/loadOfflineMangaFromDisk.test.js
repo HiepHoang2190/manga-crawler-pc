@@ -168,6 +168,23 @@ describe('loadOfflineMangaFromAbsolutePath — CBZ folder import chapter count',
     expect(r.chapters.length).toBe(2);
     expect(r.manga.offlineMangaDirAbsolute).toBe(path.resolve(subDir));
   });
+
+  test('scans nested volume folders (Vol. 1/Ch1) alongside root chapters', () => {
+    const mangaDir = path.join(tmpRoot, 'vol-grouped');
+    writeFile(path.join(mangaDir, 'Vol. 1', 'Ch1', '001.jpg'));
+    writeFile(path.join(mangaDir, 'Vol. 1', 'Ch2', '001.jpg'));
+    writeFile(path.join(mangaDir, 'Vol. 2', 'Ch3', '001.jpg'));
+    writeFile(path.join(mangaDir, 'Ch105', '001.jpg'));
+
+    const r = loadOfflineMangaFromAbsolutePath(mangaDir);
+    expect(r.ok).toBe(true);
+    expect(r.chapters.length).toBe(4);
+    const basenames = r.chapters.map((c) => c.folderBasename);
+    expect(basenames).toContain('Vol. 1/Ch1');
+    expect(basenames).toContain('Vol. 1/Ch2');
+    expect(basenames).toContain('Vol. 2/Ch3');
+    expect(basenames).toContain('Ch105');
+  });
 });
 
 

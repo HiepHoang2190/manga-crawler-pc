@@ -312,6 +312,47 @@ export function topologicalSort(nodes, edges) {
 }
 
 /**
+ * Returns nodes sorted in topological execution order according to graph edges.
+ * Unconnected or remaining nodes are appended sorted left-to-right by their X coordinate.
+ *
+ * @param {Array} nodes
+ * @param {Array} edges
+ * @returns {Array} Sorted nodes
+ */
+export function getTopologicallyOrderedNodes(nodes = [], edges = []) {
+  if (!Array.isArray(nodes) || nodes.length <= 1) return nodes || [];
+  try {
+    const connectedNodeIds = new Set();
+    for (const e of edges || []) {
+      if (e?.source) connectedNodeIds.add(e.source);
+      if (e?.target) connectedNodeIds.add(e.target);
+    }
+
+    const connectedNodes = nodes.filter((n) => connectedNodeIds.has(n.id));
+    const disconnectedNodes = nodes
+      .filter((n) => !connectedNodeIds.has(n.id))
+      .sort((a, b) => (a.x ?? 0) - (b.x ?? 0));
+
+    let sortedConnected = [];
+    if (connectedNodes.length > 0) {
+      const { sortedNodeIds = [] } = topologicalSort(connectedNodes, edges || []);
+      const nodeMap = new Map(connectedNodes.map((n) => [n.id, n]));
+      sortedConnected = sortedNodeIds.map((id) => nodeMap.get(id)).filter(Boolean);
+      // In case of any cycles or unreached connected nodes
+      const sortedSet = new Set(sortedNodeIds);
+      const remainingConnected = connectedNodes
+        .filter((n) => !sortedSet.has(n.id))
+        .sort((a, b) => (a.x ?? 0) - (b.x ?? 0));
+      sortedConnected.push(...remainingConnected);
+    }
+
+    return [...sortedConnected, ...disconnectedNodes];
+  } catch {
+    return nodes;
+  }
+}
+
+/**
  * Pre-flight validation for workflow execution.
  * Checks for missing required configurations, unconnected required inputs, and cycle errors.
  * Returns an object with:

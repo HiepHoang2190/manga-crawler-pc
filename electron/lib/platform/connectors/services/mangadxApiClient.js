@@ -110,6 +110,7 @@ async function fetchMangaCovers(mangaId) {
     const fileName = attributes.fileName;
     const volume = attributes.volume;
     const description = attributes.description;
+    const locale = attributes.locale;
     
     if (!fileName) return null;
     
@@ -117,6 +118,7 @@ async function fetchMangaCovers(mangaId) {
       id,
       fileName,
       volume: volume || null,
+      locale: locale || '',
       description: description || '',
       url256: `https://uploads.mangadex.org/covers/${mangaId}/${fileName}.256.jpg`,
       url512: `https://uploads.mangadex.org/covers/${mangaId}/${fileName}.512.jpg`,
@@ -505,6 +507,68 @@ function getFileExtFromUrl(imageUrl) {
   return seg.slice(dot + 1).toLowerCase();
 }
 
+function extractAuthor(relationships) {
+  if (!Array.isArray(relationships)) return '';
+  const names = [];
+  const seen = new Set();
+  for (const rel of relationships) {
+    if ((rel.type === 'author' || rel.type === 'artist') && rel.attributes && rel.attributes.name) {
+      const name = String(rel.attributes.name).trim();
+      if (name && !seen.has(name.toLowerCase())) {
+        seen.add(name.toLowerCase());
+        names.push(name);
+      }
+    }
+  }
+  return names.join(', ');
+}
+
+function extractAltTitles(attributes) {
+  const alt = attributes && attributes.altTitles;
+  if (!Array.isArray(alt)) return [];
+  const titles = [];
+  const seen = new Set();
+  for (const obj of alt) {
+    if (!obj || typeof obj !== 'object') continue;
+    for (const val of Object.values(obj)) {
+      const s = String(val || '').trim();
+      if (s && !seen.has(s.toLowerCase())) {
+        seen.add(s.toLowerCase());
+        titles.push(s);
+      }
+    }
+  }
+  return titles;
+}
+
+function extractRating(statsData, mangaId) {
+  const mangaStats = statsData && statsData.statistics && statsData.statistics[mangaId];
+  if (!mangaStats || !mangaStats.rating) return null;
+  const bayesian = mangaStats.rating.bayesian;
+  const average = mangaStats.rating.average;
+  const val = typeof bayesian === 'number' && bayesian > 0 ? bayesian : average;
+  if (typeof val === 'number' && !isNaN(val) && val > 0) {
+    return Math.round(val * 100) / 100;
+  }
+  return null;
+}
+
+function extractGenres(attributes) {
+  const tags = attributes && attributes.tags;
+  if (!Array.isArray(tags)) return [];
+  const genres = [];
+  for (const tag of tags) {
+    const nameObj = tag && tag.attributes && tag.attributes.name;
+    if (!nameObj || typeof nameObj !== 'object') continue;
+    const name = nameObj.en || Object.values(nameObj)[0];
+    const s = String(name || '').trim();
+    if (s && !genres.includes(s)) {
+      genres.push(s);
+    }
+  }
+  return genres;
+}
+
 async function fetchManga(url, language = 'vi') {
   const mangaId = extractMangaId(url);
   if (!mangaId) {
@@ -512,7 +576,13 @@ async function fetchManga(url, language = 'vi') {
   }
   // Build query string manually - MangaDex API rejects URL-encoded brackets
   const apiUrl = `${API_BASE}/manga/${mangaId}?includes[]=cover_art&includes[]=author&includes[]=artist`;
-  const resp = await fetchJson(apiUrl);
+  const statsUrl = `${API_BASE}/statistics/manga/${mangaId}`;
+
+  const [resp, statsResp] = await Promise.all([
+    fetchJson(apiUrl),
+    fetchJson(statsUrl).catch(() => null),
+  ]);
+
   if (!resp.ok || !resp.data) {
     return { ok: false, error: resp.error || 'API truyện lỗi.' };
   }
@@ -522,12 +592,21 @@ async function fetchManga(url, language = 'vi') {
   const title = extractTitle(attributes);
   const coverUrl = extractCoverUrl(data);
   const description = extractDescription(attributes, language);
+  const author = extractAuthor(data.relationships);
+  const altTitles = extractAltTitles(attributes);
+  const genres = extractGenres(attributes);
+  const rating = extractRating(statsResp?.data, mangaId);
+
   return {
     ok: true,
     manga: {
       title,
       coverUrl,
       description,
+      author,
+      altTitles,
+      genres,
+      rating,
       mangaUrl: url,
       mangaId,
       siteId: 'mangadex',
@@ -580,8 +659,11 @@ async function fetchChapters(url, language = 'vi') {
         groupName
       );
       const chapterUrl = `${SITE_DOMAIN}chapter/${chapterId}`;
+      const volClean = volume && String(volume).trim() && String(volume).trim().toLowerCase() !== 'none'
+        ? String(volume).trim()
+        : null;
       if (!chapters.some((c) => c.url === chapterUrl)) {
-        chapters.push({ url: chapterUrl, title: displayTitle });
+        chapters.push({ url: chapterUrl, title: displayTitle, volume: volClean });
       }
     }
     offset += data.length;
@@ -671,6 +753,10 @@ module.exports = {
   SITE_DOMAIN,
   extractMangaId,
   extractChapterId,
+  extractAuthor,
+  extractAltTitles,
+  extractRating,
+  extractGenres,
   fetchManga,
   fetchChapters,
   fetchMangaCovers,

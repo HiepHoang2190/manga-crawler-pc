@@ -461,7 +461,7 @@ export default function BrandingSettingsSection({
           <button
             type="button"
             onClick={() => setDraftName(defaultAppName)}
-            title={t('settings.branding.defaultBtn')}
+            data-tooltip={t('settings.branding.defaultBtn')}
             className="h-10 px-3 rounded-xl border border-outline-variant/20 bg-surface-container-high hover:bg-surface-bright text-xs font-medium text-on-surface transition-colors cursor-pointer shrink-0"
           >
             {t('settings.branding.defaultBtn')}
@@ -469,7 +469,7 @@ export default function BrandingSettingsSection({
           <button
             type="button"
             onClick={() => setDraftName('')}
-            title={t('settings.branding.blankBtn')}
+            data-tooltip={t('settings.branding.blankBtn')}
             className="h-10 px-3 rounded-xl border border-outline-variant/20 bg-surface-container-high hover:bg-surface-bright text-xs font-medium text-on-surface transition-colors cursor-pointer shrink-0"
           >
             {t('settings.branding.blankBtn')}

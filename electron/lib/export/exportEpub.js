@@ -482,7 +482,7 @@ function collectAllChapterItems(opts) {
     const fb = String(ch.folderBasename || '').trim();
     const chapterDir = fb
       ? path.join(mangaResolved, fb)
-      : resolveChapterDir(base, mt, ct, chapterFolderFormat);
+      : resolveChapterDir(base, mt, ct, chapterFolderFormat, ch.volume);
     assertChapterDirUnderManga(mangaResolved, path.resolve(chapterDir));
     const listOptions =
       isFlatChapterLayout(chapterFolderFormat) && !fb

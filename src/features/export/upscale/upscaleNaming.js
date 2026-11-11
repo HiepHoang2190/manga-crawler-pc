@@ -23,6 +23,51 @@ export function getUpscaleSuffix(model, scale, denoise, supportsDenoise) {
 }
 
 /**
+ * Resolves the destination directory where output files will be saved.
+ * - When inPlace is true:
+ *     - If sourceDir exists: returns sourceDir
+ *     - Else if sourceFiles has items: returns folder containing the first file
+ * - When inPlace is false:
+ *     - If sourceDir exists (imported folder): appends sourceDir root folder name to outputDir (unless outputDir already ends with it)
+ *     - If sourceFiles only (imported files): returns clean outputDir (files placed directly in outputDir)
+ *
+ * @param {Object} params
+ * @param {string} [params.sourceDir=''] - Source directory if imported folder
+ * @param {Array<string>} [params.sourceFiles=[]] - Source files list if imported files
+ * @param {boolean} [params.inPlace=false] - Whether in-place mode is active
+ * @param {string} [params.outputDir=''] - Configured output directory
+ * @returns {string} Destination folder path
+ */
+export function getUpscaleOutputFolder({
+  sourceDir = '',
+  sourceFiles = [],
+  inPlace = false,
+  outputDir = '',
+}) {
+  if (inPlace) {
+    if (sourceDir) return sourceDir.replace(/[\\/]+$/, '');
+    if (sourceFiles && sourceFiles[0]) return sourceFiles[0].replace(/[\\/][^\\/]+$/, '');
+    return '';
+  }
+
+  if (!outputDir) return '';
+
+  let cleanOutputDir = outputDir.replace(/[\\/]+$/, '');
+  const sep = cleanOutputDir.includes('\\') ? '\\' : '/';
+
+  if (sourceDir) {
+    const rootFolder = sourceDir.replace(/[\\/]+$/, '').split(/[\\/]/).filter(Boolean).pop() || '';
+    const outputFolder = cleanOutputDir.split(/[\\/]/).filter(Boolean).pop() || '';
+
+    if (rootFolder && rootFolder.toLowerCase() !== outputFolder.toLowerCase()) {
+      return `${cleanOutputDir}${sep}${rootFolder}`;
+    }
+  }
+
+  return cleanOutputDir;
+}
+
+/**
  * Builds destination file path for an upscaled image.
  *
  * @param {Object} params
@@ -95,4 +140,35 @@ export function buildUpscaleOutputPath({
 
   const relBase = rel.replace(/\.[^.]+$/, '');
   return `${cleanOutputDir}${sep}${relBase}${appliedSuffix}${targetExt}`;
+}
+
+/**
+ * Sorts images using Natural Sort (numeric-aware) so page numbers
+ * (1, 2, 10, 20...) are ordered properly without lexicographical interleaving.
+ *
+ * @param {Array<Object>} list - Image list
+ * @param {string} [sortBy='name_asc'] - 'name_asc' | 'name_desc' | 'size_asc' | 'size_desc'
+ * @returns {Array<Object>} Sorted list
+ */
+export function sortImages(list, sortBy = 'name_asc') {
+  if (!Array.isArray(list)) return [];
+  return [...list].sort((a, b) => {
+    if (sortBy === 'name_asc') {
+      return (a.relativePath || a.fileName || '').localeCompare(
+        b.relativePath || b.fileName || '',
+        undefined,
+        { numeric: true, sensitivity: 'base' }
+      );
+    }
+    if (sortBy === 'name_desc') {
+      return (b.relativePath || b.fileName || '').localeCompare(
+        a.relativePath || a.fileName || '',
+        undefined,
+        { numeric: true, sensitivity: 'base' }
+      );
+    }
+    if (sortBy === 'size_asc') return (a.sizeBytes || 0) - (b.sizeBytes || 0);
+    if (sortBy === 'size_desc') return (b.sizeBytes || 0) - (a.sizeBytes || 0);
+    return 0;
+  });
 }

@@ -589,7 +589,6 @@ export default function HomeWorkspace({
             coverFetchSuccessTick={coverFetchSuccessTick}
             coverFetchDurationMs={coverFetchDurationMs}
             onOpenChaptersPanel={() => {
-              if (!chapters.length) return;
               setChaptersDrawerOpen(true);
             }}
             onEnqueueAllToQueue={handleEnqueueAllFromHome}

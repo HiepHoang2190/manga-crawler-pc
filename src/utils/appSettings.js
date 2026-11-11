@@ -4,6 +4,25 @@ const AUTO_RETRY_MAX_KEY = "mangaAutoRetryMax";
 const DUPLICATE_SCAN_RECURSIVE_KEY = "duplicateScanRecursive_v2";
 const FAVORITE_AUTO_CHECK_ENABLED_KEY = "mangaFavoriteAutoCheckEnabled";
 const FAVORITE_AUTO_CHECK_INTERVAL_MIN_KEY = "mangaFavoriteAutoCheckIntervalMin";
+const MANGADEX_VOLUME_FOLDER_GROUPING_KEY = "mangadex_volume_folder_grouping_v1";
+
+export function loadMangadexVolumeFolderGrouping() {
+  try {
+    const raw = localStorage.getItem(MANGADEX_VOLUME_FOLDER_GROUPING_KEY);
+    if (raw == null) return true;
+    return raw !== "false";
+  } catch {
+    return true;
+  }
+}
+
+export function saveMangadexVolumeFolderGrouping(value) {
+  try {
+    localStorage.setItem(MANGADEX_VOLUME_FOLDER_GROUPING_KEY, value ? "true" : "false");
+  } catch {
+    /* quota */
+  }
+}
 
 function clampThreads(n) {
   const x = Number(n);

@@ -286,6 +286,145 @@ async function fetchLatestUpdates(options = {}) {
   };
 }
 
+/**
+ * Parse comic details from HTML.
+ */
+function parseAsurascansDetailsHtml(html, targetUrl, slug = '') {
+  const $ = cheerio.load(html);
+
+  let title =
+    $('h1').first().text().trim() ||
+    $('meta[property="og:title"]').attr('content') ||
+    $('title').first().text().trim();
+  title = cleanComicTitle(title);
+  if (!title) return { ok: false, error: 'Could not parse comic title.' };
+
+  let coverUrl = '';
+  // 1. Ưu tiên lấy ảnh bìa thật từ DOM (thẻ img mang class aspect-[2/3] hoặc src chứa covers/ hay asura-images)
+  const $cover =
+    $('div[class*="aspect-[2/3]"] img').first().length
+      ? $('div[class*="aspect-[2/3]"] img').first()
+      : $('img[src*="covers/"], img[src*="asura-images"]').first();
+  if ($cover.length) {
+    const raw = ($cover.attr('src') || $cover.attr('data-src') || '').trim();
+    if (raw && !/^data:/i.test(raw)) {
+      coverUrl = resolveUrl(targetUrl, raw);
+    }
+  }
+
+  // 2. Dự phòng: og:image meta tag (nhưng bỏ qua route /og/ trả về 403 Forbidden của Asura)
+  if (!coverUrl) {
+    const ogImage = ($('meta[property="og:image"]').attr('content') || '').trim();
+    if (ogImage && !ogImage.includes('/og/')) {
+      coverUrl = resolveUrl(targetUrl, ogImage);
+    }
+  }
+
+  // Description
+  const description =
+    ($('meta[property="og:description"]').attr('content') || '').trim() ||
+    ($('meta[name="description"]').attr('content') || '').trim();
+
+  // Genres
+  const genres = [];
+  $('a[href*="/genres/"], a[href*="genre="], span.badge').each((_, el) => {
+    const g = $(el).text().trim();
+    if (g && !genres.includes(g) && g.length < 30) genres.push(g);
+  });
+
+  // Chapters
+  const chapters = [];
+  const seenUrls = new Set();
+
+  // Look for chapter links
+  $('a[href*="/comics/"][href*="/chapter/"]').each((_, el) => {
+    const $a = $(el);
+    let href = ($a.attr('href') || '').trim();
+    if (!href) return;
+    href = resolveUrl(targetUrl, href);
+    if (seenUrls.has(href)) return;
+
+    const rawText = $a.text().trim().replace(/\s+/g, ' ');
+    // Filter out navigation buttons like "Read First Chapter" if they duplicate
+    if (/^first chapter$/i.test(rawText)) {
+      return;
+    }
+
+    seenUrls.add(href);
+    const label = formatChapterLabel(rawText, href);
+
+    chapters.push({
+      url: href,
+      title: label,
+      name: label,
+      order: chapters.length,
+    });
+  });
+
+  // Fallback: if button "First Chapter" was skipped and chapter 1 wasn't in list, add it if seen
+  if (chapters.length === 0) {
+    $('a[href*="/chapter/"]').each((_, el) => {
+      const $a = $(el);
+      let href = ($a.attr('href') || '').trim();
+      if (!href) return;
+      href = resolveUrl(targetUrl, href);
+      if (seenUrls.has(href)) return;
+      seenUrls.add(href);
+
+      const rawText = $a.text().trim().replace(/\s+/g, ' ');
+      const label = formatChapterLabel(rawText, href);
+
+      chapters.push({
+        url: href,
+        title: label,
+        name: label,
+        order: chapters.length,
+      });
+    });
+  }
+
+  // Sort chapters in natural ascending order by chapter number if possible
+  chapters.sort((a, b) => {
+    const numA = parseFloat((a.title.match(/Chapter\s*(\d+(\.\d+)?)/i) || [])[1] || '0');
+    const numB = parseFloat((b.title.match(/Chapter\s*(\d+(\.\d+)?)/i) || [])[1] || '0');
+    if (numA !== 0 && numB !== 0) {
+      return numA - numB;
+    }
+    return 0;
+  });
+
+  // Re-index order
+  chapters.forEach((ch, idx) => {
+    ch.order = idx + 1;
+  });
+
+  return {
+    ok: true,
+    manga: {
+      title,
+      coverUrl,
+      mangaUrl: targetUrl,
+      mangaId: slug,
+      siteId: 'asurascans',
+      sourceLabel: LABEL,
+      author: '',
+      status: '',
+      genres: genres.length ? genres : undefined,
+      description: description || '',
+    },
+    chapters,
+    data: {
+      title,
+      coverUrl,
+      author: '',
+      status: '',
+      genres,
+      description,
+      chapters,
+    },
+  };
+}
+
 class AsurascansService extends HtmlConnectorService {
   constructor() {
     super({
@@ -331,133 +470,7 @@ class AsurascansService extends HtmlConnectorService {
       return { ok: false, error: fetched.error || 'Failed to fetch comic details from Asura Scans.' };
     }
 
-    const $ = cheerio.load(fetched.html);
-
-    let title =
-      $('h1').first().text().trim() ||
-      $('meta[property="og:title"]').attr('content') ||
-      $('title').first().text().trim();
-    title = cleanComicTitle(title);
-    if (!title) return { ok: false, error: 'Could not parse comic title.' };
-
-    let coverUrl = '';
-    const ogImage = ($('meta[property="og:image"]').attr('content') || '').trim();
-    if (ogImage) {
-      coverUrl = resolveUrl(targetUrl, ogImage);
-    }
-    if (!coverUrl) {
-      const $cover = $('img[src*="covers/"]').first();
-      if ($cover.length) {
-        const raw = ($cover.attr('src') || $cover.attr('data-src') || '').trim();
-        if (raw && !/^data:/i.test(raw)) {
-          coverUrl = resolveUrl(targetUrl, raw);
-        }
-      }
-    }
-
-    // Description
-    const description =
-      ($('meta[property="og:description"]').attr('content') || '').trim() ||
-      ($('meta[name="description"]').attr('content') || '').trim();
-
-    // Genres
-    const genres = [];
-    $('a[href*="/genres/"], a[href*="genre="], span.badge').each((_, el) => {
-      const g = $(el).text().trim();
-      if (g && !genres.includes(g) && g.length < 30) genres.push(g);
-    });
-
-    // Chapters
-    const chapters = [];
-    const seenUrls = new Set();
-
-    // Look for chapter links
-    $('a[href*="/comics/"][href*="/chapter/"]').each((_, el) => {
-      const $a = $(el);
-      let href = ($a.attr('href') || '').trim();
-      if (!href) return;
-      href = resolveUrl(targetUrl, href);
-      if (seenUrls.has(href)) return;
-
-      const rawText = $a.text().trim().replace(/\s+/g, ' ');
-      // Filter out navigation buttons like "Read First Chapter" if they duplicate
-      if (/^first chapter$/i.test(rawText)) {
-        return;
-      }
-
-      seenUrls.add(href);
-      const label = formatChapterLabel(rawText, href);
-
-      chapters.push({
-        url: href,
-        title: label,
-        name: label,
-        order: chapters.length,
-      });
-    });
-
-    // Fallback: if button "First Chapter" was skipped and chapter 1 wasn't in list, add it if seen
-    if (chapters.length === 0) {
-      $('a[href*="/chapter/"]').each((_, el) => {
-        const $a = $(el);
-        let href = ($a.attr('href') || '').trim();
-        if (!href) return;
-        href = resolveUrl(targetUrl, href);
-        if (seenUrls.has(href)) return;
-        seenUrls.add(href);
-
-        const rawText = $a.text().trim().replace(/\s+/g, ' ');
-        const label = formatChapterLabel(rawText, href);
-
-        chapters.push({
-          url: href,
-          title: label,
-          name: label,
-          order: chapters.length,
-        });
-      });
-    }
-
-    // Sort chapters in natural ascending order by chapter number if possible
-    chapters.sort((a, b) => {
-      const numA = parseFloat((a.title.match(/Chapter\s*(\d+(\.\d+)?)/i) || [])[1] || '0');
-      const numB = parseFloat((b.title.match(/Chapter\s*(\d+(\.\d+)?)/i) || [])[1] || '0');
-      if (numA !== 0 && numB !== 0) {
-        return numA - numB;
-      }
-      return 0;
-    });
-
-    // Re-index order
-    chapters.forEach((ch, idx) => {
-      ch.order = idx + 1;
-    });
-
-    return {
-      ok: true,
-      manga: {
-        title,
-        coverUrl,
-        mangaUrl: targetUrl,
-        mangaId: slug,
-        siteId: 'asurascans',
-        sourceLabel: LABEL,
-        author: '',
-        status: '',
-        genres: genres.length ? genres : undefined,
-        description: description || '',
-      },
-      chapters,
-      data: {
-        title,
-        coverUrl,
-        author: '',
-        status: '',
-        genres,
-        description,
-        chapters,
-      },
-    };
+    return parseAsurascansDetailsHtml(fetched.html, targetUrl, slug);
   }
 
   async fetchChapterImages(chapterUrl, referer) {
@@ -515,4 +528,5 @@ module.exports = {
   formatChapterLabel,
   parseAsurascansListingHtml,
   parseAsurascansListingMaxPage,
+  parseAsurascansDetailsHtml,
 };

@@ -1,4 +1,4 @@
-import { validateGraph, topologicalSort, isPortCompatible, validateWorkflowPreflight, getDownloadsFolder, getNodeOutputs } from './workflowGraph.mjs';
+import { validateGraph, topologicalSort, isPortCompatible, validateWorkflowPreflight, getDownloadsFolder, getNodeOutputs, getTopologicallyOrderedNodes } from './workflowGraph.mjs';
 
 describe('workflowGraph engine', () => {
   describe('isPortCompatible', () => {
@@ -548,6 +548,85 @@ describe('workflowGraph engine', () => {
       const content = fs.readFileSync(studioPath, 'utf8');
       expect(content).toContain('{isConsoleOpen && (\n            <WorkflowLogConsole');
       expect(content).not.toMatch(/isRunning\s*\|\|\s*isCompleted/);
+    });
+
+    test('WorkflowStudio passes edges prop to WorkflowLogConsole', async () => {
+      const fs = await import('fs');
+      const path = await import('path');
+      const studioPath = path.resolve('src/features/workflow/components/WorkflowStudio.jsx');
+      const content = fs.readFileSync(studioPath, 'utf8');
+      expect(content).toMatch(/<WorkflowLogConsole[\s\S]*?edges=\{canvas\.edges\}/);
+    });
+  });
+
+  describe('getTopologicallyOrderedNodes', () => {
+    test('reorders nodes to match DAG edge execution order instead of arbitrary creation order', () => {
+      // User scenario: trigger created 1st, pdf created 2nd, split created 3rd, rename created 4th
+      const nodes = [
+        { id: 'n_trigger', type: 'folder_trigger', x: 60 },
+        { id: 'n_pdf', type: 'export_pdf', x: 960 },
+        { id: 'n_split', type: 'split_double_page', x: 360 },
+        { id: 'n_rename', type: 'rename_folder', x: 660 },
+      ];
+      // Wires connect: trigger -> split -> rename -> pdf
+      const edges = [
+        { id: 'e1', source: 'n_trigger', target: 'n_split' },
+        { id: 'e2', source: 'n_split', target: 'n_rename' },
+        { id: 'e3', source: 'n_rename', target: 'n_pdf' },
+      ];
+
+      const ordered = getTopologicallyOrderedNodes(nodes, edges);
+      expect(ordered.map((n) => n.id)).toEqual(['n_trigger', 'n_split', 'n_rename', 'n_pdf']);
+    });
+
+    test('appends disconnected nodes sorted by X coordinate left-to-right', () => {
+      const nodes = [
+        { id: 'n_floating_right', type: 'image_upscale', x: 1200 },
+        { id: 'n_pdf', type: 'export_pdf', x: 600 },
+        { id: 'n_trigger', type: 'folder_trigger', x: 60 },
+        { id: 'n_floating_left', type: 'translate', x: 100 },
+      ];
+      const edges = [
+        { id: 'e1', source: 'n_trigger', target: 'n_pdf' },
+      ];
+
+      const ordered = getTopologicallyOrderedNodes(nodes, edges);
+      expect(ordered.map((n) => n.id)).toEqual([
+        'n_trigger',
+        'n_pdf',
+        'n_floating_left',
+        'n_floating_right',
+      ]);
+    });
+
+    test('handles empty or single node gracefully', () => {
+      expect(getTopologicallyOrderedNodes([])).toEqual([]);
+      expect(getTopologicallyOrderedNodes([{ id: 'n1' }])).toEqual([{ id: 'n1' }]);
+    });
+
+    test('WorkflowLogConsole uses getTopologicallyOrderedNodes to sort steps in execution order', async () => {
+      const fs = await import('fs');
+      const path = await import('path');
+      const consolePath = path.resolve('src/features/workflow/components/WorkflowLogConsole.jsx');
+      const content = fs.readFileSync(consolePath, 'utf8');
+      expect(content).toContain('getTopologicallyOrderedNodes');
+      expect(content).toMatch(/getTopologicallyOrderedNodes\(nodes,\s*edges\)/);
+    });
+
+    test('useWorkflowCanvas autoLayout uses getTopologicallyOrderedNodes to sync array order', async () => {
+      const fs = await import('fs');
+      const path = await import('path');
+      const hookPath = path.resolve('src/features/workflow/hooks/useWorkflowCanvas.js');
+      const content = fs.readFileSync(hookPath, 'utf8');
+      expect(content).toContain('getTopologicallyOrderedNodes(prevNodes, edges)');
+    });
+
+    test('WorkflowTemplateModal uses getTopologicallyOrderedNodes to render preview chips in execution sequence', async () => {
+      const fs = await import('fs');
+      const path = await import('path');
+      const modalPath = path.resolve('src/features/workflow/components/WorkflowTemplateModal.jsx');
+      const content = fs.readFileSync(modalPath, 'utf8');
+      expect(content).toContain('getTopologicallyOrderedNodes(tpl.nodes, tpl.edges)');
     });
   });
 });

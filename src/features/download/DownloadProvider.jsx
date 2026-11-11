@@ -45,13 +45,14 @@ import { applyChapterResult, buildRetryLogMessage } from './applyChapterResult';
 import { loadDownloadHistory, writeDownloadHistory, prependHistory } from './historyStorage';
 import { nextQueueTabFocusNonce } from './queueTabFocus.js';
 import { savePanelUi } from '../../utils/panelUiPrefs';
+import SaveDirErrorModal from './components/SaveDirErrorModal';
 
 const DownloadContext = createContext(null);
 
 export function DownloadProvider({ children }) {
   const { t } = useI18n();
   const { appendLog } = useAppLog();
-  const { savePath, threads, autoRetryMax } = useSettings();
+  const { savePath, setSavePath, threads, autoRetryMax, mangadexVolumeFolderGrouping } = useSettings();
   const {
     authSession,
     isSignedIn,
@@ -67,6 +68,7 @@ export function DownloadProvider({ children }) {
   /** false until snapshot hydrate finishes (do not overwrite localStorage with []). */
   const [queueHydrated, setQueueHydrated] = useState(false);
   const [pendingRestoreQueue, setPendingRestoreQueue] = useState(null);
+  const [saveDirErrorModal, setSaveDirErrorModal] = useState(null);
   const [queueProcessing, setQueueProcessing] = useState(false);
   /** Tiến độ trang từ main (IPC) khi đang tải chương. */
   const [downloadProgress, setDownloadProgress] = useState(null);
@@ -105,6 +107,25 @@ export function DownloadProvider({ children }) {
       // ignore
     }
   }, []);
+
+  const handleSelectNewSaveDir = useCallback(async () => {
+    const api = typeof window !== 'undefined' ? window.electronAPI : null;
+    if (!api?.selectDirectory) return;
+    try {
+      const selected = await api.selectDirectory();
+      if (selected && typeof selected === 'string') {
+        const clean = selected.trim();
+        if (clean) {
+          setSavePath(clean);
+          api.setSavedDownloadPath?.(clean).catch(() => {});
+          setSaveDirErrorModal(null);
+          appendLog(t('saveDirError.updatedNotice', { path: clean }), 'success');
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, [setSavePath, appendLog, t]);
 
   useEffect(() => {
     queueRef.current = queue;
@@ -209,11 +230,11 @@ export function DownloadProvider({ children }) {
         if (row.ok) return 'ok';
         return 'error';
       };
-      
-      const next = filterStatus === 'all' 
-        ? [] 
+
+      const next = filterStatus === 'all'
+        ? []
         : prev.filter((row) => rowStatusKey(row) !== filterStatus);
-      
+
       writeDownloadHistory(next);
       return next;
     });
@@ -239,6 +260,24 @@ export function DownloadProvider({ children }) {
     if (!savePath.trim()) {
       appendLog(t('app.log.needSavePathShort'), 'warn');
       return;
+    }
+    if (api?.validateSaveDir) {
+      try {
+        const valRes = await api.validateSaveDir(savePath.trim());
+        if (valRes && !valRes.ok && !valRes.canCreate) {
+          const errText =
+            valRes.error ||
+            t('app.log.invalidSavePathPreflight', { path: savePath.trim() });
+          appendLog(errText, 'warn');
+          setSaveDirErrorModal({
+            path: savePath.trim(),
+            message: errText,
+          });
+          return;
+        }
+      } catch {
+        /* proceed if validation call encounters unexpected error */
+      }
     }
 
     let selected = queueSelectedIdsRef.current;
@@ -333,11 +372,11 @@ export function DownloadProvider({ children }) {
             gg.id !== group.id
               ? gg
               : {
-                  ...gg,
-                  chapters: gg.chapters.map((c) =>
-                    c.id === chapter.id ? { ...c, status: 'downloading' } : c
-                  ),
-                }
+                ...gg,
+                chapters: gg.chapters.map((c) =>
+                  c.id === chapter.id ? { ...c, status: 'downloading' } : c
+                ),
+              }
           )
         );
 
@@ -355,6 +394,8 @@ export function DownloadProvider({ children }) {
             mangaUrl: group.mangaUrl,
             chapterUrl: chapter.chapterUrl,
             chapterTitle: chapter.chapterTitle,
+            volume: mangadexVolumeFolderGrouping !== false ? chapter.volume : null,
+            mangadexVolumeFolderGrouping,
             baseSaveDir: savePath.trim(),
             numberOfThreads: Math.max(1, Math.min(Number(threads) || 5, 5)),
             coverUrl: group.coverUrl,
@@ -379,6 +420,7 @@ export function DownloadProvider({ children }) {
           }
           const ok = Boolean(res?.ok || res?.skipped);
           const downloadedOk = Boolean(res?.ok);
+          const isFatalSaveDirError = Boolean(res?.fatal || res?.errorType === 'INVALID_SAVE_PATH');
           let tokenConsumeError = '';
           let tokenConsumeNeedLogin = false;
           if (downloadedOk && shouldConsumeFreeUserToken) {
@@ -420,30 +462,31 @@ export function DownloadProvider({ children }) {
               gg.id !== group.id
                 ? gg
                 : {
-                    ...gg,
-                    chapters: gg.chapters.map((c) => {
-                      if (c.id !== chapter.id) return c;
-                      if (ok) {
-                        const { downloadError, ...rest } = c;
-                        return { ...rest, status: 'done' };
-                      }
-                      const errorMsg = res?.aborted ? t('queue.status.skipped') : (res?.error || t('app.log.downloadIncompleteShort'));
-                      const result = applyChapterResult(c, false, errorMsg, res?.aborted ? 0 : autoRetryMax);
-                      if (result.status === 'waiting') {
-                        appendLog(
-                          buildRetryLogMessage(
-                            t,
-                            group.mangaTitle,
-                            c.chapterTitle,
-                            result.retryCount,
-                            autoRetryMax
-                          ),
-                          'warn'
-                        );
-                      }
-                      return result;
-                    }),
-                  }
+                  ...gg,
+                  chapters: gg.chapters.map((c) => {
+                    if (c.id !== chapter.id) return c;
+                    if (ok) {
+                      const { downloadError, ...rest } = c;
+                      return { ...rest, status: 'done' };
+                    }
+                    const errorMsg = res?.aborted ? t('queue.status.skipped') : (res?.error || t('app.log.downloadIncompleteShort'));
+                    const effectiveRetryMax = (res?.aborted || isFatalSaveDirError) ? 0 : autoRetryMax;
+                    const result = applyChapterResult(c, false, errorMsg, effectiveRetryMax);
+                    if (result.status === 'waiting') {
+                      appendLog(
+                        buildRetryLogMessage(
+                          t,
+                          group.mangaTitle,
+                          c.chapterTitle,
+                          result.retryCount,
+                          autoRetryMax
+                        ),
+                        'warn'
+                      );
+                    }
+                    return result;
+                  }),
+                }
             );
             queueRef.current = next;
             latestGroup = next.find((g) => g.id === group.id);
@@ -489,6 +532,16 @@ export function DownloadProvider({ children }) {
               }),
               'warn'
             );
+          }
+          if (!ok && isFatalSaveDirError) {
+            setQueue((prev) => applyQueueStopState(prev, { pauseGroupIds: [group.id] }));
+            const errDetail = res?.error || t('app.log.queueStoppedFatalSaveDir');
+            appendLog(errDetail, 'warn');
+            setSaveDirErrorModal({
+              path: savePath.trim(),
+              message: errDetail,
+            });
+            break;
           }
           if (tokenConsumeError) {
             if (tokenConsumeNeedLogin) {
@@ -549,25 +602,25 @@ export function DownloadProvider({ children }) {
               gg.id !== group.id
                 ? gg
                 : {
-                    ...gg,
-                    chapters: gg.chapters.map((c) => {
-                      if (c.id !== chapter.id) return c;
-                      const result = applyChapterResult(c, false, msg, autoRetryMax);
-                      if (result.status === 'waiting') {
-                        appendLog(
-                          buildRetryLogMessage(
-                            t,
-                            group.mangaTitle,
-                            c.chapterTitle,
-                            result.retryCount,
-                            autoRetryMax
-                          ),
-                          'warn'
-                        );
-                      }
-                      return result;
-                    }),
-                  }
+                  ...gg,
+                  chapters: gg.chapters.map((c) => {
+                    if (c.id !== chapter.id) return c;
+                    const result = applyChapterResult(c, false, msg, autoRetryMax);
+                    if (result.status === 'waiting') {
+                      appendLog(
+                        buildRetryLogMessage(
+                          t,
+                          group.mangaTitle,
+                          c.chapterTitle,
+                          result.retryCount,
+                          autoRetryMax
+                        ),
+                        'warn'
+                      );
+                    }
+                    return result;
+                  }),
+                }
             );
             queueRef.current = next;
             const updatedGrp = next.find((g) => g.id === group.id);
@@ -743,7 +796,7 @@ export function DownloadProvider({ children }) {
       if (!allDone || hasErrors) {
         appendLog(
           t('queue.cannotRunWorkflowIncomplete') ||
-            'Không thể chạy quy trình: Truyện chưa tải xong 100% hoặc có chapter lỗi',
+          'Không thể chạy quy trình: Truyện chưa tải xong 100% hoặc có chapter lỗi',
           'warn'
         );
         return;
@@ -877,7 +930,18 @@ export function DownloadProvider({ children }) {
     ]
   );
 
-  return <DownloadContext.Provider value={value}>{children}</DownloadContext.Provider>;
+  return (
+    <DownloadContext.Provider value={value}>
+      {children}
+      <SaveDirErrorModal
+        open={Boolean(saveDirErrorModal)}
+        error={saveDirErrorModal?.message}
+        path={saveDirErrorModal?.path}
+        onClose={() => setSaveDirErrorModal(null)}
+        onSelectNewDir={handleSelectNewSaveDir}
+      />
+    </DownloadContext.Provider>
+  );
 }
 
 export function useDownload() {

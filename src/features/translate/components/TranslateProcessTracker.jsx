@@ -268,7 +268,7 @@ export default function TranslateProcessTracker({
             )}
 
             {/* Title / Name */}
-            <span className="text-base font-bold text-on-surface truncate" title={title || sourcePath}>
+            <span className="text-base font-bold text-on-surface truncate" data-tooltip={title || sourcePath}>
               {title || (sourcePath ? sourcePath.split(/[/\\]/).filter(Boolean).pop() : t('translate.tracker.defaultDocTitle'))}
             </span>
 
@@ -276,7 +276,7 @@ export default function TranslateProcessTracker({
               <button
                 type="button"
                 onClick={onOpenFolder}
-                title={t('translate.tracker.openFolderTitle')}
+                data-tooltip={t('translate.tracker.openFolderTitle')}
                 className="cursor-pointer text-on-surface-variant hover:text-primary transition-colors inline-flex items-center"
               >
                 <span className="material-symbols-outlined text-[18px]">open_in_new</span>
@@ -328,7 +328,7 @@ export default function TranslateProcessTracker({
             <p
               onClick={onOpenFolder}
               className="text-amber-700 dark:text-amber-400 font-mono text-[11px] truncate cursor-pointer hover:opacity-80 inline-flex items-center gap-1 transition-opacity"
-              title={sourcePath}
+              data-tooltip={sourcePath}
             >
               <span>{sourcePath || t('translate.tracker.localFolder')}</span>
               <span className="material-symbols-outlined text-[13px]">open_in_new</span>
@@ -711,7 +711,7 @@ export default function TranslateProcessTracker({
                             </td>
                             <td className="py-2.5 px-3 text-on-surface font-medium leading-relaxed">
                               {layer.sourceText ? (
-                                <span className="line-clamp-2" title={layer.sourceText}>
+                                <span className="line-clamp-2" data-tooltip={layer.sourceText}>
                                   {layer.sourceText}
                                 </span>
                               ) : (
@@ -720,7 +720,7 @@ export default function TranslateProcessTracker({
                             </td>
                             <td className="py-2.5 px-3 font-semibold text-on-surface leading-relaxed">
                               {layer.text ? (
-                                <span className="line-clamp-2 text-primary" title={layer.text}>
+                                <span className="line-clamp-2 text-primary" data-tooltip={layer.text}>
                                   {layer.text}
                                 </span>
                               ) : (
@@ -734,7 +734,7 @@ export default function TranslateProcessTracker({
                                   {t('translate.tracker.badgeTranslated')}
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300" title={layer.error || t('translate.tracker.filterUntranslated')}>
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300" data-tooltip={layer.error || t('translate.tracker.filterUntranslated')}>
                                   <span className="material-symbols-outlined text-[12px]">info</span>
                                   {t('translate.tracker.badgeOriginal')}
                                 </span>
@@ -746,7 +746,7 @@ export default function TranslateProcessTracker({
                                   type="button"
                                   onClick={() => onOpenStudio(layer.id)}
                                   className="cursor-pointer inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold text-primary hover:bg-primary/10 transition-colors"
-                                  title={t('translate.tracker.editInStudioTitle')}
+                                  data-tooltip={t('translate.tracker.editInStudioTitle')}
                                 >
                                   <span>{t('translate.tracker.editBtn')}</span>
                                   <span className="material-symbols-outlined text-[13px]">arrow_forward</span>

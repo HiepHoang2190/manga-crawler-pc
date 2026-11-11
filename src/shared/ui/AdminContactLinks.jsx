@@ -38,7 +38,7 @@ export default function AdminContactLinks({ className = '', hideRegisterLink = f
           <button
             type="button"
             onClick={() => openExternal(mailto)}
-            className="text-primary font-medium underline hover:opacity-90 cursor-pointer text-left break-all"
+            className="text-primary font-medium hover:opacity-80 transition-opacity cursor-pointer text-left break-all"
           >
             {ADMIN_EMAIL}
           </button>
@@ -48,7 +48,7 @@ export default function AdminContactLinks({ className = '', hideRegisterLink = f
           <button
             type="button"
             onClick={() => openExternal(ADMIN_TELEGRAM_ALEX)}
-            className="text-primary font-medium underline hover:opacity-90 cursor-pointer text-left"
+            className="text-primary font-medium hover:opacity-80 transition-opacity cursor-pointer text-left"
           >
             {t('contact.telegramAlex')}
           </button>
@@ -58,7 +58,7 @@ export default function AdminContactLinks({ className = '', hideRegisterLink = f
           <button
             type="button"
             onClick={() => openExternal(ADMIN_TELEGRAM_CHANNEL)}
-            className="text-primary font-medium underline hover:opacity-90 cursor-pointer text-left"
+            className="text-primary font-medium hover:opacity-80 transition-opacity cursor-pointer text-left"
           >
             {t('contact.telegramChannel')}
           </button>
@@ -69,7 +69,7 @@ export default function AdminContactLinks({ className = '', hideRegisterLink = f
             <button
               type="button"
               onClick={() => openExternal(ADMIN_TELEGRAM_REGISTER)}
-              className="text-primary font-medium underline hover:opacity-90 cursor-pointer text-left"
+              className="text-primary font-medium hover:opacity-80 transition-opacity cursor-pointer text-left"
             >
               {t('contact.telegramRegister')}
             </button>

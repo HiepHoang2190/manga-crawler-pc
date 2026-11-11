@@ -103,6 +103,8 @@ export default function SettingsPanel({
   chapterFolder,
   setChapterFolder,
   persistChapterFolder,
+  mangadexVolumeFolderGrouping,
+  setMangadexVolumeFolderGrouping,
   duplicateScanRecursive,
   setDuplicateScanRecursive,
   favoriteAutoCheckEnabled,
@@ -167,6 +169,40 @@ export default function SettingsPanel({
     } catch {}
     return 'all';
   });
+
+  const [savePathWarning, setSavePathWarning] = useState(false);
+
+  useEffect(() => {
+    const trimmed = String(savePath || '').trim();
+    if (!trimmed) {
+      setSavePathWarning(false);
+      return undefined;
+    }
+    const api = typeof window !== 'undefined' ? window.electronAPI : null;
+    if (!api?.validateSaveDir) return undefined;
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      api
+        .validateSaveDir(trimmed)
+        .then((res) => {
+          if (cancelled) return;
+          if (res && !res.ok && !res.canCreate) {
+            setSavePathWarning(true);
+          } else {
+            setSavePathWarning(false);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setSavePathWarning(false);
+        });
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [savePath]);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [authBusy, setAuthBusy] = useState(false);
@@ -761,13 +797,27 @@ export default function SettingsPanel({
                         {t('sidebar.saveTo')}
                       </label>
                       <div className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          value={savePath}
-                          onChange={(e) => setSavePath(e.target.value)}
-                          placeholder={t('sidebar.placeholder.savePath')}
-                          className="flex-1 min-w-0 bg-surface-container-highest border border-outline-variant/25 rounded-xl text-xs h-10 px-3 text-on-surface focus:border-primary focus:ring-1 focus:ring-primary outline-none"
-                        />
+                        <div className="relative flex-1 flex items-center min-w-0">
+                          <input
+                            type="text"
+                            value={savePath}
+                            onChange={(e) => setSavePath(e.target.value)}
+                            placeholder={t('sidebar.placeholder.savePath')}
+                            className={`w-full min-w-0 bg-surface-container-highest border ${
+                              savePathWarning
+                                ? 'border-amber-500/60 ring-1 ring-amber-500/50 pr-8'
+                                : 'border-outline-variant/25 focus:border-primary focus:ring-1 focus:ring-primary pr-3'
+                            } rounded-xl text-xs h-10 pl-3 text-on-surface outline-none transition-all`}
+                          />
+                          {savePathWarning && (
+                            <span
+                              data-tooltip={t('sidebar.warning.invalidSavePath')}
+                              className="material-symbols-outlined text-[18px] text-amber-500 absolute right-2.5 pointer-events-auto cursor-help select-none shrink-0"
+                            >
+                              warning
+                            </span>
+                          )}
+                        </div>
                         <button
                           type="button"
                           onClick={onBrowse}
@@ -784,6 +834,8 @@ export default function SettingsPanel({
                       chapterFolder={chapterFolder}
                       setChapterFolder={setChapterFolder}
                       persistChapterFolder={persistChapterFolder}
+                      mangadexVolumeFolderGrouping={mangadexVolumeFolderGrouping}
+                      setMangadexVolumeFolderGrouping={setMangadexVolumeFolderGrouping}
                     />
 
                     {/* Parallel Threads & Auto Retry */}

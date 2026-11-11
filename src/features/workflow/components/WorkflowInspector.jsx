@@ -55,8 +55,8 @@ function FolderPickerInput({
               e.stopPropagation();
               onChange('');
             }}
-            title="Xóa lựa chọn"
-            aria-label="Xóa lựa chọn"
+            data-tooltip={t('workflow.inspector.clearSelection', 'Xóa lựa chọn')}
+            aria-label={t('workflow.inspector.clearSelection', 'Xóa lựa chọn')}
             className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-surface-container-highest hover:bg-error/20 hover:text-error text-on-surface-variant flex items-center justify-center text-[10px] transition-colors cursor-pointer"
           >
             ✕
@@ -384,7 +384,7 @@ export default function WorkflowInspector({
             side="left"
             onPointerDown={onResizeStart}
             ariaLabel={t('workflow.inspector.resizeTooltip')}
-            title={t('workflow.inspector.resizeTooltip')}
+            data-tooltip={t('workflow.inspector.resizeTooltip')}
           />
         )}
 
@@ -494,7 +494,7 @@ export default function WorkflowInspector({
           side="left"
           onPointerDown={onResizeStart}
           ariaLabel={t('workflow.inspector.resizeTooltip')}
-          title={t('workflow.inspector.resizeTooltip')}
+          data-tooltip={t('workflow.inspector.resizeTooltip')}
         />
       )}
 
@@ -1737,7 +1737,7 @@ export default function WorkflowInspector({
                             <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-wider">
                               Đã kết nối Google Drive
                             </div>
-                            <div className="text-xs font-semibold text-on-surface truncate" title={currentLocalPath}>
+                            <div className="text-xs font-semibold text-on-surface truncate" data-tooltip={currentLocalPath}>
                               {currentLocalPath}
                             </div>
                           </div>

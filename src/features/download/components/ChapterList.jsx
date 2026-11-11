@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from '../../../context/I18nContext';
 import { compareChaptersForTitleSort, dedupeChaptersByUrl } from '../../../utils/chapterSort';
+import { hasVolumeData, groupChaptersByVolume } from '../utils/chapterVolumeGrouping.js';
+import { parseChapterTitleMetadata } from '../utils/chapterTitleParser.js';
 
 function StatusBadge({ variant, label }) {
   const styles = {
@@ -150,10 +152,55 @@ export default function ChapterList({
     return () => window.removeEventListener('mouseup', onUp);
   }, []);
 
-  const rows = sortedChapters.map((ch) => ({
+  const rows = sortedChapters.map((ch, i) => ({
     ...ch,
+    rowIndex: i,
     statusKey: rowStatusKey(ch),
   }));
+
+  const hasVolumes = useMemo(() => hasVolumeData(sortedChapters), [sortedChapters]);
+  const [collapsedVolumeKeys, setCollapsedVolumeKeys] = useState(() => new Set());
+
+  const volumeGroups = useMemo(() => {
+    if (!hasVolumes) return [];
+    return groupChaptersByVolume(rows, { sortDirection: titleSort === 'desc' ? 'desc' : 'asc' });
+  }, [hasVolumes, rows, titleSort]);
+
+  const toggleVolumeCollapse = (key) => {
+    setCollapsedVolumeKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const allVolumesCollapsed =
+    volumeGroups.length > 0 && volumeGroups.every((g) => collapsedVolumeKeys.has(g.key));
+
+  const toggleAllVolumes = () => {
+    if (allVolumesCollapsed) {
+      setCollapsedVolumeKeys(new Set());
+    } else {
+      setCollapsedVolumeKeys(new Set(volumeGroups.map((g) => g.key)));
+    }
+  };
+
+  const toggleSelectVolume = (e, group) => {
+    e.stopPropagation();
+    if (typeof setSelectedUrls !== 'function') return;
+    const urlsInGroup = group.chapters.map((c) => c.url);
+    const allSelected = urlsInGroup.length > 0 && urlsInGroup.every((u) => selectedUrls?.has(u));
+    setSelectedUrls((prev) => {
+      const next = new Set(prev);
+      if (allSelected) {
+        for (const u of urlsInGroup) next.delete(u);
+      } else {
+        for (const u of urlsInGroup) next.add(u);
+      }
+      return next;
+    });
+  };
 
   const allInListSelected =
     chaptersForList.length > 0 && chaptersForList.every((c) => selectedUrls.has(c.url));
@@ -241,237 +288,634 @@ export default function ChapterList({
     [readChapterAllowedUrls, readOnlineEnabled, onReadChapter, onReadChapterOnline]
   );
 
-  return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
-      {showChapterListHeader ? (
-        <div
-          className={`mb-3 flex items-center gap-2 ${
-            showSectionTitle && isPick && onToggleReaderChapterPanel
-              ? 'justify-between'
-              : showSectionTitle && !isPick
-                ? 'justify-start'
-                : !showSectionTitle && isPick && onToggleReaderChapterPanel
-                  ? 'justify-end'
-                  : ''
+  const renderChapterRow = (ch, i) => {
+    const meta = parseChapterTitleMetadata(ch.title, ch.volume);
+    const displayTitle = meta.cleanTitle || ch.title;
+    const shortLabel = meta.chapterLabel
+      ? meta.chapterLabel.replace(/^Chapter\s+/i, 'Ch. ')
+      : '';
+    const hasSeparateLabel = Boolean(
+      shortLabel &&
+      displayTitle &&
+      displayTitle.toLowerCase().trim() !== meta.chapterLabel.toLowerCase().trim()
+    );
+
+    if (isPick) {
+      const active = String(ch.url) === String(activeChapterUrl || '');
+      return (
+        <tr
+          key={`${ch.url}__${i}`}
+          onClick={() => onPickChapter?.(ch)}
+          className={`cursor-pointer select-none transition-colors hover:bg-surface-container-high ${
+            active
+              ? 'bg-primary/10 font-semibold text-primary'
+              : i % 2 !== 0
+                ? 'bg-surface-container-low/50'
+                : ''
           }`}
         >
-          {showSectionTitle ? (
-            <h3
-              className={`text-sm font-bold text-on-surface ${
-                isPick && onToggleReaderChapterPanel ? 'min-w-0 flex-1 truncate' : ''
-              }`}
+          <td className="p-2 min-w-0 max-w-[min(100vw,24rem)]">
+            <div className="flex min-w-0 items-center gap-1.5">
+              {hasSeparateLabel ? (
+                <>
+                  <span className="shrink-0 text-xs font-bold text-primary">
+                    {shortLabel}
+                  </span>
+                  <span
+                    className="truncate text-xs font-medium text-on-surface"
+                    data-tooltip={meta.groupName ? `${displayTitle} • ${meta.groupName}` : displayTitle}
+                  >
+                    {displayTitle}
+                  </span>
+                </>
+              ) : (
+                <span
+                  className="truncate text-xs font-medium text-on-surface"
+                  data-tooltip={meta.groupName ? `${displayTitle} • ${meta.groupName}` : displayTitle}
+                >
+                  {shortLabel || displayTitle}
+                </span>
+              )}
+              {ch.url && currentMangaUrl.includes('dtv-ebook.com.vn') ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    window.electronAPI.openExternal(ch.url);
+                  }}
+                  className="flex shrink-0 items-center justify-center text-on-surface-variant/40 transition-colors hover:text-primary"
+                  data-tooltip={t('chapterList.openExternal')}
+                  aria-label={t('chapterList.openExternal')}
+                >
+                  <span className="material-symbols-outlined text-[14px] leading-none">open_in_new</span>
+                </button>
+              ) : null}
+            </div>
+          </td>
+        </tr>
+      );
+    }
+
+    return (
+      <tr
+        key={`${ch.url}__${i}`}
+        onMouseDown={(e) => handleRowMouseDown(e, i)}
+        onMouseEnter={(e) => handleRowMouseEnter(e, i)}
+        onClick={(e) => applyChapterSelection(e, ch, i, { fromCheckbox: false })}
+        className={`cursor-pointer select-none transition-colors hover:bg-surface-container-high ${
+          i % 2 !== 0 ? 'bg-surface-container-low/50' : ''
+        }`}
+      >
+        <td className="p-2">
+          <input
+            type="checkbox"
+            data-testid="chapter-checkbox"
+            checked={selectedUrls.has(ch.url)}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => {
+              e.stopPropagation();
+              if (dragJustEndedRef.current) {
+                dragJustEndedRef.current = false;
+                e.preventDefault();
+                return;
+              }
+              applyChapterSelection(e, ch, i, { fromCheckbox: true });
+            }}
+            className="rounded border-none bg-surface-container-highest"
+          />
+        </td>
+        <td className="p-2 min-w-0 max-w-[340px]">
+          <div className="flex min-w-0 items-center gap-1.5">
+            {hasSeparateLabel ? (
+              <>
+                <span className="shrink-0 text-xs font-bold text-primary">
+                  {shortLabel}
+                </span>
+                <span
+                  className="truncate text-xs font-medium text-on-surface"
+                  data-tooltip={meta.groupName ? `${displayTitle} • ${meta.groupName}` : displayTitle}
+                >
+                  {displayTitle}
+                </span>
+              </>
+            ) : (
+              <span
+                className="truncate text-xs font-medium text-on-surface"
+                data-tooltip={meta.groupName ? `${displayTitle} • ${meta.groupName}` : displayTitle}
+              >
+                {shortLabel || displayTitle}
+              </span>
+            )}
+            {meta.groupName ? (
+              <span
+                className="hidden xl:inline-flex shrink-0 items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-surface-container-high text-on-surface-variant/80 border border-outline-variant/15"
+                data-tooltip={meta.groupName}
+              >
+                <span className="material-symbols-outlined text-[12px] leading-none text-primary">group</span>
+                <span className="max-w-[100px] truncate">{meta.groupName}</span>
+              </span>
+            ) : null}
+            {ch.url && currentMangaUrl.includes('dtv-ebook.com.vn') ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  window.electronAPI.openExternal(ch.url);
+                }}
+                className="flex shrink-0 items-center justify-center text-on-surface-variant/40 transition-colors hover:text-primary"
+                data-tooltip={t('chapterList.openExternal')}
+                aria-label={t('chapterList.openExternal')}
+              >
+                <span className="material-symbols-outlined text-[14px] leading-none">open_in_new</span>
+              </button>
+            ) : null}
+          </div>
+        </td>
+        <td className="p-2 text-right">
+          <StatusBadge variant={ch.statusKey} label={t(`chapter.status.${ch.statusKey}`)} />
+        </td>
+        {readColumnActive ? (() => {
+          const url_string = String(ch?.url ?? '');
+          const has_local_file =
+            readChapterAllowedUrls instanceof Set && readChapterAllowedUrls.has(url_string);
+          const has_online = typeof onReadChapterOnline === 'function';
+          const read_chapter_blocked = !has_local_file && !has_online;
+          return (
+            <td className="p-2 text-center pr-3 w-12">
+              <button
+                type="button"
+                disabled={read_chapter_blocked}
+                data-tooltip={
+                  read_chapter_blocked
+                    ? t('chapterList.readBlockedNeedSaveTo')
+                    : t('chapterList.readChapter')
+                }
+                aria-label={t('chapterList.readChapter')}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (read_chapter_blocked) return;
+                  applyUnifiedReadChapter(ch);
+                }}
+                className={`inline-flex h-7 w-7 items-center justify-center rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+                  read_chapter_blocked
+                    ? 'border border-outline-variant/25 bg-surface-container-highest text-on-surface-variant'
+                    : 'border border-primary/30 bg-primary/15 text-primary hover:bg-primary hover:text-white'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[16px] leading-none">auto_stories</span>
+              </button>
+            </td>
+          );
+        })() : null}
+      </tr>
+    );
+  };
+
+  /** Render item trong thẻ nhóm Volume (Phương án 2: Card Accordion thụt lề) */
+  const renderCardChapterItem = (ch, i) => {
+    const meta = parseChapterTitleMetadata(ch.title, ch.volume);
+    const displayTitle = meta.cleanTitle || ch.title;
+    const shortLabel = meta.chapterLabel
+      ? meta.chapterLabel.replace(/^Chapter\s+/i, 'Ch. ')
+      : '';
+    const hasSeparateLabel = Boolean(
+      shortLabel &&
+      displayTitle &&
+      displayTitle.toLowerCase().trim() !== meta.chapterLabel.toLowerCase().trim()
+    );
+
+    if (isPick) {
+      const active = String(ch.url) === String(activeChapterUrl || '');
+      return (
+        <div
+          key={`${ch.url}__${i}`}
+          onClick={() => onPickChapter?.(ch)}
+          className={`p-2.5 pl-6 flex items-center justify-between gap-2.5 cursor-pointer select-none transition-colors hover:bg-surface-container-high ${
+            active
+              ? 'bg-primary/10 font-semibold text-primary'
+              : i % 2 !== 0
+                ? 'bg-surface-container-low/40'
+                : ''
+          }`}
+        >
+          <div className="flex min-w-0 items-center gap-2 flex-1">
+            {hasSeparateLabel ? (
+              <>
+                <span className="shrink-0 text-xs font-bold text-primary">
+                  {shortLabel}
+                </span>
+                <span
+                  className="truncate text-xs font-medium text-on-surface"
+                  data-tooltip={meta.groupName ? `${displayTitle} • ${meta.groupName}` : displayTitle}
+                >
+                  {displayTitle}
+                </span>
+              </>
+            ) : (
+              <span
+                className="truncate text-xs font-medium text-on-surface"
+                data-tooltip={meta.groupName ? `${displayTitle} • ${meta.groupName}` : displayTitle}
+              >
+                {shortLabel || displayTitle}
+              </span>
+            )}
+            {ch.url && currentMangaUrl.includes('dtv-ebook.com.vn') ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  window.electronAPI.openExternal(ch.url);
+                }}
+                className="flex shrink-0 items-center justify-center text-on-surface-variant/40 transition-colors hover:text-primary"
+                data-tooltip={t('chapterList.openExternal')}
+                aria-label={t('chapterList.openExternal')}
+              >
+                <span className="material-symbols-outlined text-[14px] leading-none">open_in_new</span>
+              </button>
+            ) : null}
+          </div>
+        </div>
+      );
+    }
+
+    const url_string = String(ch?.url ?? '');
+    const has_local_file =
+      readChapterAllowedUrls instanceof Set && readChapterAllowedUrls.has(url_string);
+    const has_online = typeof onReadChapterOnline === 'function';
+    const read_chapter_blocked = !has_local_file && !has_online;
+
+    return (
+      <div
+        key={`${ch.url}__${i}`}
+        onMouseDown={(e) => handleRowMouseDown(e, i)}
+        onMouseEnter={(e) => handleRowMouseEnter(e, i)}
+        onClick={(e) => applyChapterSelection(e, ch, i, { fromCheckbox: false })}
+        className={`p-2.5 pl-6 flex items-center justify-between gap-2.5 cursor-pointer select-none transition-colors hover:bg-surface-container-high ${
+          selectedUrls.has(ch.url) ? 'bg-primary/5' : i % 2 !== 0 ? 'bg-surface-container-low/40' : ''
+        }`}
+      >
+        <div className="flex min-w-0 items-center gap-2.5 flex-1">
+          <input
+            type="checkbox"
+            data-testid="chapter-checkbox"
+            checked={selectedUrls.has(ch.url)}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => {
+              e.stopPropagation();
+              if (dragJustEndedRef.current) {
+                dragJustEndedRef.current = false;
+                e.preventDefault();
+                return;
+              }
+              applyChapterSelection(e, ch, i, { fromCheckbox: true });
+            }}
+            className="rounded border-none bg-surface-container-highest shrink-0"
+          />
+          {hasSeparateLabel ? (
+            <>
+              <span className="shrink-0 text-xs font-bold text-primary">
+                {shortLabel}
+              </span>
+              <span
+                className="truncate text-xs font-medium text-on-surface"
+                data-tooltip={meta.groupName ? `${displayTitle} • ${meta.groupName}` : displayTitle}
+              >
+                {displayTitle}
+              </span>
+            </>
+          ) : (
+            <span
+              className="truncate text-xs font-medium text-on-surface"
+              data-tooltip={meta.groupName ? `${displayTitle} • ${meta.groupName}` : displayTitle}
             >
-              {titleOverride ?? t('chapterList.title')}
-            </h3>
+              {shortLabel || displayTitle}
+            </span>
+          )}
+          {meta.groupName ? (
+            <span
+              className="hidden lg:inline-flex shrink-0 items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-surface-container-high text-on-surface-variant/80 border border-outline-variant/15"
+              data-tooltip={meta.groupName}
+            >
+              <span className="material-symbols-outlined text-[12px] leading-none text-primary">group</span>
+              <span className="max-w-[100px] truncate">{meta.groupName}</span>
+            </span>
           ) : null}
-          {isPick && onToggleReaderChapterPanel ? (
+          {ch.url && currentMangaUrl.includes('dtv-ebook.com.vn') ? (
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                onToggleReaderChapterPanel(e);
+                window.electronAPI.openExternal(ch.url);
               }}
-              data-tooltip={t('reader.hideChapters')}
-              aria-label={t('reader.hideChapters')}
-              className="relative z-20 flex h-12 w-9 shrink-0 flex-col items-center justify-center rounded-lg border border-outline-variant/25 bg-surface-container-high text-primary shadow-sm hover:bg-surface-container-highest"
+              className="flex shrink-0 items-center justify-center text-on-surface-variant/40 transition-colors hover:text-primary"
+              data-tooltip={t('chapterList.openExternal')}
+              aria-label={t('chapterList.openExternal')}
             >
-              <span className="material-symbols-outlined pointer-events-none text-[22px] leading-none">
-                menu_open
-              </span>
+              <span className="material-symbols-outlined text-[14px] leading-none">open_in_new</span>
             </button>
           ) : null}
         </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <StatusBadge variant={ch.statusKey} label={t(`chapter.status.${ch.statusKey}`)} />
+          {readColumnActive ? (
+            <button
+              type="button"
+              disabled={read_chapter_blocked}
+              data-tooltip={
+                read_chapter_blocked
+                  ? t('chapterList.readBlockedNeedSaveTo')
+                  : t('chapterList.readChapter')
+              }
+              aria-label={t('chapterList.readChapter')}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (read_chapter_blocked) return;
+                applyUnifiedReadChapter(ch);
+              }}
+              className={`inline-flex h-7 w-7 items-center justify-center rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+                read_chapter_blocked
+                  ? 'border border-outline-variant/25 bg-surface-container-highest text-on-surface-variant'
+                  : 'border border-primary/30 bg-primary/15 text-primary hover:bg-primary hover:text-white'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[16px] leading-none">auto_stories</span>
+            </button>
+          ) : null}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
+      {showChapterListHeader || hasVolumes ? (
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            {hasVolumes && !isPick ? (
+              <input
+                type="checkbox"
+                data-testid="select-all-chapters-chk"
+                checked={allInListSelected}
+                onChange={() => (allInListSelected ? onUnselectAll() : onSelectAll())}
+                className="rounded border-none bg-surface-container-highest cursor-pointer shrink-0"
+                data-tooltip={allInListSelected ? t('chapterList.unselectAll') : t('chapterList.selectAll')}
+                aria-label={allInListSelected ? t('chapterList.unselectAll') : t('chapterList.selectAll')}
+              />
+            ) : null}
+            {showSectionTitle ? (
+              <h3
+                className={`text-sm font-bold text-on-surface ${
+                  isPick && onToggleReaderChapterPanel ? 'min-w-0 flex-1 truncate' : ''
+                }`}
+              >
+                {titleOverride ?? t('chapterList.title')}
+              </h3>
+            ) : (
+              <div />
+            )}
+            {hasVolumes ? (
+              <button
+                type="button"
+                onClick={handleTitleHeaderClick}
+                className="inline-flex cursor-pointer select-none items-center gap-1 text-xs text-on-surface-variant hover:text-primary transition-colors ml-1"
+                data-tooltip={
+                  titleSort == null
+                    ? t('chapterList.titleSortSource')
+                    : titleSort === 'asc'
+                      ? t('chapterList.titleSortAsc')
+                      : t('chapterList.titleSortDesc')
+                }
+                aria-label={t('chapterList.column.title')}
+              >
+                <span className="material-symbols-outlined text-[16px] leading-none text-primary">
+                  {titleSort == null ? 'swap_vert' : titleSort === 'asc' ? 'arrow_upward' : 'arrow_downward'}
+                </span>
+              </button>
+            ) : null}
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {hasVolumes ? (
+              <button
+                type="button"
+                onClick={toggleAllVolumes}
+                className="inline-flex cursor-pointer select-none items-center gap-1.5 px-2.5 py-1 rounded-lg border border-outline-variant/20 bg-surface-container-high/80 text-xs font-medium text-on-surface hover:text-primary hover:border-primary/40 hover:bg-surface-container-highest transition-colors shadow-xs"
+                data-tooltip={
+                  allVolumesCollapsed
+                    ? t('chapterList.expandAllVolumes')
+                    : t('chapterList.collapseAllVolumes')
+                }
+                aria-label={
+                  allVolumesCollapsed
+                    ? t('chapterList.expandAllVolumes')
+                    : t('chapterList.collapseAllVolumes')
+                }
+              >
+                <span className="material-symbols-outlined text-[16px] leading-none text-primary">
+                  {allVolumesCollapsed ? 'unfold_more' : 'unfold_less'}
+                </span>
+                <span>
+                  {allVolumesCollapsed
+                    ? t('chapterList.expandAllVolumes')
+                    : t('chapterList.collapseAllVolumes')}
+                </span>
+              </button>
+            ) : null}
+
+            {isPick && onToggleReaderChapterPanel ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleReaderChapterPanel(e);
+                }}
+                data-tooltip={t('reader.hideChapters')}
+                aria-label={t('reader.hideChapters')}
+                className="relative z-20 flex h-10 w-9 shrink-0 flex-col items-center justify-center rounded-lg border border-outline-variant/25 bg-surface-container-high text-primary shadow-sm hover:bg-surface-container-highest"
+              >
+                <span className="material-symbols-outlined pointer-events-none text-[22px] leading-none">
+                  menu_open
+                </span>
+              </button>
+            ) : null}
+          </div>
+        </div>
       ) : null}
 
-      <div
-        className={`min-h-0 flex-1 overflow-auto rounded-lg border border-outline-variant/10 bg-surface-container-low ${isPick ? 'min-h-[8rem]' : 'min-h-[12rem]'}`}
-      >
-        <table className="w-full min-w-[min(100%,360px)] border-separate border-spacing-0 text-left text-sm">
-          <thead className="sticky top-0 z-10 bg-surface-container-high">
-            <tr>
-              {!isPick ? (
-                <th className="w-8 border-b border-outline-variant/20 p-2">
-                  <input
-                    type="checkbox"
-                    data-testid="select-all-chapters-chk"
-                    checked={allInListSelected}
-                    onChange={() => (allInListSelected ? onUnselectAll() : onSelectAll())}
-                    className="rounded border-none bg-surface-container-highest"
-                  />
-                </th>
-              ) : null}
-              <th className="border-b border-outline-variant/20 p-2 text-xs font-bold uppercase text-on-surface-variant">
-                <button
-                  type="button"
-                  onClick={handleTitleHeaderClick}
-                  className="inline-flex cursor-pointer select-none items-center gap-1 hover:text-primary"
-                  data-tooltip={
-                    titleSort == null
-                      ? t('chapterList.titleSortSource')
-                      : titleSort === 'asc'
-                        ? t('chapterList.titleSortAsc')
-                        : t('chapterList.titleSortDesc')
-                  }
+      {hasVolumes ? (
+        <div
+          className={`min-h-0 flex-1 overflow-auto rounded-lg border border-outline-variant/10 bg-surface-container-low p-2.5 space-y-3 custom-scrollbar ${isPick ? 'min-h-[8rem]' : 'min-h-[12rem]'}`}
+        >
+          {volumeGroups.length === 0 ? (
+            <div className="p-4 text-center text-xs text-on-surface-variant">
+              {emptyListMessage ?? t('chapterList.fetchEmpty')}
+            </div>
+          ) : (
+            volumeGroups.map((group) => {
+              const isCollapsed = collapsedVolumeKeys.has(group.key);
+              const groupChapterUrls = group.chapters.map((c) => c.url);
+              const selectedCountInGroup =
+                !isPick && selectedUrls instanceof Set
+                  ? groupChapterUrls.filter((u) => selectedUrls.has(u)).length
+                  : 0;
+              const downloadedCountInGroup =
+                readChapterAllowedUrls instanceof Set
+                  ? groupChapterUrls.filter((u) => readChapterAllowedUrls.has(u)).length
+                  : 0;
+              const allInGroupSelected =
+                groupChapterUrls.length > 0 && selectedCountInGroup === groupChapterUrls.length;
+              const isGroupIndeterminate =
+                selectedCountInGroup > 0 && !allInGroupSelected;
+              const volumeTitle =
+                group.volume === null
+                  ? t('chapterList.noVolumeHeader')
+                  : t('chapterList.volumeHeader', { volume: group.volume });
+
+              return (
+                <div
+                  key={group.key}
+                  className="border border-outline-variant/20 rounded-xl overflow-hidden bg-surface-container-low/40 shadow-xs"
                 >
-                  {t('chapterList.column.title')}
-                  <span className="material-symbols-outlined text-[16px] leading-none text-primary">
-                    {titleSort == null ? 'swap_vert' : titleSort === 'asc' ? 'arrow_upward' : 'arrow_downward'}
-                  </span>
-                </button>
-              </th>
-              {!isPick ? (
-                <>
-                  <th className="w-28 min-w-[7rem] border-b border-outline-variant/20 p-2 text-right text-xs font-bold uppercase text-on-surface-variant">
-                    {t('chapterList.column.status')}
-                  </th>
-                  {readColumnActive ? (
-                    <th className="w-24 min-w-[5.5rem] border-b border-outline-variant/20 p-2 text-center text-[10px] font-bold uppercase leading-tight text-on-surface-variant">
-                      {t('chapterList.column.read')}
-                    </th>
-                  ) : null}
-                </>
-              ) : null}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-outline-variant/10">
-            {rows.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={isPick ? colSpanPick : colSpanDefault}
-                  className="p-4 text-center text-xs text-on-surface-variant"
-                >
-                  {emptyListMessage ?? t('chapterList.fetchEmpty')}
-                </td>
-              </tr>
-            ) : isPick ? (
-              rows.map((ch, i) => {
-                const active = String(ch.url) === String(activeChapterUrl || '');
-                return (
-                  <tr
-                    key={`${ch.url}__${i}`}
-                    onClick={() => onPickChapter?.(ch)}
-                    className={`cursor-pointer select-none transition-colors hover:bg-surface-container-high ${
-                      active
-                        ? 'bg-primary/10 font-semibold text-primary'
-                        : i % 2 !== 0
-                          ? 'bg-surface-container-low/50'
-                          : ''
-                    }`}
+                  {/* Volume Card Header */}
+                  <div
+                    onClick={() => toggleVolumeCollapse(group.key)}
+                    className="p-2.5 bg-surface-container-high/90 hover:bg-surface-container-highest cursor-pointer select-none flex items-center justify-between border-b border-outline-variant/15 transition-colors"
                   >
-                    <td className="max-w-[min(100vw,20rem)] p-2">
-                      <div className="flex min-w-0 items-center gap-1.5">
-                        <span className="truncate" data-tooltip={ch.title}>
-                          {ch.title}
-                        </span>
-                        {ch.url && currentMangaUrl.includes('dtv-ebook.com.vn') ? (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              window.electronAPI.openExternal(ch.url);
-                            }}
-                            className="flex shrink-0 items-center justify-center text-on-surface-variant/40 transition-colors hover:text-primary"
-                            data-tooltip={t('chapterList.openExternal')}
-                            aria-label={t('chapterList.openExternal')}
-                          >
-                            <span className="material-symbols-outlined text-[14px] leading-none">open_in_new</span>
-                          </button>
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
-            ) : (
-              rows.map((ch, i) => (
-                <tr
-                  key={`${ch.url}__${i}`}
-                  onMouseDown={(e) => handleRowMouseDown(e, i)}
-                  onMouseEnter={(e) => handleRowMouseEnter(e, i)}
-                  onClick={(e) => applyChapterSelection(e, ch, i, { fromCheckbox: false })}
-                  className={`cursor-pointer select-none transition-colors hover:bg-surface-container-high ${i % 2 !== 0 ? 'bg-surface-container-low/50' : ''}`}
-                >
-                  <td className="p-2">
-                    <input
-                      type="checkbox"
-                      data-testid="chapter-checkbox"
-                      checked={selectedUrls.has(ch.url)}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={(e) => {
-                        e.stopPropagation();
-                        if (dragJustEndedRef.current) {
-                          dragJustEndedRef.current = false;
-                          e.preventDefault();
-                          return;
-                        }
-                        applyChapterSelection(e, ch, i, { fromCheckbox: true });
-                      }}
-                      className="rounded border-none bg-surface-container-highest"
-                    />
-                  </td>
-                  <td className="max-w-[220px] p-2">
-                    <div className="flex min-w-0 items-center gap-1.5">
-                      <span className="truncate" data-tooltip={ch.title}>
-                        {ch.title}
-                      </span>
-                      {ch.url && currentMangaUrl.includes('dtv-ebook.com.vn') ? (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            window.electronAPI.openExternal(ch.url);
+                    <div className="flex items-center gap-2 min-w-0">
+                      {!isPick ? (
+                        <input
+                          type="checkbox"
+                          data-testid={`volume-checkbox-${group.key}`}
+                          checked={allInGroupSelected}
+                          ref={(el) => {
+                            if (el) el.indeterminate = isGroupIndeterminate;
                           }}
-                          className="flex shrink-0 items-center justify-center text-on-surface-variant/40 transition-colors hover:text-primary"
-                          data-tooltip={t('chapterList.openExternal')}
-                          aria-label={t('chapterList.openExternal')}
-                        >
-                          <span className="material-symbols-outlined text-[14px] leading-none">open_in_new</span>
-                        </button>
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => toggleSelectVolume(e, group)}
+                          data-tooltip={t('chapterList.selectVolumeAll')}
+                          aria-label={t('chapterList.selectVolumeAll')}
+                          className="rounded border-none bg-surface-container-highest shrink-0"
+                        />
                       ) : null}
+                      <span className="w-2 h-2 rounded-full bg-primary shrink-0" />
+                      <span className="truncate font-bold text-xs text-on-surface">
+                        {volumeTitle}
+                      </span>
+                      <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-primary/10 text-primary shrink-0">
+                        {t('chapterList.volumeCount', { count: group.chapters.length })}
+                      </span>
                     </div>
-                  </td>
-                  <td className="p-2 text-right">
-                    <StatusBadge variant={ch.statusKey} label={t(`chapter.status.${ch.statusKey}`)} />
-                  </td>
-                  {readColumnActive ? (() => {
-                    const url_string = String(ch?.url ?? '');
-                    const has_local_file =
-                      readChapterAllowedUrls instanceof Set && readChapterAllowedUrls.has(url_string);
-                    const has_online = typeof onReadChapterOnline === 'function';
-                    const read_chapter_blocked = !has_local_file && !has_online;
-                    return (
-                    <td className="p-2 text-center">
-                      <button
-                        type="button"
-                        disabled={read_chapter_blocked}
-                        data-tooltip={
-                          read_chapter_blocked ? t('chapterList.readBlockedNeedSaveTo') : t('chapterList.readChapter')
-                        }
-                        aria-label={t('chapterList.readChapter')}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (read_chapter_blocked) return;
-                          applyUnifiedReadChapter(ch);
-                        }}
-                        className={`inline-flex h-9 min-w-[4.75rem] items-center justify-center gap-1 rounded-xl px-2.5 text-xs font-semibold tracking-wide transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
-                          read_chapter_blocked
-                            ? 'border border-outline-variant/25 bg-surface-container-highest text-on-surface-variant'
-                            : 'border border-primary/30 bg-primary/15 text-primary hover:bg-primary/22'
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {downloadedCountInGroup > 0 ? (
+                        <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 shrink-0">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                          {t('chapterList.volumeDownloadedCount', {
+                            downloaded: downloadedCountInGroup,
+                            total: group.chapters.length,
+                          }) ?? `Đã tải ${downloadedCountInGroup}/${group.chapters.length}`}
+                        </span>
+                      ) : null}
+                      {!isPick && selectedCountInGroup > 0 ? (
+                        <span className="px-2 py-0.5 rounded-md text-xs font-semibold bg-primary text-on-primary shrink-0 shadow-xs">
+                          {t('chapterList.volumeSelectedCount', {
+                            selected: selectedCountInGroup,
+                            total: group.chapters.length,
+                          })}
+                        </span>
+                      ) : null}
+                      <span
+                        className={`material-symbols-outlined text-[18px] leading-none text-on-surface-variant transition-transform duration-150 ${
+                          isCollapsed ? '-rotate-90' : 'rotate-0'
                         }`}
                       >
-                        <span className="material-symbols-outlined text-[18px] leading-none">auto_stories</span>
-                        <span>{t('chapterList.column.read')}</span>
-                      </button>
-                    </td>
-                    );
-                  })() : null}
+                        expand_more
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Nested Chapter Rows (Indented with pl-6) */}
+                  {!isCollapsed && (
+                    <div className="divide-y divide-outline-variant/10 bg-surface">
+                      {group.chapters.map((ch) => renderCardChapterItem(ch, ch.rowIndex))}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      ) : (
+        <div
+          className={`min-h-0 flex-1 overflow-auto rounded-lg border border-outline-variant/10 bg-surface-container-low ${isPick ? 'min-h-[8rem]' : 'min-h-[12rem]'}`}
+        >
+          <table className="w-full min-w-[min(100%,360px)] border-separate border-spacing-0 text-left text-sm">
+            <thead className="sticky top-0 z-10 bg-surface-container-high">
+              <tr>
+                {!isPick ? (
+                  <th className="w-8 border-b border-outline-variant/20 p-2">
+                    <input
+                      type="checkbox"
+                      data-testid="select-all-chapters-chk"
+                      checked={allInListSelected}
+                      onChange={() => (allInListSelected ? onUnselectAll() : onSelectAll())}
+                      className="rounded border-none bg-surface-container-highest"
+                    />
+                  </th>
+                ) : null}
+                <th className="border-b border-outline-variant/20 p-2 text-xs font-bold uppercase text-on-surface-variant">
+                  <button
+                    type="button"
+                    onClick={handleTitleHeaderClick}
+                    className="inline-flex cursor-pointer select-none items-center gap-1 hover:text-primary"
+                    data-tooltip={
+                      titleSort == null
+                        ? t('chapterList.titleSortSource')
+                        : titleSort === 'asc'
+                          ? t('chapterList.titleSortAsc')
+                          : t('chapterList.titleSortDesc')
+                    }
+                  >
+                    {t('chapterList.column.title')}
+                    <span className="material-symbols-outlined text-[16px] leading-none text-primary">
+                      {titleSort == null ? 'swap_vert' : titleSort === 'asc' ? 'arrow_upward' : 'arrow_downward'}
+                    </span>
+                  </button>
+                </th>
+                {!isPick ? (
+                  <>
+                    <th className="w-24 min-w-[5rem] border-b border-outline-variant/20 p-2 text-right text-xs font-bold uppercase text-on-surface-variant">
+                      {t('chapterList.column.status')}
+                    </th>
+                    {readColumnActive ? (
+                      <th className="w-12 border-b border-outline-variant/20 p-2 text-center text-[10px] font-bold uppercase leading-tight text-on-surface-variant pr-3">
+                        {t('chapterList.column.read')}
+                      </th>
+                    ) : null}
+                  </>
+                ) : null}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-outline-variant/10">
+              {rows.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={isPick ? colSpanPick : colSpanDefault}
+                    className="p-4 text-center text-xs text-on-surface-variant"
+                  >
+                    {emptyListMessage ?? t('chapterList.fetchEmpty')}
+                  </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              ) : (
+                rows.map((ch, i) => renderChapterRow(ch, i))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {!isPick && !hideQueueFooter ? (
         <>

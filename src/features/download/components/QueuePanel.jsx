@@ -297,7 +297,7 @@ function QueueQueueMobileCard({
                 <div className="flex flex-col min-w-0 gap-0.5">
                   <span className="flex min-w-0 items-center gap-1 text-error text-xs font-medium">
                     <span className="material-symbols-outlined text-[15px] leading-none shrink-0">error</span>
-                    <span className="min-w-0 truncate" title={item.workflowProgress?.error}>
+                    <span className="min-w-0 truncate" data-tooltip={item.workflowProgress?.error}>
                       {item.workflowProgress?.error || t('queue.workflowFailedState') || 'Lỗi quy trình'}
                     </span>
                   </span>
@@ -941,7 +941,7 @@ export default function QueuePanel({
                     <div className="flex flex-col min-w-0 gap-0.5">
                       <span className="flex min-w-0 items-center gap-1 text-error text-[11px] sm:text-sm font-medium">
                         <span className="material-symbols-outlined text-[16px] leading-none shrink-0">error</span>
-                        <span className="min-w-0 truncate" title={item.workflowProgress?.error}>
+                        <span className="min-w-0 truncate" data-tooltip={item.workflowProgress?.error}>
                           {item.workflowProgress?.error || t('queue.workflowFailedState') || 'Lỗi quy trình'}
                         </span>
                       </span>

@@ -118,6 +118,16 @@ describe('connectorPathUtils', () => {
       const chapterFolder = path.basename(result);
       expect(Buffer.from(chapterFolder, 'utf8').length).toBeLessThanOrEqual(255);
     });
+
+    it('should place chapter in Vol. X folder when volume is provided', () => {
+      const result = resolveChapterDir('/base', 'Manga', 'Chapter 1', { mode: 'numbered' }, '1');
+      expect(result).toBe(path.join('/base', 'Manga', 'Vol. 1', 'Chap 001'));
+    });
+
+    it('should place chapter in root manga folder when volume is null or empty', () => {
+      const result = resolveChapterDir('/base', 'Manga', 'Chapter 105', { mode: 'numbered' }, null);
+      expect(result).toBe(path.join('/base', 'Manga', 'Chap 105'));
+    });
   });
 
   describe('resolveCoverPath', () => {

@@ -5,7 +5,13 @@ import { formatChapterFolderName, formatChapterPageFileName } from '../../utils/
 /**
  * Định dạng thư mục chương & cách lưu ảnh — dùng trong Cài đặt (Settings).
  */
-export default function ChapterFolderControls({ chapterFolder, setChapterFolder, persistChapterFolder }) {
+export default function ChapterFolderControls({
+  chapterFolder,
+  setChapterFolder,
+  persistChapterFolder,
+  mangadexVolumeFolderGrouping,
+  setMangadexVolumeFolderGrouping,
+}) {
   const { t } = useI18n();
   const api = typeof window !== 'undefined' ? window.electronAPI : null;
   if (!api?.getChapterFolderSettings) return null;
@@ -163,6 +169,48 @@ export default function ChapterFolderControls({ chapterFolder, setChapterFolder,
           </div>
         </div>
       </div>
+
+      {/* 3. Phân loại theo tập cho MangaDex */}
+      {typeof setMangadexVolumeFolderGrouping === 'function' && (
+        <div className="space-y-2.5 p-3.5 rounded-xl bg-surface-container-highest/40 border border-outline-variant/10">
+          <label className="flex items-start gap-3 cursor-pointer select-none max-w-full">
+            <input
+              type="checkbox"
+              checked={mangadexVolumeFolderGrouping !== false}
+              onChange={(e) => setMangadexVolumeFolderGrouping(e.target.checked)}
+              className="mt-0.5 size-4 rounded border-outline-variant accent-primary shrink-0"
+            />
+            <div className="space-y-0.5">
+              <span className="text-xs font-semibold text-on-surface block leading-snug">
+                {t('settings.mangadexVolumeGrouping.label')}
+              </span>
+              <span className="text-[11px] text-on-surface-variant block leading-snug">
+                {t('settings.mangadexVolumeGrouping.desc')}
+              </span>
+            </div>
+          </label>
+
+          {mangadexVolumeFolderGrouping !== false && (
+            <div className="p-3 rounded-xl bg-surface-container-lowest/80 border border-outline-variant/15 space-y-2 text-xs">
+              <p className="text-on-surface-variant leading-relaxed">
+                {t('settings.mangadexVolumeGrouping.exampleHint')}
+              </p>
+              <div className="rounded-lg bg-surface-container-high/50 p-2.5 border border-outline-variant/10">
+                <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider block mb-1.5">
+                  {t('settings.mangadexVolumeGrouping.exampleTitle')}
+                </span>
+                <pre className="font-mono text-[11px] text-on-surface/90 leading-relaxed overflow-x-auto select-all">
+{`📁 ${mangaPlaceholder}/
+├── 📁 Vol. 1/
+│   ├── 🖼️ cover.jpg
+│   └── 📁 ${subfolderName1}/
+└── 📁 ${subfolderName2}/`}
+                </pre>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -494,6 +494,7 @@ class BaseConnectorService {
       numberOfThreads = 5,
       coverUrl,
       chapterFolderFormat,
+      volume,
       onLog,
       onProgress,
       shouldAbort,
@@ -509,12 +510,29 @@ class BaseConnectorService {
       if (typeof onProgress === 'function') onProgress(progressPayload);
     };
 
-    const chapterDir = resolveChapterDir(baseSaveDir, mangaTitle, chapterTitle, chapterFolderFormat);
+    const chapterDir = resolveChapterDir(baseSaveDir, mangaTitle, chapterTitle, chapterFolderFormat, volume);
     const dbChapterTitle = formatChapterTitle(chapterTitle);
     const mangaDir = resolveMangaDir(baseSaveDir, mangaTitle);
     const referer = this.getReferer(payload);
 
-    // Step 2: Create directories
+    // Step 2: Validate baseSaveDir and create directories
+    try {
+      const { validateDirectory } = require('../../../utils/pathValidator');
+      const validation = validateDirectory(baseSaveDir);
+      if (!validation.ok && !validation.canCreate) {
+        const errorReason = validation.error || `Thư mục lưu "${baseSaveDir}" không tồn tại hoặc không thể ghi.`;
+        log(`Lỗi thư mục lưu: ${errorReason}`, 'error');
+        return {
+          ok: false,
+          fatal: true,
+          errorType: 'INVALID_SAVE_PATH',
+          error: `${errorReason} Đường dẫn: ${chapterDir}`,
+        };
+      }
+    } catch {
+      // Fallback if validator fails
+    }
+
     try {
       fs.mkdirSync(chapterDir, { recursive: true });
     } catch (err) {
@@ -526,22 +544,41 @@ class BaseConnectorService {
         if (volMatch && !fs.existsSync(`/Volumes/${volMatch[1]}`)) {
           return {
             ok: false,
+            fatal: true,
+            errorType: 'INVALID_SAVE_PATH',
             error: `Ổ đĩa ngoài "/Volumes/${volMatch[1]}" chưa được kết nối hoặc đã bị ngắt kết nối. Vui lòng cắm lại ổ đĩa hoặc chọn thư mục lưu khác. Đường dẫn: ${chapterDir}`,
           };
         }
         return {
           ok: false,
+          fatal: true,
+          errorType: 'INVALID_SAVE_PATH',
           error:
             `Không có quyền ghi thư mục lưu (${code}). Kiểm tra ổ đĩa có cho phép ghi (NTFS trên macOS chỉ đọc nếu không có driver ghi, hoặc cần cấp quyền truy cập Removable Volumes/Full Disk Access), rồi thử lại. Đường dẫn: ${chapterDir}`,
+        };
+      }
+      if (code === 'ENOENT') {
+        return {
+          ok: false,
+          fatal: true,
+          errorType: 'INVALID_SAVE_PATH',
+          error: `Thư mục lưu hoặc ổ đĩa không tồn tại (${code}): ${chapterDir}`,
         };
       }
       if (code === 'EINVAL' || code === 'ENAMETOOLONG') {
         return {
           ok: false,
+          fatal: true,
+          errorType: 'INVALID_SAVE_PATH',
           error: `Tên thư mục không hợp lệ trên ổ đĩa này (${code}): ${chapterDir}`,
         };
       }
-      return { ok: false, error: `Không tạo được thư mục lưu chương — ${detail}` };
+      return {
+        ok: false,
+        fatal: true,
+        errorType: 'INVALID_SAVE_PATH',
+        error: `Không tạo được thư mục lưu chương — ${detail}`,
+      };
     }
 
     const cleanup_empty_chapter_dir = () => {

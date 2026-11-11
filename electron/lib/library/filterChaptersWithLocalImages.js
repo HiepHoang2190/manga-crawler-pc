@@ -83,16 +83,19 @@ function filterChaptersWithLocalImagesNoDb(baseSaveDir, mangaTitle, chapters, ch
     if (!ct) continue;
     let chapterDir;
     try {
-      chapterDir = resolveChapterDir(base, mt, ch.title, chapterFolderFormat);
+      chapterDir = resolveChapterDir(base, mt, ch.title, chapterFolderFormat, ch.volume);
     } catch {
       continue;
     }
     const fb = path.basename(chapterDir);
-    if (!unusedFolders.has(fb)) continue;
-    if (!dirHasImages(chapterDir)) continue;
-    unusedFolders.delete(fb);
+    const relPath = path.relative(mangaDir, chapterDir).replace(/\\/g, '/');
+    const matchedFolder = unusedFolders.has(relPath) ? relPath : unusedFolders.has(fb) ? fb : null;
+    if (!matchedFolder) continue;
+    const candidateDir = path.join(mangaDir, matchedFolder);
+    if (!dirHasImages(candidateDir)) continue;
+    unusedFolders.delete(matchedFolder);
     usedIndex.add(i);
-    const row = { url: ch.url, title: ch.title, folderBasename: fb };
+    const row = { url: ch.url, title: ch.title, folderBasename: matchedFolder };
     out.push(row);
   }
 

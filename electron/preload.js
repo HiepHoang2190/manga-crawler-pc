@@ -9,6 +9,7 @@ const api = {
   getDefaultDownloadPath: () => ipcRenderer.invoke('app:defaultDownloadPath'),
   getSavedDownloadPath: () => ipcRenderer.invoke('app:getSavedDownloadPath'),
   setSavedDownloadPath: (dir) => ipcRenderer.invoke('app:setSavedDownloadPath', dir),
+  validateSaveDir: (dir) => ipcRenderer.invoke('app:validateSaveDir', dir),
   getChapterFolderSettings: () => ipcRenderer.invoke('app:getChapterFolderSettings'),
   setChapterFolderSettings: (partial) => ipcRenderer.invoke('app:setChapterFolderSettings', partial),
   selectDirectory: (defaultPath) => ipcRenderer.invoke('dialog:selectDirectory', defaultPath),
@@ -96,17 +97,18 @@ const api = {
   /** Cover CDN (Comix static + CF): tải trong main kèm cookie Flare → data URL. */
   fetchRemoteImageAsDataUrl: (imageUrl) =>
     ipcRenderer.invoke('manga:fetchRemoteImageAsDataUrl', imageUrl),
-  listChapterImageFiles: (baseSaveDir, mangaTitle, chapterTitle, folderBasename, offlineMangaDirAbsolute) =>
+  listChapterImageFiles: (baseSaveDir, mangaTitle, chapterTitle, folderBasename, offlineMangaDirAbsolute, volume) =>
     ipcRenderer.invoke('manga:listChapterImageFiles', {
       baseSaveDir,
       mangaTitle,
       chapterTitle,
       folderBasename,
       offlineMangaDirAbsolute,
+      volume,
     }),
   filterChaptersWithLocalImages: (baseSaveDir, mangaTitle, chapters, absoluteMangaDir) =>
     ipcRenderer.invoke('manga:filterChaptersWithLocalImages', { baseSaveDir, mangaTitle, chapters, absoluteMangaDir }),
-  readLocalChapterImage: (baseSaveDir, mangaTitle, chapterTitle, fileName, folderBasename, offlineMangaDirAbsolute) =>
+  readLocalChapterImage: (baseSaveDir, mangaTitle, chapterTitle, fileName, folderBasename, offlineMangaDirAbsolute, volume) =>
     ipcRenderer.invoke('manga:readLocalChapterImage', {
       baseSaveDir,
       mangaTitle,
@@ -114,6 +116,7 @@ const api = {
       fileName,
       folderBasename,
       offlineMangaDirAbsolute,
+      volume,
     }),
   countLocalChapters: (baseSaveDir, mangaTitle) =>
     ipcRenderer.invoke('manga:countLocalChapters', { baseSaveDir, mangaTitle }),
@@ -189,6 +192,7 @@ const api = {
   },
   upscaleDownloadEngine: (engineId) => ipcRenderer.invoke('upscale:downloadEngine', engineId),
   upscaleGetGpuList: () => ipcRenderer.invoke('upscale:getGpuList'),
+  upscaleGetHardwareInfo: () => ipcRenderer.invoke('upscale:getHardwareInfo'),
   // Compress
   compressScan: (payload) => ipcRenderer.invoke('compress:scan', payload),
   compressStart: (payload) => ipcRenderer.invoke('compress:start', payload),

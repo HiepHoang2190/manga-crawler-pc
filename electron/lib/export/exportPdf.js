@@ -173,7 +173,7 @@ async function exportSingleVolumePdf(opts) {
     const ct = String(ch.title || '').trim();
     if (!ct) continue;
     const fb = String(ch.folderBasename || '').trim();
-    const chapterDir = fb ? path.join(mangaResolved, fb) : resolveChapterDir(base, mt, ct, chapterFolderFormat);
+    const chapterDir = fb ? path.join(mangaResolved, fb) : resolveChapterDir(base, mt, ct, chapterFolderFormat, ch.volume);
     assertChapterDirUnderManga(mangaResolved, path.resolve(chapterDir));
     const listOptions =
       isFlatChapterLayout(chapterFolderFormat) && !fb
@@ -247,7 +247,7 @@ async function exportSizeSplitPdf(opts) {
     const ct = String(ch.title || '').trim();
     if (!ct) continue;
     const fb = String(ch.folderBasename || '').trim();
-    const chapterDir = fb ? path.join(mangaResolved, fb) : resolveChapterDir(base, mt, ct, chapterFolderFormat);
+    const chapterDir = fb ? path.join(mangaResolved, fb) : resolveChapterDir(base, mt, ct, chapterFolderFormat, ch.volume);
     assertChapterDirUnderManga(mangaResolved, path.resolve(chapterDir));
     const listOptions =
       isFlatChapterLayout(chapterFolderFormat) && !fb
@@ -349,7 +349,7 @@ async function exportChapterSplitPdf(opts) {
     if (!ct) continue;
 
     const fb = String(ch.folderBasename || '').trim();
-    const chapterDir = fb ? path.join(mangaResolved, fb) : resolveChapterDir(base, mt, ct, chapterFolderFormat);
+    const chapterDir = fb ? path.join(mangaResolved, fb) : resolveChapterDir(base, mt, ct, chapterFolderFormat, ch.volume);
     assertChapterDirUnderManga(mangaResolved, path.resolve(chapterDir));
     const listOptions =
       isFlatChapterLayout(chapterFolderFormat) && !fb

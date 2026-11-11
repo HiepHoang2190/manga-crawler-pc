@@ -42,7 +42,7 @@ function registerToolsIpc(ipc_context) {
     return { ok: true };
   });
 
-  const DUPLICATE_PREVIEW_MAX_BYTES = 15 * 1024 * 1024;
+  const DUPLICATE_PREVIEW_MAX_BYTES = 200 * 1024 * 1024; // Up to 200MB images
 
   ipcMain.handle('duplicate:readPreview', async (_event, { filePath }) => {
     const fp = path.resolve(String(filePath || '').trim());
@@ -52,6 +52,21 @@ function registerToolsIpc(ipc_context) {
     if (st.size > DUPLICATE_PREVIEW_MAX_BYTES) {
       return { ok: false, error: 'File too large for preview.' };
     }
+
+    // For large images (> 5MB), generate a lightweight thumbnail using sharp to prevent IPC/memory bottleneck
+    if (st.size > 5 * 1024 * 1024) {
+      try {
+        const sharp = require('sharp');
+        const thumbBuf = await sharp(fp)
+          .resize({ width: 1400, withoutEnlargement: true })
+          .webp({ quality: 85 })
+          .toBuffer();
+        return { ok: true, dataUrl: `data:image/webp;base64,${thumbBuf.toString('base64')}` };
+      } catch {
+        // Fall back to direct file read if sharp fails
+      }
+    }
+
     const ext = path.extname(fp).toLowerCase();
     const mime =
       ext === '.png'
@@ -245,6 +260,14 @@ function registerToolsIpc(ipc_context) {
     return { ok: true, gpus };
   });
 
+  ipcMain.handle('upscale:getHardwareInfo', async () => {
+    const { UpscaleEngine } = require('../lib/upscale/UpscaleEngine');
+    const resourcesPath = getUpscaleResourcesPath();
+    const userDataPath = app.getPath('userData');
+    const engine = new UpscaleEngine(resourcesPath, userDataPath);
+    return { ok: true, info: engine.getHardwareAccelerationInfo() };
+  });
+
   ipcMain.handle('upscale:start', async (event, payload) => {
     const { UpscaleEngine } = require('../lib/upscale/UpscaleEngine');
     const resourcesPath = getUpscaleResourcesPath();
@@ -260,6 +283,8 @@ function registerToolsIpc(ipc_context) {
       outputFormat = 'original',
       skipExisting = false,
       gpuId = 'auto',
+      engineMode = 'auto',
+      compress = null,
     } = payload || {};
 
     // Cancel any previous run
@@ -278,7 +303,10 @@ function registerToolsIpc(ipc_context) {
         denoise,
         tileSize,
         gpuId,
+        engineMode,
+        outputFormat,
         skipExisting,
+        compress,
         onProgress: (data) => {
           try {
             event.sender.send('upscale:progress', data);

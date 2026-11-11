@@ -113,7 +113,7 @@ export default function AuthRequiredView({ blockedReason, onLoggedIn }) {
             <button
               type="button"
               onClick={openRegisterForm}
-              className="text-primary underline font-medium hover:opacity-90 cursor-pointer text-center"
+              className="text-primary font-semibold hover:opacity-80 transition-opacity cursor-pointer text-center"
             >
               {t('auth.gate.registerLinkLabel')}
             </button>

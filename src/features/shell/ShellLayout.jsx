@@ -125,6 +125,8 @@ export default function ShellLayout() {
     chapterFolder,
     setChapterFolder,
     persistChapterFolder,
+    mangadexVolumeFolderGrouping,
+    setMangadexVolumeFolderGrouping,
     handleBrowse,
     setThreadsClamped,
     autoCheckUpdate,
@@ -1135,6 +1137,8 @@ export default function ShellLayout() {
           chapterFolder={chapterFolder}
           setChapterFolder={setChapterFolder}
           persistChapterFolder={persistChapterFolder}
+          mangadexVolumeFolderGrouping={mangadexVolumeFolderGrouping}
+          setMangadexVolumeFolderGrouping={setMangadexVolumeFolderGrouping}
           duplicateScanRecursive={duplicateScanRecursive}
           setDuplicateScanRecursive={setDuplicateScanRecursive}
           favoriteAutoCheckEnabled={favoriteAutoCheckEnabled}

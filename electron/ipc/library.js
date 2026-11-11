@@ -167,7 +167,7 @@ function registerLibraryIpc(ipc_context) {
 
   ipcMain.handle(
     'manga:listChapterImageFiles',
-    async (_event, { baseSaveDir, mangaTitle, chapterTitle, folderBasename, offlineMangaDirAbsolute }) => {
+    async (_event, { baseSaveDir, mangaTitle, chapterTitle, folderBasename, offlineMangaDirAbsolute, volume }) => {
       // CBZ session: ảnh sống trong yauzl, không có thư mục thật trên đĩa.
       {
         const cbzSession = require('../lib/reader/cbzSessionService');
@@ -201,11 +201,17 @@ function registerLibraryIpc(ipc_context) {
       if (fb === '.') {
         chapterDir = mangaRoot;
       } else if (fb) {
-        const safe = path.basename(fb);
-        if (!safe || safe === '.' || safe === '..') {
-          return { ok: false, error: 'Tên thư mục chương không hợp lệ.', files: [] };
+        const normalizedFb = path.normalize(fb).replace(/^(\.\.[\/\\])+/, '');
+        const candidateNested = path.join(mangaRoot, normalizedFb);
+        if (fs.existsSync(candidateNested)) {
+          chapterDir = candidateNested;
+        } else {
+          const safe = path.basename(fb);
+          if (!safe || safe === '.' || safe === '..') {
+            return { ok: false, error: 'Tên thư mục chương không hợp lệ.', files: [] };
+          }
+          chapterDir = path.join(mangaRoot, safe);
         }
-        chapterDir = path.join(mangaRoot, safe);
       } else if (isFlatChapterLayout(cf)) {
         chapterDir = mangaRoot;
         listOptions = { namePrefix: getFlatChapterImageNamePrefix(ct, cf) };
@@ -215,7 +221,7 @@ function registerLibraryIpc(ipc_context) {
         if (String(offlineMangaDirAbsolute || '').trim()) {
           chapterDir = path.join(mangaRoot, formatChapterFolderName(ct, cf));
         } else {
-          chapterDir = resolveChapterDir(base, mt, ct, cf);
+          chapterDir = resolveChapterDir(base, mt, ct, cf, volume);
         }
       }
       const { listChapterImageFiles } = require('../lib/library/listChapterImageFiles');
@@ -300,7 +306,7 @@ function registerLibraryIpc(ipc_context) {
 
   ipcMain.handle(
     'manga:readLocalChapterImage',
-    async (_event, { baseSaveDir, mangaTitle, chapterTitle, fileName, folderBasename, offlineMangaDirAbsolute }) => {
+    async (_event, { baseSaveDir, mangaTitle, chapterTitle, fileName, folderBasename, offlineMangaDirAbsolute, volume }) => {
       // CBZ session: decompress entry on-demand, trả base64 như đọc từ disk.
       // PDF session: rasterize trang đó qua pdfjs + napi-rs/canvas.
       {
@@ -346,11 +352,17 @@ function registerLibraryIpc(ipc_context) {
       if (fb === '.') {
         chapterDir = mangaRoot;
       } else if (fb) {
-        const safe = path.basename(fb);
-        if (!safe || safe === '.' || safe === '..') {
-          return { ok: false, error: 'Tên thư mục chương không hợp lệ.' };
+        const normalizedFb = path.normalize(fb).replace(/^(\.\.[\/\\])+/, '');
+        const candidateNested = path.join(mangaRoot, normalizedFb);
+        if (fs.existsSync(candidateNested)) {
+          chapterDir = candidateNested;
+        } else {
+          const safe = path.basename(fb);
+          if (!safe || safe === '.' || safe === '..') {
+            return { ok: false, error: 'Tên thư mục chương không hợp lệ.' };
+          }
+          chapterDir = path.join(mangaRoot, safe);
         }
-        chapterDir = path.join(mangaRoot, safe);
       } else if (isFlatChapterLayout(cf)) {
         chapterDir = mangaRoot;
       } else {
@@ -359,7 +371,7 @@ function registerLibraryIpc(ipc_context) {
         if (String(offlineMangaDirAbsolute || '').trim()) {
           chapterDir = path.join(mangaRoot, formatChapterFolderName(ct, cf));
         } else {
-          chapterDir = resolveChapterDir(base, mt, ct, cf);
+          chapterDir = resolveChapterDir(base, mt, ct, cf, volume);
         }
       }
       const full = path.normalize(path.join(chapterDir, ...path_segments));

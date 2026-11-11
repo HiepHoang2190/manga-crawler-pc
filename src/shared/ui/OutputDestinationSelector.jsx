@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useI18n } from '../../context/I18nContext';
 
 export default function OutputDestinationSelector({
@@ -16,9 +16,74 @@ export default function OutputDestinationSelector({
   showOpenFolderAfter = true,
   extraOptions,
   className = '',
+  api,
+  warning,
+  warningMessage,
+  onValidationChange,
 }) {
   const { t } = useI18n();
   const headingText = title ?? t('outputDestination.heading') ?? 'Thư mục xuất';
+
+  const [internalWarning, setInternalWarning] = useState(false);
+  const [internalWarningMsg, setInternalWarningMsg] = useState('');
+
+  // Validate output directory existence like Crawler tab (validateSaveDir)
+  useEffect(() => {
+    if (inPlace) {
+      setInternalWarning(false);
+      setInternalWarningMsg('');
+      onValidationChange?.(true);
+      return undefined;
+    }
+
+    const trimmed = String(outputDir || '').trim();
+    if (!trimmed) {
+      setInternalWarning(false);
+      setInternalWarningMsg('');
+      onValidationChange?.(false);
+      return undefined;
+    }
+
+    const clientApi = api || (typeof window !== 'undefined' ? window.electronAPI : null);
+    if (!clientApi?.validateSaveDir) return undefined;
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      clientApi
+        .validateSaveDir(trimmed)
+        .then((res) => {
+          if (cancelled) return;
+          if (res && !res.ok && !res.canCreate) {
+            setInternalWarning(true);
+            setInternalWarningMsg(res.error || '');
+            onValidationChange?.(false);
+          } else {
+            setInternalWarning(false);
+            setInternalWarningMsg('');
+            onValidationChange?.(true);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setInternalWarning(false);
+            setInternalWarningMsg('');
+            onValidationChange?.(true);
+          }
+        });
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [inPlace, outputDir, api, onValidationChange]);
+
+  const hasWarning = warning ?? internalWarning;
+  const activeWarningMsg =
+    warningMessage ||
+    internalWarningMsg ||
+    t('sidebar.warning.invalidSavePath') ||
+    'Thư mục không tồn tại hoặc ổ đĩa chưa kết nối';
 
   return (
     <div className={`space-y-2.5 ${className}`.trim()}>
@@ -52,34 +117,54 @@ export default function OutputDestinationSelector({
         </label>
 
         {!inPlace && (
-          <div className="ml-5 flex gap-1.5">
-            <input
-              type="text"
-              value={outputDir}
-              onChange={(e) => onOutputDirChange?.(e.target.value)}
-              placeholder={t('outputDestination.browse') || 'Chọn thư mục…'}
-              disabled={disabled}
-              className="h-9 min-w-0 flex-1 rounded-md border-none bg-surface-container-highest px-3 text-sm outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
-            />
-            {outputDir && !disabled && (
+          <div className="space-y-1.5">
+            <div className="ml-5 flex gap-1.5">
+              <div className="relative flex-1 min-w-0 flex items-center">
+                <input
+                  type="text"
+                  value={outputDir}
+                  onChange={(e) => onOutputDirChange?.(e.target.value)}
+                  placeholder={t('outputDestination.browse') || 'Chọn thư mục…'}
+                  disabled={disabled}
+                  className={`h-9 min-w-0 w-full rounded-md border-none bg-surface-container-highest text-sm outline-none transition-all ${
+                    hasWarning ? 'pl-3 pr-8 ring-1 ring-amber-500/60' : 'px-3 focus:ring-1 focus:ring-primary'
+                  } disabled:opacity-50`}
+                />
+                {hasWarning && (
+                  <span
+                    data-tooltip={activeWarningMsg}
+                    className="material-symbols-outlined text-[18px] text-amber-500 absolute right-2 pointer-events-auto cursor-help select-none shrink-0"
+                  >
+                    warning
+                  </span>
+                )}
+              </div>
+              {outputDir && !disabled && (
+                <button
+                  type="button"
+                  onClick={() => onOutputDirChange?.('')}
+                  aria-label={t('outputDestination.clear') || 'Xóa thư mục đã chọn'}
+                  className="inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-md bg-surface-container-high text-on-surface-variant/70 hover:text-on-surface transition-colors hover:bg-surface-bright"
+                >
+                  <span className="material-symbols-outlined text-[18px] leading-none">close</span>
+                </button>
+              )}
               <button
                 type="button"
-                onClick={() => onOutputDirChange?.('')}
-                aria-label={t('outputDestination.clear') || 'Xóa thư mục đã chọn'}
-                className="inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-md bg-surface-container-high text-on-surface-variant/70 hover:text-on-surface transition-colors hover:bg-surface-bright"
+                onClick={onBrowse}
+                disabled={disabled}
+                aria-label={t('outputDestination.browse') || 'Chọn thư mục…'}
+                className="inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-md bg-surface-container-high text-on-surface transition-colors hover:bg-surface-bright disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <span className="material-symbols-outlined text-[18px] leading-none">close</span>
+                <span className="material-symbols-outlined text-[18px] leading-none">folder_open</span>
               </button>
+            </div>
+            {hasWarning && (
+              <p className="ml-5 text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1.5 font-medium select-none">
+                <span className="material-symbols-outlined text-[14px] shrink-0">warning</span>
+                <span>{activeWarningMsg}</span>
+              </p>
             )}
-            <button
-              type="button"
-              onClick={onBrowse}
-              disabled={disabled}
-              aria-label={t('outputDestination.browse') || 'Chọn thư mục…'}
-              className="inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-md bg-surface-container-high text-on-surface transition-colors hover:bg-surface-bright disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <span className="material-symbols-outlined text-[18px] leading-none">folder_open</span>
-            </button>
           </div>
         )}
 

@@ -344,6 +344,11 @@ function chapterDirHasNonEmptyImages(chapterDir) {
   return chapterDirHasNonEmptyImagesInImmediateSubdirs(chapterDir);
 }
 
+function isVolumeFolderName(name) {
+  const s = String(name || '').trim().toLowerCase();
+  return /^(vol|volume|tập|tap)[\s._-]*\d+/i.test(s);
+}
+
 /**
  * Kiểm tra xem một thư mục có phải là thư mục gốc chứa nhiều truyện khác nhau hay không.
  * Thư mục gốc chứa nhiều truyện khi:
@@ -374,6 +379,9 @@ function isMultiMangaRootDir(dir) {
   let childrenWithNestedChapters = 0;
 
   for (const sub of subdirs) {
+    if (isVolumeFolderName(sub)) {
+      continue;
+    }
     const subPath = path.join(dir, sub);
 
     // 1. Thư mục con có download_db.json -> thư mục con chắc chắn là một truyện -> dir là thư mục gốc!
@@ -494,13 +502,44 @@ function scanChaptersFromImageFoldersOnly(mangaDir) {
   const subdirs = readMangaSubdirs(mangaDir);
   const out = [];
   for (const d of subdirs) {
-    const chapterDir = path.join(mangaDir, d);
-    if (!chapterDirHasNonEmptyImages(chapterDir)) continue;
-    out.push({
-      url: `offline:${encodeURIComponent(d)}`,
-      title: d,
-      folderBasename: d,
-    });
+    const candidateDir = path.join(mangaDir, d);
+    if (isVolumeFolderName(d)) {
+      const nestedSubdirs = readMangaSubdirs(candidateDir);
+      for (const sub of nestedSubdirs) {
+        const nestedDir = path.join(candidateDir, sub);
+        if (chapterDirHasNonEmptyImages(nestedDir)) {
+          const relPath = path.join(d, sub).replace(/\\/g, '/');
+          out.push({
+            url: `offline:${encodeURIComponent(relPath)}`,
+            title: `${d} - ${sub}`,
+            folderBasename: relPath,
+          });
+        }
+      }
+      continue;
+    }
+
+    if (chapterDirHasNonEmptyImages(candidateDir)) {
+      out.push({
+        url: `offline:${encodeURIComponent(d)}`,
+        title: d,
+        folderBasename: d,
+      });
+      continue;
+    }
+
+    const nestedSubdirs = readMangaSubdirs(candidateDir);
+    for (const sub of nestedSubdirs) {
+      const nestedDir = path.join(candidateDir, sub);
+      if (chapterDirHasNonEmptyImages(nestedDir)) {
+        const relPath = path.join(d, sub).replace(/\\/g, '/');
+        out.push({
+          url: `offline:${encodeURIComponent(relPath)}`,
+          title: `${d} - ${sub}`,
+          folderBasename: relPath,
+        });
+      }
+    }
   }
   return sortChaptersByFolder(out);
 }

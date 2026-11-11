@@ -15,6 +15,8 @@ const fs = require('fs');
 const { spawn } = require('child_process');
 const { BinaryManager } = require('./BinaryManager');
 const { getEngineConfig, getModelConfig } = require('./engineConfigs');
+const NcnnBatchRunner = require('./NcnnBatchRunner');
+const imageOptimizer = require('./imageOptimizer');
 
 class UpscaleEngine {
   /**
@@ -27,6 +29,28 @@ class UpscaleEngine {
     this._cancelled = false;
     this._childProcess = null;
     this._preparedEngines = new Set();
+    this._ncnnBatchRunner = new NcnnBatchRunner(this._binaryManager);
+  }
+
+  /**
+   * Get hardware acceleration metadata for current OS/architecture.
+   * @returns {{ platform: string, arch: string, isAppleSilicon: boolean, hasCoreML: boolean, activeEngine: string, label: string, availableEngines: Array<{ id: string, label: string }> }}
+   */
+  getHardwareAccelerationInfo() {
+    const isMacArm = process.platform === 'darwin' && process.arch === 'arm64';
+    const availableEngines = [
+      { id: 'ncnn', label: 'GPU Vulkan / Metal (NCNN Batch)' },
+    ];
+
+    return {
+      platform: process.platform,
+      arch: process.arch,
+      isAppleSilicon: isMacArm,
+      hasCoreML: false,
+      activeEngine: 'ncnn',
+      label: 'GPU Vulkan / Metal (NCNN Batch)',
+      availableEngines,
+    };
   }
 
   isCancelled() {
@@ -42,6 +66,7 @@ class UpscaleEngine {
         // Process may already be dead
       }
     }
+    this._ncnnBatchRunner?.cancel();
   }
 
   /**
@@ -327,7 +352,7 @@ class UpscaleEngine {
         resolve({ success: false, outputPath: output, error: err.message });
       });
 
-      child.on('close', (code) => {
+      child.on('close', async (code) => {
         this._childProcess = null;
         if (this._cancelled) {
           resolve({ success: false, outputPath: output, error: 'Cancelled' });
@@ -341,6 +366,20 @@ class UpscaleEngine {
             const errorMsg = this.formatErrorMessage(stderrData, code) || 'Không thể tạo tệp ảnh đầu ra (lỗi định dạng ảnh gốc hoặc giải mã)';
             resolve({ success: false, outputPath: output, error: errorMsg });
           } else {
+            if (opts.compress?.enabled) {
+              try {
+                const optResult = await imageOptimizer.optimizeUpscaledImage(output, output, opts.compress);
+                if (optResult.success || optResult.fallbackCopied) {
+                  resolve({
+                    success: true,
+                    outputPath: output,
+                    outputSize: optResult.optimizedBytes,
+                    savedPercent: optResult.savedPercent,
+                  });
+                  return;
+                }
+              } catch {}
+            }
             resolve({ success: true, outputPath: output });
           }
         } else {
@@ -373,7 +412,20 @@ class UpscaleEngine {
    * @returns {Promise<{ completed: number, failed: number, results: Array }>}
    */
   async upscaleBatch(opts) {
-    const { images = [], engineId, modelId, scale, denoise, tileSize, gpuId = 'auto', skipExisting = false, onProgress = () => {} } = opts;
+    const {
+      images = [],
+      engineId,
+      modelId,
+      scale,
+      denoise,
+      tileSize,
+      gpuId = 'auto',
+      engineMode = 'auto',
+      compress = null,
+      skipExisting = false,
+      useBatchRunner = true,
+      onProgress = () => {},
+    } = opts;
 
     this.reset();
     if (engineId) {
@@ -384,13 +436,12 @@ class UpscaleEngine {
     let completed = 0;
     let failed = 0;
 
+    // Check which images are already completed vs pending
+    const pendingImages = [];
     for (let i = 0; i < images.length; i++) {
-      if (this._cancelled) break;
-
       const { input, output } = images[i];
       const fileName = path.basename(input);
 
-      // Smart skip: If target output already exists on disk with valid size
       if (skipExisting && fs.existsSync(output)) {
         try {
           const stat = fs.statSync(output);
@@ -398,29 +449,105 @@ class UpscaleEngine {
             completed++;
             results.push({ success: true, skipped: true, input, output, fileName });
             onProgress({
-              current: i + 1,
+              current: completed,
               total,
               currentFile: fileName,
               inputPath: input,
               outputPath: output,
-              percent: Math.round(((i + 1) / total) * 100),
+              percent: Math.round((completed / total) * 100),
               filePercent: 100,
               status: 'skipped',
             });
             continue;
           }
-        } catch {
-          // Proceed with normal upscale if stat check fails
-        }
+        } catch {}
       }
 
+      pendingImages.push({
+        input,
+        output,
+        fileName,
+        absolutePath: input,
+        originalIndex: i,
+      });
+    }
+
+    if (pendingImages.length === 0) {
+      return { completed, failed, total, cancelled: this._cancelled, results };
+    }
+
+    // Attempt high-speed batch runner if enabled and multiple files (or single file batch)
+    if (useBatchRunner && pendingImages.length >= 1) {
+      const targetOutputDir = path.dirname(pendingImages[0].output);
+      const binaryPath = this._binaryManager.resolveBinaryPath(engineId);
+      const hasNcnnBinary = binaryPath && fs.existsSync(binaryPath);
+
+      // High-speed NCNN batch directory runner (loads model once, multi-threaded pipelines)
+      if (hasNcnnBinary) {
+        try {
+          let modelDir = null;
+          let modelName = null;
+          const model = getModelConfig(modelId);
+          if (engineId === 'realesrgan') {
+            modelName = model?.modelName;
+            modelDir = path.join(path.dirname(binaryPath), 'models');
+          } else if (model?.modelDirName) {
+            modelDir = path.join(path.dirname(binaryPath), model.modelDirName);
+          }
+
+          const ncnnResult = await this._ncnnBatchRunner.upscaleBatch(pendingImages, {
+            binaryPath,
+            engineId,
+            modelId,
+            modelDir,
+            modelName,
+            scale,
+            denoise,
+            tileSize,
+            gpuId,
+            compress,
+            outputDir: targetOutputDir,
+            onProgress: (p) => {
+              const currentCompleted = completed + (p.current || 0);
+              const overallPercent = Math.min(100, Math.round((currentCompleted / total) * 100));
+              onProgress({
+                ...p,
+                current: currentCompleted,
+                total,
+                percent: overallPercent,
+                filePercent: p.filePercent !== undefined ? p.filePercent : 100,
+                status: p.status || 'processing',
+              });
+            },
+          });
+
+          if (ncnnResult.success) {
+            completed += ncnnResult.processedCount;
+            for (const item of pendingImages) {
+              results.push({ success: true, input: item.input, output: item.output, fileName: item.fileName });
+            }
+            return { completed, failed, total, cancelled: this._cancelled, results };
+          }
+        } catch {
+          // Fall back to per-image loop
+        }
+      }
+    }
+
+    // 3. Fallback per-image loop
+    for (let i = 0; i < pendingImages.length; i++) {
+      if (this._cancelled) break;
+
+      const { input, output, fileName } = pendingImages[i];
+      const curIndex = completed + i;
+
       onProgress({
-        current: i + 1,
+        current: curIndex + 1,
         total,
         currentFile: fileName,
         inputPath: input,
         outputPath: output,
-        percent: Math.round(((i) / total) * 100),
+        percent: Math.round((curIndex / total) * 100),
         filePercent: 0,
         status: 'processing',
       });
@@ -434,14 +561,15 @@ class UpscaleEngine {
         denoise,
         tileSize,
         gpuId,
+        compress,
         onFileProgress: (filePercent) => {
           onProgress({
-            current: i + 1,
+            current: curIndex + 1,
             total,
             currentFile: fileName,
             inputPath: input,
             outputPath: output,
-            percent: Math.min(100, Math.round(((i + (filePercent / 100)) / total) * 100)),
+            percent: Math.min(100, Math.round(((curIndex + (filePercent / 100)) / total) * 100)),
             filePercent,
             status: 'processing',
           });
@@ -456,12 +584,12 @@ class UpscaleEngine {
       }
 
       onProgress({
-        current: i + 1,
+        current: curIndex + 1,
         total,
         currentFile: fileName,
         inputPath: input,
         outputPath: output,
-        percent: Math.round(((i + 1) / total) * 100),
+        percent: Math.round(((curIndex + 1) / total) * 100),
         filePercent: 100,
         status: result.success ? 'done' : 'error',
         error: result.error,

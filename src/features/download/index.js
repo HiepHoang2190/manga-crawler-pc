@@ -6,6 +6,7 @@ export {
 } from './queueSnapshot.js';
 export { DownloadProvider, useDownload } from './DownloadProvider.jsx';
 export { default as QueueRestoreModal } from './components/QueueRestoreModal.jsx';
+export { default as SaveDirErrorModal } from './components/SaveDirErrorModal.jsx';
 export { default as QueuePanel } from './components/QueuePanel.jsx';
 export { default as Sidebar } from './components/Sidebar.jsx';
 export { SiteCookieSection } from './components/SiteCookieSection.jsx';

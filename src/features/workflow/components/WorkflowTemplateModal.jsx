@@ -4,6 +4,7 @@ import { useI18n } from '../../../context/I18nContext';
 import { DEFAULT_TEMPLATES } from '../templates/defaultTemplates';
 import { loadSavedWorkflows, deleteWorkflow } from '../utils/workflowStorage';
 import { NODE_DEFINITIONS } from '../engine/nodeDefinitions';
+import { getTopologicallyOrderedNodes } from '../engine/workflowGraph';
 
 export default function WorkflowTemplateModal({ isOpen, onClose, onSelectTemplate }) {
   const { t } = useI18n();
@@ -151,7 +152,7 @@ export default function WorkflowTemplateModal({ isOpen, onClose, onSelectTemplat
 
                 {/* Node sequence preview chips */}
                 <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                  {tpl.nodes.map((node, idx) => {
+                  {getTopologicallyOrderedNodes(tpl.nodes, tpl.edges).map((node, idx, arr) => {
                     const def = NODE_DEFINITIONS[node.type];
                     return (
                       <React.Fragment key={node.id}>
@@ -161,7 +162,7 @@ export default function WorkflowTemplateModal({ isOpen, onClose, onSelectTemplat
                           </span>
                           <span>{t(`workflow.nodeDef.${node.type}.title`, def?.title || node.type)}</span>
                         </span>
-                        {idx < tpl.nodes.length - 1 && (
+                        {idx < arr.length - 1 && (
                           <span className="text-on-surface-variant/40 text-[10px]">➔</span>
                         )}
                       </React.Fragment>

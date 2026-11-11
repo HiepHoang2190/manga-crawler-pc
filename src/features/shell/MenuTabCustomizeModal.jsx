@@ -162,7 +162,7 @@ export default function MenuTabCustomizeModal({
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                   <span
                     className="material-symbols-outlined text-[20px] text-on-surface-variant/40 group-hover:text-primary transition-colors cursor-grab active:cursor-grabbing shrink-0"
-                    title={t('common.drag') || 'Drag'}
+                    data-tooltip={t('common.drag') || 'Drag'}
                   >
                     drag_indicator
                   </span>

@@ -154,7 +154,7 @@ function checkChaptersWithSubfolderImages(baseSaveDir, mangaTitle, chapters, cha
   for (const ch of chapters) {
     const ct = String(ch.title || '').trim();
     if (!ct) continue;
-    const chapterDir = resolveChapterDir(baseSaveDir, mangaTitle, ct, chapterFolderFormat);
+    const chapterDir = resolveChapterDir(baseSaveDir, mangaTitle, ct, chapterFolderFormat, ch.volume);
     let entries;
     try { entries = fs.readdirSync(chapterDir, { withFileTypes: true }); } catch (_) { continue; }
     const hasSubImages = entries.some((e) => {
@@ -252,7 +252,7 @@ function collectChapterExportItems(opts) {
     const fb = String(ch.folderBasename || '').trim();
     const chapterDir = fb
       ? path.join(mangaResolved, fb)
-      : resolveChapterDir(base, mt, ct, chapterFolderFormat);
+      : resolveChapterDir(base, mt, ct, chapterFolderFormat, ch.volume);
     assertChapterDirUnderManga(mangaResolved, path.resolve(chapterDir));
     const listOptions =
       isFlatChapterLayout(chapterFolderFormat) && !fb

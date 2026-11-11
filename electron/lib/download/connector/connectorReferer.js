@@ -51,6 +51,7 @@ const ASURASCANS_IMAGE_REFERER = 'https://asurascans.com/';
 const FLAMECOMICS_IMAGE_REFERER = 'https://flamecomics.xyz/';
 const SANGCHANHTEAM_IMAGE_REFERER = 'https://sangchanhteam.com/';
 const TCBSCANMANGA_IMAGE_REFERER = 'https://tcbscanmanga.com/';
+const KINGDOMHOIQUAN_IMAGE_REFERER = 'https://kingdomhoiquan.com/';
 
 function isTcbscanmangaImageCdnHost(hostname) {
   const h = String(hostname).toLowerCase();
@@ -290,6 +291,11 @@ function isSakamotoDaysImageCdnHost(hostname) {
   return h.includes('sakamotodaystruyen');
 }
 
+function isKingdomHoiQuanImageCdnHost(hostname) {
+  const h = String(hostname).toLowerCase();
+  return h === 'kingdomhoiquan.com' || h.endsWith('.kingdomhoiquan.com') || h.includes('kingdomhoiquan');
+}
+
 function isChapVnImageCdnHost(hostname) {
   const h = String(hostname).toLowerCase();
   return h.includes('chap.vn');
@@ -413,6 +419,7 @@ function getImageRefererForUrl(urlString) {
   if (isFlamecomicsImageCdnHost(hostname)) return getDynamicReferer('flamecomics', FLAMECOMICS_IMAGE_REFERER);
   if (isSangchanhteamImageCdnHost(hostname)) return getDynamicReferer('sangchanhteam', SANGCHANHTEAM_IMAGE_REFERER);
   if (isTcbscanmangaImageCdnHost(hostname)) return getDynamicReferer('tcbscanmanga', TCBSCANMANGA_IMAGE_REFERER);
+  if (isKingdomHoiQuanImageCdnHost(hostname)) return getDynamicReferer('kingdomhoiquan', KINGDOMHOIQUAN_IMAGE_REFERER);
   if (hostname === 'drive.google.com' || hostname === 'docs.google.com') {
     return GOOGLE_DRIVE_IMAGE_REFERER;
   }
@@ -515,5 +522,7 @@ module.exports = {
   isSangchanhteamImageCdnHost,
   TCBSCANMANGA_IMAGE_REFERER,
   isTcbscanmangaImageCdnHost,
+  KINGDOMHOIQUAN_IMAGE_REFERER,
+  isKingdomHoiQuanImageCdnHost,
   getImageRefererForUrl,
 };

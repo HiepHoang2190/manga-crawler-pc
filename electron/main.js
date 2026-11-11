@@ -43,7 +43,7 @@ app.whenReady().then(async () => {
 // Allow HTML5 Audio (chat beep) without a prior user gesture — desktop app, not a random website.
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
-const { getImageRefererForUrl } = require('./lib/download/connector/connectorReferer');
+const { getImageRefererForUrl, isMangadexCdnHost } = require('./lib/download/connector/connectorReferer');
 const {
   normalizeChapterFolderFormat,
 } = require('./lib/shared/mangaUtils');
@@ -76,12 +76,30 @@ function resolveMangaRootForRead(baseSaveDir, mangaTitle, offlineMangaDirAbsolut
 function registerConnectorImageRefererHeaders() {
   session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
     const ref = getImageRefererForUrl(details.url);
-    if (ref) {
+    let hostname = '';
+    try {
+      hostname = new URL(details.url).hostname.toLowerCase();
+    } catch {
+      /* fall through */
+    }
+    const isMangaDex = isMangadexCdnHost(hostname);
+
+    if (ref || isMangaDex) {
+      const nextHeaders = {
+        ...details.requestHeaders,
+      };
+      if (ref) {
+        nextHeaders.Referer = ref;
+      }
+      if (isMangaDex) {
+        // MangaDex CDN (uploads.mangadex.org) cấm Browser User-Agent (trả về 403 Bot Challenge).
+        // Dùng app User-Agent riêng cho request ảnh để Chromium không gửi Browser UA.
+        delete nextHeaders['User-Agent'];
+        delete nextHeaders['user-agent'];
+        nextHeaders['User-Agent'] = 'MangaCrawler/3.0';
+      }
       callback({
-        requestHeaders: {
-          ...details.requestHeaders,
-          Referer: ref,
-        },
+        requestHeaders: nextHeaders,
       });
       return;
     }

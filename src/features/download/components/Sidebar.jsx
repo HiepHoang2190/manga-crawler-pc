@@ -70,6 +70,39 @@ export default function Sidebar({
   const { t } = useI18n();
   const [extractBusy, setExtractBusy] = useState(false);
   const [messageDialog, setMessageDialog] = useState(null);
+  const [savePathWarning, setSavePathWarning] = useState(false);
+
+  useEffect(() => {
+    const trimmed = String(savePath || '').trim();
+    if (!trimmed) {
+      setSavePathWarning(false);
+      return undefined;
+    }
+    const api = typeof window !== 'undefined' ? window.electronAPI : null;
+    if (!api?.validateSaveDir) return undefined;
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      api
+        .validateSaveDir(trimmed)
+        .then((res) => {
+          if (cancelled) return;
+          if (res && !res.ok && !res.canCreate) {
+            setSavePathWarning(true);
+          } else {
+            setSavePathWarning(false);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setSavePathWarning(false);
+        });
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [savePath]);
 
   const selectedConnector = (connectors || []).find((c) => c.id === site);
   const selectedConnectorHomepage = connectorHomepageUrl(selectedConnector?.domain);
@@ -248,14 +281,26 @@ export default function Sidebar({
         <div className="space-y-2">
           <label className="text-xs font-bold text-on-surface-variant tracking-widest uppercase">{t('sidebar.saveTo')}</label>
           <div className="grid grid-cols-[minmax(0,1fr)_5.5rem] gap-2 items-center">
-            <input
-              type="text"
-              data-testid="save-path-input"
-              value={savePath}
-              onChange={(e) => setSavePath(e.target.value)}
-              placeholder={t('sidebar.placeholder.savePath')}
-              className="w-full min-w-0 min-h-0 bg-surface-container-highest border-none rounded-xl text-sm h-10 px-3 box-border focus:ring-1 focus:ring-primary outline-none text-on-surface"
-            />
+            <div className="relative flex items-center min-w-0">
+              <input
+                type="text"
+                data-testid="save-path-input"
+                value={savePath}
+                onChange={(e) => setSavePath(e.target.value)}
+                placeholder={t('sidebar.placeholder.savePath')}
+                className={`w-full min-w-0 min-h-0 bg-surface-container-highest border-none rounded-xl text-sm h-10 pl-3 ${
+                  savePathWarning ? 'pr-8 ring-1 ring-amber-500/60' : 'pr-3 focus:ring-1 focus:ring-primary'
+                } box-border outline-none text-on-surface transition-all`}
+              />
+              {savePathWarning && (
+                <span
+                  data-tooltip={t('sidebar.warning.invalidSavePath')}
+                  className="material-symbols-outlined text-[18px] text-amber-500 absolute right-2.5 pointer-events-auto cursor-help select-none shrink-0"
+                >
+                  warning
+                </span>
+              )}
+            </div>
             <div className="flex items-center gap-2 w-full justify-between">
               <button
                 type="button"

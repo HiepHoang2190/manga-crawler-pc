@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useI18n } from '../../../context/I18nContext';
 import { NODE_DEFINITIONS } from '../engine/nodeDefinitions';
+import { getTopologicallyOrderedNodes } from '../engine/workflowGraph';
 
 const STEP_BADGE_MAP = {
   manual_trigger: 'TRIGGER',
@@ -29,6 +30,7 @@ const STEP_BADGE_MAP = {
 export default function WorkflowLogConsole({
   workflowName = 'Workflow',
   nodes = [],
+  edges = [],
   nodeStates = {},
   logs = [],
   isRunning = false,
@@ -83,9 +85,14 @@ export default function WorkflowLogConsole({
     }
   };
 
-  // Build steps list from nodes
+  // Topologically sort nodes according to execution graph order
+  const orderedNodes = useMemo(() => {
+    return getTopologicallyOrderedNodes(nodes, edges);
+  }, [nodes, edges]);
+
+  // Build steps list from nodes in execution DAG order
   const steps = useMemo(() => {
-    return (nodes || []).map((n, idx) => {
+    return (orderedNodes || []).map((n, idx) => {
       const def = NODE_DEFINITIONS[n.type] || { title: n.type, icon: 'settings' };
       const state = nodeStates[n.id] || { status: 'idle' };
       const isDone = state.status === 'completed';
@@ -103,7 +110,7 @@ export default function WorkflowLogConsole({
         isErr,
       };
     });
-  }, [nodes, nodeStates, t]);
+  }, [orderedNodes, nodeStates, t]);
 
   // Calculate percentage
   const percent = useMemo(() => {

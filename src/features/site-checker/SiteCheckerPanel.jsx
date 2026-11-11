@@ -720,7 +720,7 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
                           <a
                             href="#"
                             onClick={(e) => handleOpenDomain(e, displayDomain)}
-                            className="text-xs text-primary/80 hover:text-primary hover:underline flex items-center gap-1 mt-0.5 font-medium truncate"
+                            className="text-xs text-primary/80 hover:text-primary transition-colors flex items-center gap-1 mt-0.5 font-medium truncate"
                           >
                             <span>{String(displayDomain || '').replace(/^https?:\/\//, '').replace(/\/$/, '')}</span>
                             <span className="material-symbols-outlined text-[12px] leading-none">open_in_new</span>
@@ -821,7 +821,7 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
                                   e.stopPropagation();
                                   setShowErrorDetailId(showErrorDetailId === c.id ? null : c.id);
                                 }}
-                                title={`${t(labelKey)}: ${
+                                data-tooltip={`${t(labelKey)}: ${
                                   passed ? '✓' : failed ? '✗' : isRunningStep ? '...' : '—'
                                 }${step?.durationMs ? ` (${step.durationMs}ms)` : ''}\n${t(tipKey)}`}
                                 className={`w-2.5 h-2.5 rounded-full border transition-all cursor-pointer ${
@@ -913,7 +913,7 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
                             </div>
                             {res.testDetails.mangaUrl && (
                               <div className="flex items-center gap-1.5 mb-1 text-[11px] bg-surface-container-lowest/70 p-1.5 rounded-lg border border-outline-variant/10">
-                                <span className="text-on-surface-variant/90 font-mono select-all break-all flex-1" title={res.testDetails.mangaUrl}>
+                                <span className="text-on-surface-variant/90 font-mono select-all break-all flex-1" data-tooltip={res.testDetails.mangaUrl}>
                                   {res.testDetails.mangaUrl}
                                 </span>
                                 <div className="flex items-center gap-1 shrink-0">
@@ -951,7 +951,7 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
                                 </div>
                                 {res.testDetails.chapterUrl && (
                                   <div className="flex items-center gap-1.5 bg-surface-container-lowest/70 p-1.5 rounded-lg border border-outline-variant/10">
-                                    <span className="opacity-85 font-mono select-all break-all flex-1" title={res.testDetails.chapterUrl}>
+                                    <span className="opacity-85 font-mono select-all break-all flex-1" data-tooltip={res.testDetails.chapterUrl}>
                                       {res.testDetails.chapterUrl}
                                     </span>
                                     <div className="flex items-center gap-1 shrink-0">

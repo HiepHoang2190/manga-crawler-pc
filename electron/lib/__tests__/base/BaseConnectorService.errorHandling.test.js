@@ -921,4 +921,27 @@ describe('BaseConnectorService - Error Handling', () => {
       expect(result.totalPages).toBe(3);
     });
   });
+
+  describe('Save Directory Validation & Error Handling', () => {
+    it('should return fatal: true and INVALID_SAVE_PATH when baseSaveDir is on an unmounted volume', async () => {
+      const payload = {
+        mangaTitle: 'Test Manga',
+        mangaUrl: 'https://example.com/manga',
+        chapterUrl: 'https://example.com/chapter1',
+        chapterTitle: 'Chapter 1',
+        baseSaveDir: '/Volumes/NonExistentDisk_12345/Manga',
+        numberOfThreads: 1,
+        onLog: jest.fn(),
+        onProgress: jest.fn(),
+        shouldAbort: () => false,
+      };
+
+      const result = await service.downloadChapter(payload, 'TestSite');
+
+      expect(result.ok).toBe(false);
+      expect(result.fatal).toBe(true);
+      expect(result.errorType).toBe('INVALID_SAVE_PATH');
+      expect(result.error).toContain('chưa được kết nối');
+    });
+  });
 });

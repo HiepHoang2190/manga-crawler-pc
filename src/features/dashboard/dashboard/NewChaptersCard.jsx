@@ -22,7 +22,7 @@ export default function NewChaptersCard({ items, totalCount, onSelect, onViewAll
     <article className="rounded-xl border border-outline-variant/30 bg-surface-container-low p-4 flex flex-col gap-2">
       <header className="flex items-center justify-between">
         <span className="font-semibold">{t('dashboard.newChapters.title')} ({totalCount})</span>
-        <button type="button" onClick={onViewAll} className="text-xs text-primary hover:underline cursor-pointer">
+        <button type="button" onClick={onViewAll} className="text-xs text-primary hover:opacity-80 transition-opacity cursor-pointer">
           {t('dashboard.newChapters.viewAll')}
         </button>
       </header>

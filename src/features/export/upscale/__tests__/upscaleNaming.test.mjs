@@ -1,6 +1,67 @@
-import { getUpscaleSuffix, buildUpscaleOutputPath } from '../upscaleNaming.js';
+import { getUpscaleSuffix, buildUpscaleOutputPath, getUpscaleOutputFolder } from '../upscaleNaming.js';
 
 describe('upscaleNaming', () => {
+  describe('getUpscaleOutputFolder', () => {
+    test('appends imported folder name to outputDir when importing a folder', () => {
+      const folder = getUpscaleOutputFolder({
+        sourceDir: '/Users/admin/Downloads/Naruto',
+        sourceFiles: [],
+        inPlace: false,
+        outputDir: '/Users/admin/Documents',
+      });
+      expect(folder).toBe('/Users/admin/Documents/Naruto');
+    });
+
+    test('does not duplicate folder name if outputDir already ends with it', () => {
+      const folder = getUpscaleOutputFolder({
+        sourceDir: '/Users/admin/Downloads/Naruto/',
+        sourceFiles: [],
+        inPlace: false,
+        outputDir: '/Users/admin/Documents/Naruto/',
+      });
+      expect(folder).toBe('/Users/admin/Documents/Naruto');
+    });
+
+    test('returns clean outputDir directly when importing individual files', () => {
+      const folder = getUpscaleOutputFolder({
+        sourceDir: '',
+        sourceFiles: ['/Users/admin/Downloads/001.png', '/Users/admin/Downloads/002.png'],
+        inPlace: false,
+        outputDir: '/Users/admin/Documents/Output/',
+      });
+      expect(folder).toBe('/Users/admin/Documents/Output');
+    });
+
+    test('handles Windows backslash separators when importing folder', () => {
+      const folder = getUpscaleOutputFolder({
+        sourceDir: 'D:\\Raw\\One Piece\\',
+        sourceFiles: [],
+        inPlace: false,
+        outputDir: 'E:\\Upscaled\\',
+      });
+      expect(folder).toBe('E:\\Upscaled\\One Piece');
+    });
+
+    test('returns sourceDir when inPlace is true and sourceDir exists', () => {
+      const folder = getUpscaleOutputFolder({
+        sourceDir: '/Users/admin/Downloads/Naruto/',
+        sourceFiles: [],
+        inPlace: true,
+        outputDir: '/Users/admin/Documents',
+      });
+      expect(folder).toBe('/Users/admin/Downloads/Naruto');
+    });
+
+    test('returns file parent directory when inPlace is true and sourceFiles exists', () => {
+      const folder = getUpscaleOutputFolder({
+        sourceDir: '',
+        sourceFiles: ['/Users/admin/Downloads/Manga/001.jpg'],
+        inPlace: true,
+        outputDir: '',
+      });
+      expect(folder).toBe('/Users/admin/Downloads/Manga');
+    });
+  });
   describe('getUpscaleSuffix', () => {
     test('generates _cugan_noise1_2x for Real-CUGAN SE at 2x noise 1', () => {
       const model = { id: 'realcugan-se', suffixTag: 'cugan' };

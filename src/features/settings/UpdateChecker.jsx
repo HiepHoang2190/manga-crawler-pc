@@ -212,7 +212,7 @@ export default function UpdateChecker({
               <button
                 type="button"
                 onClick={openUpdateModal}
-                className="text-xs font-semibold text-primary hover:underline flex items-center gap-1 cursor-pointer"
+                className="text-xs font-semibold text-primary hover:opacity-80 transition-opacity flex items-center gap-1 cursor-pointer"
               >
                 <span>{t('updateModal.viewChanges')}</span>
                 <span className="material-symbols-outlined text-[14px]">open_in_new</span>
@@ -249,7 +249,7 @@ export default function UpdateChecker({
                 <button
                   type="button"
                   onClick={openUpdateModal}
-                  className="text-[11px] font-medium text-primary hover:underline block pt-0.5 cursor-pointer"
+                  className="text-[11px] font-medium text-primary hover:opacity-80 transition-opacity block pt-0.5 cursor-pointer"
                 >
                   + {changelogItems.length - 5} thay đổi khác...
                 </button>

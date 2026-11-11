@@ -227,7 +227,7 @@ export default function QueueWorkflowSelector({
                             ? 'bg-primary/10 text-primary font-semibold'
                             : 'text-on-surface hover:bg-surface-container-high'
                         }`}
-                        title={tpl.description || tpl.name}
+                        data-tooltip={tpl.description || tpl.name}
                       >
                         <span className="material-symbols-outlined text-[16px] shrink-0 text-primary">account_tree</span>
                         <span className="truncate flex-1 min-w-0">{tpl.name}</span>
@@ -338,7 +338,7 @@ export default function QueueWorkflowSelector({
                           ? 'bg-primary/10 text-primary font-semibold'
                           : 'text-on-surface hover:bg-surface-container-high'
                       }`}
-                      title={tpl.description || tpl.name}
+                      data-tooltip={tpl.description || tpl.name}
                     >
                       <span className="material-symbols-outlined text-[16px] shrink-0 text-primary">account_tree</span>
                       <div className="truncate flex-1 flex flex-col min-w-0">

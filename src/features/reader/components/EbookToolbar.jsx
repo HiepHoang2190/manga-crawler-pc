@@ -1,5 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useI18n } from '../../../context/I18nContext';
+import { SearchableSelect } from '../../../shared';
 
 /**
  * @param {{
@@ -56,6 +57,13 @@ export default function EbookToolbar({
 
   const isPaginated = prefs.layoutMode === 'paginated';
 
+  const pageOptions = useMemo(() => {
+    return Array.from({ length: total }, (_, i) => ({
+      value: i,
+      label: String(i + 1),
+    }));
+  }, [total]);
+
   return (
     <div className="flex items-center gap-1 px-3 py-2 bg-surface border-b border-outline-variant/20 shrink-0 min-w-0">
       {/* Title */}
@@ -73,18 +81,14 @@ export default function EbookToolbar({
 
       {/* Chapter/page selector dropdown */}
       {total > 0 && (
-        <select
+        <SearchableSelect
           value={currentIndex}
-          onChange={(e) => onSelectIndex(Number(e.target.value))}
-          aria-label={bookType === 'epub' ? t('ebook.openChapterPanel') : t('ebook.pagesPanelTitle')}
-          className="text-xs bg-surface-variant text-on-surface-variant rounded px-1 py-0.5 border border-outline-variant/30 shrink-0 max-w-[80px]"
-        >
-          {Array.from({ length: total }, (_, i) => (
-            <option key={i} value={i}>
-              {i + 1}
-            </option>
-          ))}
-        </select>
+          onChange={(val) => onSelectIndex(Number(val))}
+          options={pageOptions}
+          size="sm"
+          className="w-20 min-w-[4.5rem] shrink-0"
+          searchPlaceholder={bookType === 'epub' ? t('ebook.openChapterPanel') : t('ebook.pagesPanelTitle')}
+        />
       )}
 
       {/* Prev button */}

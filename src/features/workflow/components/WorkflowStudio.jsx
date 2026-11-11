@@ -883,6 +883,7 @@ export default function WorkflowStudio() {
             <WorkflowLogConsole
               workflowName={workflowName}
               nodes={canvas.nodes}
+              edges={canvas.edges}
               nodeStates={nodeStates}
               logs={logs}
               isRunning={isRunning}

@@ -170,7 +170,7 @@ export default function ChaptersDrawer({
           </div>
         )}
 
-        {(coverUrl || description) && activeTab === 'chapters' ? (
+        {(coverUrl || description || manga?.author || manga?.rating != null || manga?.genres?.length || manga?.altTitles?.length) && activeTab === 'chapters' ? (
           <div className="flex shrink-0 gap-4 border-b border-outline-variant/15 px-4 py-4">
             {coverUrl ? (
               <img
@@ -180,11 +180,56 @@ export default function ChaptersDrawer({
                 style={{ aspectRatio: '2/3' }}
               />
             ) : null}
-            {description ? (
-              <p className="text-sm text-on-surface-variant leading-relaxed line-clamp-[7] flex-1 min-w-0">
-                {description}
-              </p>
-            ) : null}
+            <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+              {(manga?.author || manga?.rating != null) && (
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                  {manga?.author ? (
+                    <div className="flex items-center gap-1 min-w-0">
+                      <span className="font-medium text-on-surface-variant/70 shrink-0">{t('mangaInfo.author')}</span>
+                      <span className="text-on-surface font-semibold truncate">{manga.author}</span>
+                    </div>
+                  ) : null}
+                  {manga?.rating != null ? (
+                    <div className="flex items-center gap-1 font-semibold text-amber-400 shrink-0">
+                      <span
+                        className="material-symbols-outlined text-[14px] leading-none text-amber-400"
+                        style={{ fontVariationSettings: "'FILL' 1" }}
+                      >
+                        star
+                      </span>
+                      <span>{typeof manga.rating === 'number' ? manga.rating.toFixed(2) : manga.rating}</span>
+                      <span className="text-[10px] text-on-surface-variant font-normal">/ 10</span>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
+              {manga?.altTitles?.length ? (
+                <div className="text-[11px] text-on-surface-variant/80 line-clamp-2">
+                  <span className="font-medium text-on-surface-variant/60">{t('mangaInfo.altTitles')} </span>
+                  <span>{Array.isArray(manga.altTitles) ? manga.altTitles.slice(0, 3).join(' • ') : manga.altTitles}</span>
+                </div>
+              ) : null}
+
+              {manga?.genres?.length ? (
+                <div className="flex flex-wrap gap-1 py-0.5">
+                  {(Array.isArray(manga.genres) ? manga.genres : [manga.genres]).slice(0, 6).map((g, idx) => (
+                    <span
+                      key={idx}
+                      className="inline-block rounded bg-surface-container-highest px-1.5 py-0.5 text-[10px] font-medium text-on-surface-variant"
+                    >
+                      {g}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+
+              {description ? (
+                <p className="text-xs text-on-surface-variant leading-relaxed line-clamp-4 pt-0.5">
+                  {description}
+                </p>
+              ) : null}
+            </div>
           </div>
         ) : null}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">

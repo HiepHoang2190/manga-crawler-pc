@@ -7,7 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const { fileURLToPath } = require('url');
-const { getImageRefererForUrl } = require('../../download/connector/connectorReferer');
+const { getImageRefererForUrl, isMangadexCdnHost } = require('../../download/connector/connectorReferer');
 const { USER_AGENT } = require('../../download/connector/htmlConnectorUtils');
 
 const EXT_TO_MIME = {
@@ -69,6 +69,17 @@ async function fetchRemoteImageAsDataUrl(urlString) {
     host = new URL(u).hostname.toLowerCase();
   } catch {
     return null;
+  }
+
+  if (isMangadexCdnHost(host)) {
+    // MangaDex CDN (uploads.mangadex.org) cấm Browser User-Agent (trả về 403 Bot Challenge).
+    // Gửi app User-Agent riêng và đảm bảo Referer mangadex.org.
+    delete headers['User-Agent'];
+    delete headers['user-agent'];
+    headers['User-Agent'] = 'MangaCrawler/3.0';
+    if (!headers.Referer) {
+      headers.Referer = 'https://mangadex.org/';
+    }
   }
   if (host.includes('comix.to')) {
     try {

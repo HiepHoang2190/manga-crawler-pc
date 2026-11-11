@@ -562,7 +562,7 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
                   onClick={handleEnableAll}
                   disabled={loading || !plugins.some((p) => !p.isEnabled)}
                   className={BTN_SURFACE}
-                  title={t('plugins.enableAll')}
+                  data-tooltip={t('plugins.enableAll')}
                 >
                   <span className="material-symbols-outlined text-[16px]">done_all</span>
                   <span>{t('plugins.enableAll')}</span>
@@ -572,7 +572,7 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
                   onClick={handleDisableAll}
                   disabled={loading || !plugins.some((p) => p.isEnabled)}
                   className={BTN_SURFACE}
-                  title={t('plugins.disableAll')}
+                  data-tooltip={t('plugins.disableAll')}
                 >
                   <span className="material-symbols-outlined text-[16px]">block</span>
                   <span>{t('plugins.disableAll')}</span>
@@ -659,7 +659,7 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
                       ? 'border-primary bg-primary/10 ring-2 ring-primary/30 shadow-xs'
                       : 'border-outline-variant/15 bg-surface-container-low/60 hover:bg-surface-container-high hover:border-outline-variant/30'
                   }`}
-                  title={t('plugins.filterAll')}
+                  data-tooltip={t('plugins.filterAll')}
                 >
                   <span className="text-[10px] font-bold text-on-surface-variant uppercase">{t('plugins.statTotal')}</span>
                   <span className="text-base font-extrabold text-on-surface mt-0.5">{stats.total}</span>
@@ -676,7 +676,7 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
                       ? 'border-emerald-500 bg-emerald-500/15 ring-2 ring-emerald-500/30 shadow-xs'
                       : 'border-emerald-500/15 bg-emerald-500/5 hover:border-emerald-500/40 hover:bg-emerald-500/10'
                   }`}
-                  title={t('plugins.filterEnabled')}
+                  data-tooltip={t('plugins.filterEnabled')}
                 >
                   <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase">{t('plugins.statEnabled')}</span>
                   <span className="text-base font-extrabold text-emerald-600 dark:text-emerald-400 mt-0.5">{stats.enabled}</span>
@@ -693,7 +693,7 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
                       ? 'border-outline-variant/60 bg-surface-container-high ring-2 ring-outline-variant/40 shadow-xs'
                       : 'border-outline-variant/15 bg-surface-container-low/60 hover:bg-surface-container-high hover:border-outline-variant/30'
                   }`}
-                  title={t('plugins.filterDisabled')}
+                  data-tooltip={t('plugins.filterDisabled')}
                 >
                   <span className="text-[10px] font-bold text-on-surface-variant/60 uppercase">{t('plugins.statDisabled')}</span>
                   <span className="text-base font-extrabold text-on-surface-variant/70 mt-0.5">{stats.disabled}</span>
@@ -1270,7 +1270,7 @@ function PluginCard({ plugin, onToggle, onDelete, onReload, onEditSource, disabl
 
               {sourceUrl ? (
                 <div className="flex flex-wrap items-center gap-2 pt-1">
-                  <span className="text-[11px] text-on-surface-variant truncate max-w-md font-mono" title={sourceUrl}>
+                  <span className="text-[11px] text-on-surface-variant truncate max-w-md font-mono" data-tooltip={sourceUrl}>
                     {sourceUrl}
                   </span>
                   <button

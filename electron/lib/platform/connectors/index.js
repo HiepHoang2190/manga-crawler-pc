@@ -63,6 +63,7 @@ const asurascans = require('./asurascans');
 const flamecomics = require('./flamecomics');
 const sangchanhteam = require('./sangchanhteam');
 const tcbscanmanga = require('./tcbscanmanga');
+const kingdomhoiquan = require('./kingdomhoiquan');
 
 // JS Plugin Manager
 const JsPluginManager = require('../../plugins/JsPluginManager');
@@ -132,6 +133,7 @@ const REGISTRY = {
   [flamecomics.id]: flamecomics,
   [sangchanhteam.id]: sangchanhteam,
   [tcbscanmanga.id]: tcbscanmanga,
+  [kingdomhoiquan.id]: kingdomhoiquan,
 };
 
 function get(siteId) {

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useI18n } from '../../context/I18nContext';
+import { StudioLayout } from '../../shared';
 import ContinueReadingCard from './dashboard/ContinueReadingCard';
 import RecentDownloadsCarousel from './dashboard/RecentDownloadsCarousel';
 import KpiTile from './dashboard/KpiTile';
@@ -213,7 +214,9 @@ export default function DashboardPanel({
   })();
 
   return (
-    <main className="flex-1 min-h-0 overflow-y-auto px-6 py-5 flex flex-col gap-6">
+    <StudioLayout className="w-full h-full">
+      <StudioLayout.Body>
+        <StudioLayout.Content className="overflow-y-auto custom-scrollbar px-6 py-5 flex flex-col gap-6">
       {data.error ? (
         <section
           role="alert"
@@ -356,6 +359,8 @@ export default function DashboardPanel({
           onSelectChapter={onSelectRecentChapter || (() => {})}
         />
       </section>
-    </main>
+        </StudioLayout.Content>
+      </StudioLayout.Body>
+    </StudioLayout>
   );
 }

@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { NODE_DEFINITIONS } from '../engine/nodeDefinitions';
-import { isPortCompatible, topologicalSort, autoConnectAllNodes, autoConnectOnAddNode, getNodeOutputs } from '../engine/workflowGraph';
+import { isPortCompatible, topologicalSort, getTopologicallyOrderedNodes, autoConnectAllNodes, autoConnectOnAddNode, getNodeOutputs } from '../engine/workflowGraph';
 
 export function useWorkflowCanvas(initialWorkflow = null) {
   const [nodes, setNodes] = useState(() => initialWorkflow?.nodes || []);
@@ -69,29 +69,13 @@ export function useWorkflowCanvas(initialWorkflow = null) {
     setNodes((prevNodes) => {
       if (!prevNodes || prevNodes.length === 0) return prevNodes;
 
-      let orderedIds = [];
-      try {
-        const topo = topologicalSort(prevNodes, edges);
-        orderedIds = topo.sortedNodeIds || [];
-      } catch {
-        orderedIds = [];
-      }
+      const orderedNodes = getTopologicallyOrderedNodes(prevNodes, edges);
 
-      const remaining = prevNodes.filter((n) => !orderedIds.includes(n.id)).map((n) => n.id);
-      const allOrdered = [...orderedIds, ...remaining];
-
-      const posMap = new Map();
-      allOrdered.forEach((id, index) => {
-        posMap.set(id, {
-          x: 60 + index * 300,
-          y: index % 2 === 0 ? 100 : 260,
-        });
-      });
-
-      return prevNodes.map((node) => {
-        const pos = posMap.get(node.id);
-        return pos ? { ...node, x: pos.x, y: pos.y } : node;
-      });
+      return orderedNodes.map((node, index) => ({
+        ...node,
+        x: 60 + index * 300,
+        y: index % 2 === 0 ? 100 : 260,
+      }));
     });
   }, [edges]);
 

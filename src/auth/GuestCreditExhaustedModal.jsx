@@ -84,7 +84,7 @@ export default function GuestCreditExhaustedModal({ open, onClose, onSignIn }) {
             <button
               type="button"
               onClick={onClose}
-              className="text-center text-xs text-on-surface-variant underline hover:text-on-surface pt-1 cursor-pointer"
+              className="text-center text-xs text-on-surface-variant hover:text-on-surface hover:opacity-80 transition-all pt-1 cursor-pointer"
             >
               {t('guestCredit.continueTrial')}
             </button>

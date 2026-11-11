@@ -252,7 +252,7 @@ StudioLayout.LeftSidebar = function StudioLeftSidebar({
           variant="overlay"
           side="right"
           onPointerDown={onResizeStart}
-          title={t('studio.resizeWidth')}
+          data-tooltip={t('studio.resizeWidth')}
           ariaLabel={t('studio.resizeWidth')}
         />
       )}
@@ -299,7 +299,7 @@ StudioLayout.RightSidebar = function StudioRightSidebar({
           variant="overlay"
           side="left"
           onPointerDown={onResizeStart}
-          title={t('studio.resizeWidth')}
+          data-tooltip={t('studio.resizeWidth')}
           ariaLabel={t('studio.resizeWidth')}
         />
       )}

@@ -60,6 +60,7 @@ const TEST_URLS = {
   kenhsinhvien: '/',
   sangchanhteam: '/truyen/het-nhu-han-quang-gap-nang-gat/',
   tcbscanmanga: '/manga/futago-matomete-kanojo-ni-shinai-',
+  kingdomhoiquan: '/',
 };
 
 function buildCatalog() {

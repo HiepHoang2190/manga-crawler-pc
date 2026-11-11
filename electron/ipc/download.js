@@ -239,6 +239,8 @@ function registerDownloadIpc(ipc_context) {
         comickLanguage,
         mangaballLanguage,
         prefetchChapterUrls,
+        volume,
+        mangadexVolumeFolderGrouping,
       }
     ) => {
       ipc_context.setAbortRequested(false);
@@ -280,6 +282,8 @@ function registerDownloadIpc(ipc_context) {
         mangadexLanguage,
         comickLanguage,
         mangaballLanguage,
+        volume,
+        mangadexVolumeFolderGrouping,
         onLog,
         onProgress,
         shouldAbort: () => ipc_context.isAbortRequested(),

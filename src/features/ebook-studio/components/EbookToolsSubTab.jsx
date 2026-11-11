@@ -407,7 +407,7 @@ export default function EbookToolsSubTab({
                       <button
                         type="button"
                         onClick={handleClearCombineFiles}
-                        className="text-[11px] font-medium text-error hover:underline cursor-pointer"
+                        className="text-[11px] font-medium text-error hover:opacity-80 transition-opacity cursor-pointer"
                       >
                         {t('ebookStudio.tools.clearAll', 'Xóa tất cả')}
                       </button>
@@ -436,7 +436,7 @@ export default function EbookToolsSubTab({
                       <button
                         type="button"
                         onClick={handleClearSplitFile}
-                        className="text-[11px] font-medium text-error hover:underline cursor-pointer"
+                        className="text-[11px] font-medium text-error hover:opacity-80 transition-opacity cursor-pointer"
                       >
                         {t('tools.remove', 'Gỡ bỏ')}
                       </button>

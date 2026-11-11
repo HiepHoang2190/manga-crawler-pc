@@ -16,3 +16,16 @@ test('OutputDestinationSelector clear button retains aria-label and has no toolt
   expect(src).not.toContain("data-tooltip={t('outputDestination.clear')");
   expect(src).not.toContain("title={t('outputDestination.clear')");
 });
+
+test('OutputDestinationSelector checks directory existence like Crawler tab with warning ring and icon', () => {
+  const src = fs.readFileSync(path.join(dirname, 'OutputDestinationSelector.jsx'), 'utf8');
+  // Must use validateSaveDir
+  expect(src).toContain('validateSaveDir');
+  // Must show warning ring like Crawler tab
+  expect(src).toContain('ring-amber-500');
+  // Must show warning icon with tooltip
+  expect(src).toContain('data-tooltip={activeWarningMsg}');
+  // 0 native title
+  expect(src).not.toMatch(/<(button|a|span|div|input)\b[^>]*\stitle=/);
+});
+

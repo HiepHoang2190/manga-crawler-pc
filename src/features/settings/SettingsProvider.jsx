@@ -6,6 +6,8 @@ import {
   saveDuplicateScanRecursive,
   loadAutoRetryMax,
   saveAutoRetryMax,
+  loadMangadexVolumeFolderGrouping,
+  saveMangadexVolumeFolderGrouping,
 } from '../../utils/appSettings';
 
 const SettingsContext = createContext(null);
@@ -39,6 +41,9 @@ export function SettingsProvider({ children }) {
   const [autoRetryMax, setAutoRetryMax] = useState(() => loadAutoRetryMax());
   const [duplicateScanRecursive, setDuplicateScanRecursive] = useState(() =>
     loadDuplicateScanRecursive()
+  );
+  const [mangadexVolumeFolderGrouping, setMangadexVolumeFolderGrouping] = useState(() =>
+    loadMangadexVolumeFolderGrouping()
   );
   const [chapterFolder, setChapterFolder] = useState(DEFAULT_CHAPTER_FOLDER);
   /** Version mới phát hiện qua auto-check định kỳ — hiện badge trên TitleBar. */
@@ -280,6 +285,10 @@ export function SettingsProvider({ children }) {
     saveDuplicateScanRecursive(duplicateScanRecursive);
   }, [duplicateScanRecursive]);
 
+  useEffect(() => {
+    saveMangadexVolumeFolderGrouping(mangadexVolumeFolderGrouping);
+  }, [mangadexVolumeFolderGrouping]);
+
   /** Threads chỉ 1–5 (đồng bộ với backend). */
   const setThreadsClamped = useCallback((v) => {
     setThreads((prev) => {
@@ -320,6 +329,8 @@ export function SettingsProvider({ children }) {
       setAutoRetryMax,
       duplicateScanRecursive,
       setDuplicateScanRecursive,
+      mangadexVolumeFolderGrouping,
+      setMangadexVolumeFolderGrouping,
       chapterFolder,
       setChapterFolder,
       persistChapterFolder,
@@ -358,6 +369,7 @@ export function SettingsProvider({ children }) {
       setThreadsClamped,
       autoRetryMax,
       duplicateScanRecursive,
+      mangadexVolumeFolderGrouping,
       chapterFolder,
       persistChapterFolder,
       handleBrowse,

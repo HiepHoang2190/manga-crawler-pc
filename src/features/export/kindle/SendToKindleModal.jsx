@@ -731,7 +731,7 @@ export default function SendToKindleModal({ open, row, onClose }) {
                           <button
                             type="button"
                             onClick={() => revealLocal(r.localPath)}
-                            className="text-[10px] font-semibold text-primary hover:underline cursor-pointer"
+                            className="text-[10px] font-semibold text-primary hover:opacity-80 transition-opacity cursor-pointer"
                           >
                             {t('sendToKindle.revealLocal')}
                           </button>
@@ -750,7 +750,7 @@ export default function SendToKindleModal({ open, row, onClose }) {
               <button
                 type="button"
                 onClick={openAmazonLibrary}
-                className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline cursor-pointer"
+                className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:opacity-80 transition-opacity cursor-pointer"
               >
                 <span className="material-symbols-outlined text-[14px] leading-none">open_in_new</span>
                 {t('sendToKindle.amazonLibrary')}

@@ -112,6 +112,28 @@ describe('AsurascansService Basic', () => {
     ).toBe(ASURASCANS_IMAGE_REFERER);
   });
 
+  it('prefers actual CDN cover over 403 /og/ image when parsing comic details', () => {
+    const html = `
+      <meta property="og:title" content="The Grand Duke of the North's Crazy Son-in-Law | Asura Scans" />
+      <meta property="og:image" content="https://asurascans.com/og/comics/the-grand-duke-of-the-norths-crazy-son-in-law.jpg" />
+      <h1>The Grand Duke of the North's Crazy Son-in-Law</h1>
+      <div class="relative w-[180px] aspect-[2/3] rounded-md overflow-hidden shadow-2xl cursor-pointer">
+        <img src="https://cdn.asurascans.com/asura-images/covers/the-grand-duke-of-the-norths-crazy-son-in-law.c14653-400.webp" alt="The Grand Duke of the North's Crazy Son-in-Law" />
+      </div>
+      <a href="/comics/the-grand-duke-of-the-norths-crazy-son-in-law-f212c582/chapter/1">Chapter 1</a>
+    `;
+
+    const parsed = asurascansService.parseAsurascansDetailsHtml(
+      html,
+      'https://asurascans.com/comics/the-grand-duke-of-the-norths-crazy-son-in-law-f212c582',
+      'the-grand-duke-of-the-norths-crazy-son-in-law-f212c582'
+    );
+    expect(parsed.ok).toBe(true);
+    expect(parsed.manga.coverUrl).toBe(
+      'https://cdn.asurascans.com/asura-images/covers/the-grand-duke-of-the-norths-crazy-son-in-law.c14653-400.webp'
+    );
+  });
+
   it('is registered in connectors registry', () => {
     const connector = connectors.get('asurascans');
     expect(connector).toBeTruthy();
