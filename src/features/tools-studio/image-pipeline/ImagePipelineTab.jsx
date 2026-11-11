@@ -1,7 +1,7 @@
 // src/features/tools-studio/image-pipeline/ImagePipelineTab.jsx
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from '../../../context/I18nContext';
-import { SourcePicker, ResizeSplitter, StudioLayout, OutputFormatSelector, OutputDestinationSelector, SearchableSelect } from '../../../shared';
+import { SourcePicker, ResizeSplitter, StudioLayout, OutputFormatSelector, OutputDestinationSelector, SearchableSelect, SaveDirErrorModal } from '../../../shared';
 import { ToolsStudioActionSlot, ToolsStudioCenterSlot } from '../ToolsStudioActionSlot';
 import { generateId } from './actionTypes';
 import { actionStackReducer, initialStackState, countEnabled } from './actionStack';
@@ -86,6 +86,7 @@ export default function ImagePipelineTab({
   const [view, setView] = useState({ filter: 'all', search: '', sort: 'nameAsc' });
   const [modalIndex, setModalIndex] = useState(null);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [saveDirErrorModal, setSaveDirErrorModal] = useState(null);
   const [sidebarTab, setSidebarTab] = useState('actions');
 
   const stackRef = useRef(stack);
@@ -426,15 +427,32 @@ export default function ImagePipelineTab({
     if (!canStart) return;
 
     let targetDestination = destination;
-    if (!destination.inPlace && !destination.outputDir) {
-      setSidebarTab('output');
-      const dir = await api?.selectDirectory?.();
-      if (!dir) {
-        setStatus({ type: 'error', text: t('imagePipeline.startHint.noDestination') });
+    if (!destination.inPlace) {
+      const targetDir = String(destination.outputDir || '').trim();
+      if (!targetDir) {
+        setSidebarTab('output');
+        setSaveDirErrorModal({
+          path: '',
+          message: t('imagePipeline.startHint.noDestination') || t('app.log.needSavePathShort') || 'Vui lòng chọn thư mục xuất.',
+        });
         return;
       }
-      targetDestination = { ...destination, outputDir: dir };
-      setDestination(targetDestination);
+      if (api?.validateSaveDir) {
+        try {
+          const valRes = await api.validateSaveDir(targetDir);
+          if (valRes && !valRes.ok && !valRes.canCreate) {
+            setSidebarTab('output');
+            setSaveDirErrorModal({
+              path: targetDir,
+              message: valRes.error || t('sidebar.warning.invalidSavePath') || 'Thư mục không tồn tại hoặc ổ đĩa chưa kết nối',
+            });
+            return;
+          }
+        } catch {
+          /* proceed if unexpected validation error */
+        }
+      }
+      targetDestination = { ...destination, outputDir: targetDir };
     }
 
     setProcessing(true);
@@ -825,6 +843,18 @@ export default function ImagePipelineTab({
       {saveDialogOpen && (
         <SaveTemplateDialog initialName={templateName(activeTemplate)} onConfirm={handleSaveAs} onCancel={() => setSaveDialogOpen(false)} />
       )}
+
+      {/* Modal cảnh báo thư mục lưu không hợp lệ */}
+      <SaveDirErrorModal
+        open={Boolean(saveDirErrorModal)}
+        error={saveDirErrorModal?.message}
+        path={saveDirErrorModal?.path}
+        onClose={() => setSaveDirErrorModal(null)}
+        onSelectNewDir={async () => {
+          setSaveDirErrorModal(null);
+          await handleBrowseOutput();
+        }}
+      />
     </div>
   );
 }

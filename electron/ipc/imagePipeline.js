@@ -77,6 +77,15 @@ function registerImagePipelineIpc(ipc_context) {
   });
 
   ipcMain.handle('imagePipeline:run', async (_event, payload) => {
+    const output = payload?.output && typeof payload.output === 'object' ? payload.output : {};
+    if (!output.inPlace && output.outputDir) {
+      const { validateDirectory } = require('../lib/utils/pathValidator');
+      const valRes = validateDirectory(String(output.outputDir).trim());
+      if (!valRes.ok && !valRes.canCreate) {
+        return { ok: false, error: valRes.error || 'Thư mục xuất không tồn tại hoặc ổ đĩa chưa kết nối.' };
+      }
+    }
+
     const job = startJob();
     try {
       const { runPipeline } = require('../lib/export/image/pipeline/runPipeline');

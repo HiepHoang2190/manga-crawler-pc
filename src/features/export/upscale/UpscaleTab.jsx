@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useI18n } from '../../../context/I18nContext';
-import { SourcePicker, ResizeSplitter, useToolsSidebarResize, SearchableSelect, OutputFormatSelector, OutputDestinationSelector } from '../../../shared';
+import { SourcePicker, ResizeSplitter, useToolsSidebarResize, SearchableSelect, OutputFormatSelector, OutputDestinationSelector, SaveDirErrorModal } from '../../../shared';
 import { ToolsStudioActionSlot, ToolsStudioCenterSlot } from '../../tools-studio/ToolsStudioActionSlot';
 import { getUpscaleSuffix, buildUpscaleOutputPath, getUpscaleOutputFolder, sortImages } from './upscaleNaming';
 import InteractiveUpscalePreviewModal from './InteractiveUpscalePreviewModal';
@@ -112,6 +112,7 @@ export default function UpscaleTab({
   const [outputSizes, setOutputSizes] = useState({});
   const [completedOutputPaths, setCompletedOutputPaths] = useState({});
   const [outputDirValid, setOutputDirValid] = useState(true);
+  const [saveDirErrorModal, setSaveDirErrorModal] = useState(null);
   const itemStartTimesRef = useRef({});
   const scrollContainerRef = useRef(null);
 
@@ -925,18 +926,34 @@ export default function UpscaleTab({
     }
   };
 
-  const handleStart = async () => {
-    if (!inPlace && outputDir) {
-      const clientApi = api || (typeof window !== 'undefined' ? window.electronAPI : null);
-      if (clientApi?.validateSaveDir) {
-        const valRes = await clientApi.validateSaveDir(outputDir.trim());
-        if (valRes && !valRes.ok && !valRes.canCreate) {
-          setError(valRes.error || t('sidebar.warning.invalidSavePath'));
-          setOutputDirValid(false);
-          return;
-        }
+  const validateOutputBeforeRun = async () => {
+    if (inPlace) return true;
+    const trimmedOut = String(outputDir || '').trim();
+    if (!trimmedOut) {
+      const errMsg = t('app.log.needSavePathShort') || 'Vui lòng chọn thư mục lưu tệp.';
+      setError(errMsg);
+      setOutputDirValid(false);
+      setSaveDirErrorModal({ path: '', message: errMsg });
+      return false;
+    }
+    const clientApi = api || (typeof window !== 'undefined' ? window.electronAPI : null);
+    if (clientApi?.validateSaveDir) {
+      const valRes = await clientApi.validateSaveDir(trimmedOut);
+      if (valRes && !valRes.ok && !valRes.canCreate) {
+        const errMsg = valRes.error || t('sidebar.warning.invalidSavePath') || 'Thư mục không tồn tại hoặc ổ đĩa chưa kết nối';
+        setError(errMsg);
+        setOutputDirValid(false);
+        setSaveDirErrorModal({ path: trimmedOut, message: errMsg });
+        return false;
       }
     }
+    return true;
+  };
+
+  const handleStart = async () => {
+    const validOut = await validateOutputBeforeRun();
+    if (!validOut) return;
+
     const engineStatus = selectedModel ? binaryStatus[selectedModel.engineId] : null;
     if (engineStatus && !engineStatus.available) {
       setIsExtrasModalOpen(true);
@@ -950,17 +967,9 @@ export default function UpscaleTab({
   };
 
   const handleResume = async () => {
-    if (!inPlace && outputDir) {
-      const clientApi = api || (typeof window !== 'undefined' ? window.electronAPI : null);
-      if (clientApi?.validateSaveDir) {
-        const valRes = await clientApi.validateSaveDir(outputDir.trim());
-        if (valRes && !valRes.ok && !valRes.canCreate) {
-          setError(valRes.error || t('sidebar.warning.invalidSavePath'));
-          setOutputDirValid(false);
-          return;
-        }
-      }
-    }
+    const validOut = await validateOutputBeforeRun();
+    if (!validOut) return;
+
     const pendingImages = sortImages(
       images.filter((img) => !completedPaths.has(img.absolutePath) && !uncheckedPaths.has(img.absolutePath)),
       sortBy
@@ -969,17 +978,9 @@ export default function UpscaleTab({
   };
 
   const handleRetryFailed = async () => {
-    if (!inPlace && outputDir) {
-      const clientApi = api || (typeof window !== 'undefined' ? window.electronAPI : null);
-      if (clientApi?.validateSaveDir) {
-        const valRes = await clientApi.validateSaveDir(outputDir.trim());
-        if (valRes && !valRes.ok && !valRes.canCreate) {
-          setError(valRes.error || t('sidebar.warning.invalidSavePath'));
-          setOutputDirValid(false);
-          return;
-        }
-      }
-    }
+    const validOut = await validateOutputBeforeRun();
+    if (!validOut) return;
+
     const failedImages = sortImages(
       images.filter((img) => Boolean(errorMap[img.absolutePath]) && !uncheckedPaths.has(img.absolutePath)),
       sortBy
@@ -1988,6 +1989,18 @@ export default function UpscaleTab({
               });
             });
           }
+        }}
+      />
+
+      {/* Modal cảnh báo thư mục lưu không hợp lệ */}
+      <SaveDirErrorModal
+        open={Boolean(saveDirErrorModal)}
+        error={saveDirErrorModal?.message}
+        path={saveDirErrorModal?.path}
+        onClose={() => setSaveDirErrorModal(null)}
+        onSelectNewDir={async () => {
+          setSaveDirErrorModal(null);
+          await handleBrowseOutput();
         }}
       />
     </div>

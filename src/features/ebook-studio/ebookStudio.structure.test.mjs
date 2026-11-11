@@ -270,3 +270,20 @@ test('All 4 Convert subtabs use unified EmptyState component', () => {
   expect(kindleSrc).toMatch(/<EmptyState/);
 });
 
+test('FormatConverterSubTab, MangaPackagingSubTab, and EbookToolsSubTab validate output directory and mount SaveDirErrorModal', () => {
+  const convSrc = fs.readFileSync(path.join(dirname, 'components/FormatConverterSubTab.jsx'), 'utf8');
+  expect(convSrc).toContain('validateSaveDir');
+  expect(convSrc).toContain('SaveDirErrorModal');
+  expect(convSrc).toContain('outputWarning');
+
+  const pkgSrc = fs.readFileSync(path.join(dirname, 'components/MangaPackagingSubTab.jsx'), 'utf8');
+  expect(pkgSrc).toContain('validateSaveDir');
+  expect(pkgSrc).toContain('SaveDirErrorModal');
+  expect(pkgSrc).toContain('outputWarning');
+
+  const toolsSrc = fs.readFileSync(path.join(dirname, 'components/EbookToolsSubTab.jsx'), 'utf8');
+  expect(toolsSrc).toContain('validateSaveDir');
+  expect(toolsSrc).toContain('SaveDirErrorModal');
+  expect(toolsSrc).toContain('outputWarning');
+});
+

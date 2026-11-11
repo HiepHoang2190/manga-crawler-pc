@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useI18n } from '../../../context/I18nContext';
-import { ResizeSplitter, useToolsSidebarResize, EmptyState } from '../../../shared';
+import { ResizeSplitter, useToolsSidebarResize, EmptyState, SaveDirErrorModal } from '../../../shared';
 import { EbookStudioActionSlot, EbookStudioCenterSlot } from '../EbookStudioActionSlot';
 
 export default function EbookToolsSubTab({
@@ -32,17 +32,56 @@ export default function EbookToolsSubTab({
   const [splitMaxMb, setSplitMaxMb] = useState(200);
 
   // Common states
-  const [outputDir, setOutputDir] = useState(savePath);
+  const [outputDir, setOutputDir] = useState('');
   const openFolderAfter = true;
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(null);
   const [result, setResult] = useState(null);
 
-  const dragIndexRef = useRef(null);
+  const [outputWarning, setOutputWarning] = useState(false);
+  const [outputWarningMsg, setOutputWarningMsg] = useState('');
+  const [saveDirErrorModal, setSaveDirErrorModal] = useState(null);
 
+  const effectiveOutputDir = (outputDir || savePath || '').trim();
+
+  // Validate output directory existence like Crawler tab (validateSaveDir)
   useEffect(() => {
-    setOutputDir((prev) => (!prev || prev === savePath ? savePath : prev));
-  }, [savePath]);
+    if (!effectiveOutputDir) {
+      setOutputWarning(false);
+      setOutputWarningMsg('');
+      return undefined;
+    }
+    if (!api?.validateSaveDir) return undefined;
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      api
+        .validateSaveDir(effectiveOutputDir)
+        .then((res) => {
+          if (cancelled) return;
+          if (res && !res.ok && !res.canCreate) {
+            setOutputWarning(true);
+            setOutputWarningMsg(res.error || t('sidebar.warning.invalidSavePath') || 'Thư mục không tồn tại hoặc ổ đĩa chưa kết nối');
+          } else {
+            setOutputWarning(false);
+            setOutputWarningMsg('');
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setOutputWarning(false);
+            setOutputWarningMsg('');
+          }
+        });
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [effectiveOutputDir, api, t]);
+
+  const dragIndexRef = useRef(null);
 
   useEffect(() => {
     onRunningChange?.(running);
@@ -165,8 +204,50 @@ export default function EbookToolsSubTab({
     if (dir) setOutputDir(dir);
   };
 
+  const resolveTargetDir = (fallbackFile) => {
+    const trimmed = (outputDir || '').trim();
+    if (trimmed) return trimmed;
+    if (fallbackFile) {
+      const sep = fallbackFile.includes('/') ? '/' : '\\';
+      const parts = fallbackFile.split(sep);
+      parts.pop();
+      return parts.join(sep) || sep;
+    }
+    return (savePath || '').trim();
+  };
+
   const handleStartCombine = async () => {
     if (!api?.combineCbz || combineFiles.length < 2) return;
+
+    const targetOut = resolveTargetDir(combineFiles[0]?.path);
+    if (!targetOut) {
+      const errMsg = t('app.log.needSavePathShort') || 'Vui lòng chọn thư mục lưu tệp.';
+      setOutputWarning(true);
+      setOutputWarningMsg(errMsg);
+      setSaveDirErrorModal({ path: '', message: errMsg });
+      return;
+    }
+
+    if (api?.validateSaveDir) {
+      try {
+        const valRes = await api.validateSaveDir(targetOut);
+        if (valRes && !valRes.ok && !valRes.canCreate) {
+          const errMsg =
+            valRes.error ||
+            t('sidebar.warning.invalidSavePath') ||
+            'Thư mục không tồn tại hoặc ổ đĩa chưa kết nối';
+          setOutputWarning(true);
+          setOutputWarningMsg(errMsg);
+          setSaveDirErrorModal({ path: targetOut, message: errMsg });
+          return;
+        }
+      } catch {
+        /* proceed if unexpected error */
+      }
+    }
+
+    setOutputWarning(false);
+    setOutputWarningMsg('');
     setResult(null);
     setProgress(null);
     setRunning(true);
@@ -201,6 +282,36 @@ export default function EbookToolsSubTab({
 
   const handleStartSplit = async () => {
     if (!api?.splitCbz || !splitSourceFile) return;
+
+    const targetOut = resolveTargetDir(splitSourceFile?.path);
+    if (!targetOut) {
+      const errMsg = t('app.log.needSavePathShort') || 'Vui lòng chọn thư mục lưu tệp.';
+      setOutputWarning(true);
+      setOutputWarningMsg(errMsg);
+      setSaveDirErrorModal({ path: '', message: errMsg });
+      return;
+    }
+
+    if (api?.validateSaveDir) {
+      try {
+        const valRes = await api.validateSaveDir(targetOut);
+        if (valRes && !valRes.ok && !valRes.canCreate) {
+          const errMsg =
+            valRes.error ||
+            t('sidebar.warning.invalidSavePath') ||
+            'Thư mục không tồn tại hoặc ổ đĩa chưa kết nối';
+          setOutputWarning(true);
+          setOutputWarningMsg(errMsg);
+          setSaveDirErrorModal({ path: targetOut, message: errMsg });
+          return;
+        }
+      } catch {
+        /* proceed if unexpected error */
+      }
+    }
+
+    setOutputWarning(false);
+    setOutputWarningMsg('');
     setResult(null);
     setProgress(null);
     setRunning(true);
@@ -563,10 +674,22 @@ export default function EbookToolsSubTab({
             </div>
 
             {/* 4. Thư mục đích */}
-            <div className="space-y-2 rounded-xl border border-outline-variant/20 bg-surface-container-low/50 p-3.5">
-              <span className="text-xs font-semibold text-on-surface">
-                {t('ebookStudio.packaging.outputDest', 'Đích lưu tệp')}
-              </span>
+            <div className={`space-y-2 rounded-xl border p-3.5 transition-colors ${
+              outputWarning
+                ? 'border-amber-500/40 bg-amber-500/5'
+                : 'border-outline-variant/20 bg-surface-container-low/50'
+            }`}>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-on-surface">
+                  {t('ebookStudio.packaging.outputDest', 'Đích lưu tệp')}
+                </span>
+                {outputWarning && (
+                  <span className="flex items-center gap-1 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                    <span className="material-symbols-outlined text-[14px]">warning</span>
+                    <span>{outputWarningMsg}</span>
+                  </span>
+                )}
+              </div>
               <div className="flex gap-1.5">
                 <input
                   type="text"
@@ -574,7 +697,11 @@ export default function EbookToolsSubTab({
                   onChange={(e) => setOutputDir(e.target.value)}
                   placeholder={savePath || t('ebookStudio.packaging.defaultSaveDir')}
                   disabled={running}
-                  className="h-9 min-w-0 flex-1 rounded-md border-none bg-surface-container-highest px-3 text-xs text-on-surface outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 font-mono truncate"
+                  className={`h-9 min-w-0 flex-1 rounded-md border-none bg-surface-container-highest px-3 text-xs text-on-surface outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 font-mono truncate transition-colors ${
+                    outputWarning
+                      ? 'ring-1 ring-amber-500/80 bg-amber-500/10'
+                      : ''
+                  }`}
                 />
                 {outputDir && !running && (
                   <button
@@ -824,6 +951,18 @@ export default function EbookToolsSubTab({
           )}
         </div>
       </div>
+
+      {/* Modal cảnh báo thư mục lưu không hợp lệ */}
+      <SaveDirErrorModal
+        open={Boolean(saveDirErrorModal)}
+        error={saveDirErrorModal?.message}
+        path={saveDirErrorModal?.path}
+        onClose={() => setSaveDirErrorModal(null)}
+        onSelectNewDir={async () => {
+          setSaveDirErrorModal(null);
+          await handleSelectOutputDir();
+        }}
+      />
     </div>
   );
 }

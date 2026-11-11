@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import DualSourcePicker from './DualSourcePicker';
-import { ResizeSplitter, useToolsSidebarResize, SearchableSelect, EmptyState } from '../../../shared';
+import { ResizeSplitter, useToolsSidebarResize, SearchableSelect, EmptyState, SaveDirErrorModal } from '../../../shared';
 import { useI18n } from '../../../context/I18nContext';
 import KindleGenCompilerCard from './KindleGenCompilerCard';
 import { EbookStudioActionSlot, EbookStudioCenterSlot } from '../EbookStudioActionSlot';
@@ -43,6 +43,49 @@ export default function FormatConverterSubTab({
   const [queue, setQueue] = useState([]);
   const [converting, setConverting] = useState(false);
   const [globalProgress, setGlobalProgress] = useState(null);
+
+  const [outputWarning, setOutputWarning] = useState(false);
+  const [outputWarningMsg, setOutputWarningMsg] = useState('');
+  const [saveDirErrorModal, setSaveDirErrorModal] = useState(null);
+
+  const effectiveOutputDir = (outputDir || savePath || '').trim();
+
+  // Validate output directory existence like Crawler tab (validateSaveDir)
+  useEffect(() => {
+    if (!effectiveOutputDir) {
+      setOutputWarning(false);
+      setOutputWarningMsg('');
+      return undefined;
+    }
+    if (!api?.validateSaveDir) return undefined;
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      api
+        .validateSaveDir(effectiveOutputDir)
+        .then((res) => {
+          if (cancelled) return;
+          if (res && !res.ok && !res.canCreate) {
+            setOutputWarning(true);
+            setOutputWarningMsg(res.error || t('sidebar.warning.invalidSavePath') || 'Thư mục không tồn tại hoặc ổ đĩa chưa kết nối');
+          } else {
+            setOutputWarning(false);
+            setOutputWarningMsg('');
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setOutputWarning(false);
+            setOutputWarningMsg('');
+          }
+        });
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [effectiveOutputDir, api, t]);
 
   useEffect(() => {
     onRunningChange?.(converting);
@@ -143,16 +186,51 @@ export default function FormatConverterSubTab({
 
   const handleStartConvert = async () => {
     if (!queue.length || !api?.ebookBatchConvert) return;
+
+    const targetOut = (outputDir || savePath || '').trim();
+    if (!targetOut) {
+      const errMsg = t('app.log.needSavePathShort') || 'Vui lòng chọn thư mục lưu tệp.';
+      setOutputWarning(true);
+      setOutputWarningMsg(errMsg);
+      setSaveDirErrorModal({
+        path: '',
+        message: errMsg,
+      });
+      return;
+    }
+
+    if (api?.validateSaveDir) {
+      try {
+        const valRes = await api.validateSaveDir(targetOut);
+        if (valRes && !valRes.ok && !valRes.canCreate) {
+          const errMsg =
+            valRes.error ||
+            t('sidebar.warning.invalidSavePath') ||
+            'Thư mục không tồn tại hoặc ổ đĩa chưa kết nối';
+          setOutputWarning(true);
+          setOutputWarningMsg(errMsg);
+          setSaveDirErrorModal({
+            path: targetOut,
+            message: errMsg,
+          });
+          return;
+        }
+      } catch {
+        /* proceed if unexpected error in validate */
+      }
+    }
+
+    setOutputWarning(false);
+    setOutputWarningMsg('');
     setConverting(true);
 
-    const effectiveOutputDir = outputDir || savePath;
     const filePaths = queue.map((q) => q.path);
 
     try {
       const res = await api.ebookBatchConvert({
         inputPaths: filePaths,
         targetFormat,
-        outputDir: effectiveOutputDir,
+        outputDir: targetOut,
         options,
       });
 
@@ -392,10 +470,22 @@ export default function FormatConverterSubTab({
             )}
 
             {/* 4. Thư mục đích */}
-            <div className="space-y-2 rounded-xl border border-outline-variant/20 bg-surface-container-low/50 p-3.5">
-              <span className="text-xs font-semibold text-on-surface">
-                {t('ebookStudio.converter.outputDest')}
-              </span>
+            <div className={`space-y-2 rounded-xl border p-3.5 transition-colors ${
+              outputWarning
+                ? 'border-amber-500/40 bg-amber-500/5'
+                : 'border-outline-variant/20 bg-surface-container-low/50'
+            }`}>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-on-surface">
+                  {t('ebookStudio.converter.outputDest')}
+                </span>
+                {outputWarning && (
+                  <span className="flex items-center gap-1 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                    <span className="material-symbols-outlined text-[14px]">warning</span>
+                    <span>{outputWarningMsg}</span>
+                  </span>
+                )}
+              </div>
               <div className="flex gap-1.5">
                 <input
                   type="text"
@@ -403,7 +493,11 @@ export default function FormatConverterSubTab({
                   onChange={(e) => setOutputDir(e.target.value)}
                   placeholder={savePath || t('ebookStudio.packaging.defaultSaveDir')}
                   disabled={converting}
-                  className="h-9 min-w-0 flex-1 rounded-md border-none bg-surface-container-highest px-3 text-xs text-on-surface outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 font-mono truncate"
+                  className={`h-9 min-w-0 flex-1 rounded-md border-none bg-surface-container-highest px-3 text-xs text-on-surface outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 font-mono truncate transition-colors ${
+                    outputWarning
+                      ? 'ring-1 ring-amber-500/80 bg-amber-500/10'
+                      : ''
+                  }`}
                 />
                 {outputDir && !converting && (
                   <button
@@ -655,6 +749,18 @@ export default function FormatConverterSubTab({
           )}
         </div>
       </div>
+
+      {/* Modal cảnh báo thư mục lưu không hợp lệ */}
+      <SaveDirErrorModal
+        open={Boolean(saveDirErrorModal)}
+        error={saveDirErrorModal?.message}
+        path={saveDirErrorModal?.path}
+        onClose={() => setSaveDirErrorModal(null)}
+        onSelectNewDir={async () => {
+          setSaveDirErrorModal(null);
+          await handleSelectOutputDir();
+        }}
+      />
     </div>
   );
 }

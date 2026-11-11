@@ -292,6 +292,17 @@ function registerToolsIpc(ipc_context) {
       _upscaleEngine.cancel();
     }
 
+    const sampleOut = images[0]?.outputPath || images[0]?.outputDir;
+    if (sampleOut) {
+      const pathModule = require('path');
+      const targetDir = pathModule.extname(sampleOut) ? pathModule.dirname(sampleOut) : sampleOut;
+      const { validateDirectory } = require('../lib/utils/pathValidator');
+      const valRes = validateDirectory(targetDir);
+      if (!valRes.ok && !valRes.canCreate) {
+        return { ok: false, error: valRes.error || 'Thư mục xuất không tồn tại hoặc ổ đĩa chưa kết nối.' };
+      }
+    }
+
     _upscaleEngine = new UpscaleEngine(resourcesPath, userDataPath);
 
     try {

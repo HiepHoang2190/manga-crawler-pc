@@ -398,6 +398,11 @@ function registerExportIpc(ipc_context) {
     const outputDir = payload?.outputDir
       ? String(payload.outputDir).trim()
       : path.dirname(inputFiles[0]);
+    const { validateDirectory } = require('../lib/utils/pathValidator');
+    const valRes = validateDirectory(outputDir);
+    if (!valRes.ok && !valRes.canCreate) {
+      return { ok: false, error: valRes.error || 'Thư mục đầu ra không tồn tại hoặc ổ đĩa chưa kết nối.' };
+    }
     const outputFileName = payload?.outputFileName ? String(payload.outputFileName).trim() : undefined;
 
     const onProgress = (p) => {
@@ -431,6 +436,11 @@ function registerExportIpc(ipc_context) {
     const outputDir = payload?.outputDir
       ? String(payload.outputDir).trim()
       : path.dirname(inputFile);
+    const { validateDirectory } = require('../lib/utils/pathValidator');
+    const valRes = validateDirectory(outputDir);
+    if (!valRes.ok && !valRes.canCreate) {
+      return { ok: false, error: valRes.error || 'Thư mục đầu ra không tồn tại hoặc ổ đĩa chưa kết nối.' };
+    }
 
     const onProgress = (p) => {
       const main_window = ipc_context.getMainWindow();
@@ -970,6 +980,16 @@ function registerExportIpc(ipc_context) {
   });
 
   ipcMain.handle('ebook:batchConvert', async (_event, payload) => {
+    const effectiveOutputDir = String(payload?.outputDir || '').trim();
+    if (!effectiveOutputDir) {
+      return { ok: false, error: 'Thiếu thư mục đầu ra.' };
+    }
+    const { validateDirectory } = require('../lib/utils/pathValidator');
+    const valRes = validateDirectory(effectiveOutputDir);
+    if (!valRes.ok && !valRes.canCreate) {
+      return { ok: false, error: valRes.error || 'Thư mục đầu ra không tồn tại hoặc ổ đĩa chưa kết nối.' };
+    }
+
     activeEbookAbortController = new AbortController();
     const { batchConvertBooks } = require('../lib/export/converter/formatConverter');
     const win = ipc_context.getMainWindow();
@@ -977,7 +997,7 @@ function registerExportIpc(ipc_context) {
       const results = await batchConvertBooks({
         inputPaths: payload?.inputPaths || [],
         targetFormat: payload?.targetFormat,
-        outputDir: payload?.outputDir,
+        outputDir: effectiveOutputDir,
         options: payload?.options || {},
         onItemProgress: (p) => {
           if (win && !win.isDestroyed()) {
@@ -1143,6 +1163,11 @@ function diagnoseInvalidMangaDir(targetDir, loadedError) {
     const effectiveOutputDir = String(outputDir || sourceDir || '').trim();
     if (!effectiveOutputDir) {
       return { ok: false, error: 'Thiếu thư mục đích.' };
+    }
+    const { validateDirectory } = require('../lib/utils/pathValidator');
+    const valRes = validateDirectory(effectiveOutputDir);
+    if (!valRes.ok && !valRes.canCreate) {
+      return { ok: false, error: valRes.error || 'Thư mục đầu ra không tồn tại hoặc ổ đĩa chưa kết nối.' };
     }
     if (!fs.existsSync(effectiveOutputDir)) {
       fs.mkdirSync(effectiveOutputDir, { recursive: true });

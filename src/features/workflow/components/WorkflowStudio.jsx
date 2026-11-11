@@ -23,11 +23,13 @@ import {
 } from '../utils/workflowStorage';
 import { validateGraph, validateWorkflowPreflight, getDownloadsFolder } from '../engine/workflowGraph';
 import { useSettings } from '../../settings';
+import { SaveDirErrorModal } from '../../../shared';
 
 export default function WorkflowStudio() {
   const { t } = useI18n();
   const [workflowsList, setWorkflowsList] = useState(() => getOrInitWorkflows());
   const [isManagerModalOpen, setIsManagerModalOpen] = useState(false);
+  const [saveDirErrorModal, setSaveDirErrorModal] = useState(null);
 
   const initialWfRef = useRef(null);
   if (!initialWfRef.current) {
@@ -448,6 +450,25 @@ export default function WorkflowStudio() {
     if (!preflight.isValid) {
       showToast(preflight.blockingReason || t('workflow.studio.emptyCanvasToast'), 'warning');
       return;
+    }
+
+    const api = window.electronAPI || window.electron;
+    if (api?.validateSaveDir) {
+      for (const node of canvas.nodes) {
+        const outDir = String(node.data?.outputDir || '').trim();
+        if (outDir) {
+          try {
+            const valRes = await api.validateSaveDir(outDir);
+            if (valRes && !valRes.ok && !valRes.canCreate) {
+              const errMsg = valRes.error || t('sidebar.warning.invalidSavePath') || 'Thư mục không tồn tại hoặc ổ đĩa chưa kết nối';
+              setSaveDirErrorModal({ path: outDir, message: errMsg });
+              return;
+            }
+          } catch {
+            /* proceed if unexpected validation error */
+          }
+        }
+      }
     }
 
     const runId = `run_${Date.now()}`;
@@ -947,6 +968,15 @@ export default function WorkflowStudio() {
         onRenameWorkflow={handleRenameWorkflow}
         onDuplicateWorkflow={handleDuplicateWorkflow}
         onDeleteWorkflow={handleDeleteWorkflow}
+      />
+
+      {/* Modal cảnh báo thư mục lưu không hợp lệ */}
+      <SaveDirErrorModal
+        open={Boolean(saveDirErrorModal)}
+        error={saveDirErrorModal?.message}
+        path={saveDirErrorModal?.path}
+        onClose={() => setSaveDirErrorModal(null)}
+        onSelectNewDir={() => setSaveDirErrorModal(null)}
       />
     </div>
   );
