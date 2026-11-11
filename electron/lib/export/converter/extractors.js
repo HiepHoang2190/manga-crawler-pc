@@ -94,7 +94,10 @@ async function extractImagesFromBook(sourcePath, tempExtractDir, opts = {}) {
   if (ext === '.pdf') {
     onProgress({ message: `Đang trích xuất các trang PDF: ${path.basename(resolved)}` });
     try {
-      const { pdfToPng } = require('pdf-to-png-converter');
+      // Internal renderer — pdf-to-png-converter is broken on Windows with
+      // pdfjs v5 ("Invalid factory url ... must include trailing slash").
+      // See electron/lib/shared/pdfToPng.js.
+      const { pdfToPng } = require('../../shared/pdfToPng');
       const pngPages = await pdfToPng(resolved, {
         outputFolder: tempExtractDir,
         viewportScale: 1.5,

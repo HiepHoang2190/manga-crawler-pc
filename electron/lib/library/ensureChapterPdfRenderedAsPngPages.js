@@ -89,7 +89,9 @@ async function ensureChapterPdfRenderedAsPngPages(chapterDir) {
   }
 
   await ensurePdfjsWorker();
-  const { pdfToPng } = require('pdf-to-png-converter');
+  // Internal renderer — see electron/lib/shared/pdfToPng.js (the
+  // pdf-to-png-converter package throws "Invalid factory url" on Windows).
+  const { pdfToPng } = require('../shared/pdfToPng');
 
   let total_pages = 0;
   try {

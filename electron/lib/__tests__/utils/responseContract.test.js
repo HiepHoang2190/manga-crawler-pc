@@ -28,7 +28,7 @@ const TINY_PNG = Buffer.from(
 );
 
 /**
- * Minimal valid 1-page PDF (no images, but parseable by pdf-to-png-converter).
+ * Minimal valid 1-page PDF (no images, but parseable by pdfjs-dist).
  * This is a hand-crafted minimal PDF with one blank page.
  */
 const MINIMAL_PDF_BASE64 =

@@ -81,8 +81,12 @@ async function handleOpenSession(id, task) {
 
   let pdfDoc;
   try {
+    const { getPdfjsFactoryParams } = require('../../shared/pdfjsAssets');
     pdfDoc = await pdfjsLib.getDocument({
       data: new Uint8Array(data),
+      // CMap / standard-font / wasm data for CJK & non-embedded-font PDFs —
+      // see electron/lib/shared/pdfjsAssets.js.
+      ...getPdfjsFactoryParams(),
       useSystemFonts: true,
       disableFontFace: true,
       isEvalSupported: false,
