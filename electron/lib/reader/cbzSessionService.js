@@ -33,6 +33,7 @@ const yauzl = require('yauzl');
 const { decodeEntryName } = require('./extractCbzWithEncoding');
 const { extractChapterNumberString } = require('../shared/mangaUtils');
 const { IMAGE_EXT } = require('../library/listChapterImageFiles');
+const { parseComicInfoBookmarks } = require('../export/comicInfo');
 
 const SESSION_URI_PREFIX = 'cbz-session://';
 /** Synthetic chapter folder when every image is at the archive root. Kept in
@@ -189,6 +190,18 @@ function sortChapterFolderNames(names) {
   });
 }
 
+function readZipEntry(zipfile, entry) {
+  return new Promise((resolve, reject) => {
+    zipfile.openReadStream(entry, (err, stream) => {
+      if (err) return reject(err);
+      const chunks = [];
+      stream.on('data', (c) => chunks.push(c));
+      stream.on('end', () => resolve(Buffer.concat(chunks)));
+      stream.on('error', reject);
+    });
+  });
+}
+
 function openYauzl(cbzPath) {
   return new Promise((resolve, reject) => {
     yauzl.open(
@@ -271,6 +284,38 @@ async function openSession(cbzPath) {
     return { ok: false, error: 'Không có chương có ảnh trong CBZ.' };
   }
 
+  const customTitles = new Map();
+  if (byFolder.size === 1 && byFolder.has(FLAT_CHAPTER_FOLDER)) {
+    const comicInfoEntry = rawEntries.find((e) => {
+      const name = normalizedEntryName(e).toLowerCase();
+      return name === 'comicinfo.xml';
+    });
+    if (comicInfoEntry) {
+      try {
+        const xmlBuf = await readZipEntry(zipfile, comicInfoEntry);
+        const bookmarks = parseComicInfoBookmarks(xmlBuf.toString('utf8'));
+        if (bookmarks && bookmarks.length > 0) {
+          const allFlatFiles = byFolder.get(FLAT_CHAPTER_FOLDER);
+          byFolder.delete(FLAT_CHAPTER_FOLDER);
+          for (let bi = 0; bi < bookmarks.length; bi++) {
+            const bm = bookmarks[bi];
+            const nextBm = bookmarks[bi + 1];
+            const startIdx = Math.max(0, Math.min(bm.imageIndex, allFlatFiles.length - 1));
+            const endIdx = nextBm ? Math.min(nextBm.imageIndex, allFlatFiles.length) : allFlatFiles.length;
+            const folderName = `[${String(bi + 1).padStart(3, '0')}] ${bm.title.replace(/[\\/:*?"<>|]/g, '_')}`;
+            const slice = allFlatFiles.slice(startIdx, endIdx);
+            if (slice.length > 0) {
+              byFolder.set(folderName, slice);
+              customTitles.set(folderName, bm.title);
+            }
+          }
+        }
+      } catch {
+        /* ignore parsing errors */
+      }
+    }
+  }
+
   const sortedFolders = sortChapterFolderNames([...byFolder.keys()]);
   const title = path.basename(resolved, path.extname(resolved)) || 'CBZ';
   const sessionId = crypto.randomBytes(12).toString('hex');
@@ -281,7 +326,8 @@ async function openSession(cbzPath) {
   for (const folderBasename of sortedFolders) {
     const files = byFolder.get(folderBasename);
     const chapterTitle =
-      folderBasename === FLAT_CHAPTER_FOLDER ? title : folderBasename;
+      customTitles.get(folderBasename) ||
+      (folderBasename === FLAT_CHAPTER_FOLDER ? title : folderBasename);
     const state = {
       folderBasename,
       title: chapterTitle,

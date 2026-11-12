@@ -243,4 +243,45 @@ describe('pdfGenerator', () => {
     const stats = fs.statSync(outputPath);
     expect(stats.size).toBeGreaterThan(0);
   });
+
+  test('should include Document Outline / Bookmarks by default when generateToc is true', async () => {
+    const outputPath = path.join(tempDir, 'output-outline.pdf');
+    const images = [
+      { path: testImages[0].path, title: 'Chapter 1' },
+      { path: testImages[1].path, title: 'Chapter 1' },
+      { path: testImages[2].path, title: 'Chapter 2' },
+    ];
+
+    await generatePdf({
+      images,
+      outputPath,
+      metadata: { title: 'TOC Manga', creator: 'TOC Creator' },
+      generateToc: true,
+    });
+
+    expect(fs.existsSync(outputPath)).toBe(true);
+    const pdfBuffer = fs.readFileSync(outputPath);
+    expect(pdfBuffer.includes('/Outlines')).toBe(true);
+    expect(pdfBuffer.includes('Chapter 1')).toBe(true);
+    expect(pdfBuffer.includes('Chapter 2')).toBe(true);
+  });
+
+  test('should omit Document Outline when generateToc is false', async () => {
+    const outputPath = path.join(tempDir, 'output-no-outline.pdf');
+    const images = [
+      { path: testImages[0].path, title: 'Chapter 1' },
+      { path: testImages[1].path, title: 'Chapter 2' },
+    ];
+
+    await generatePdf({
+      images,
+      outputPath,
+      metadata: { title: 'No TOC Manga', creator: 'TOC Creator' },
+      generateToc: false,
+    });
+
+    expect(fs.existsSync(outputPath)).toBe(true);
+    const pdfBuffer = fs.readFileSync(outputPath);
+    expect(pdfBuffer.includes('/Outlines')).toBe(false);
+  });
 });

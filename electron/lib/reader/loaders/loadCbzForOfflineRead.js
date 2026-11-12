@@ -4,6 +4,7 @@ const path = require('path');
 const { extractCbzWithEncoding } = require('../extractCbzWithEncoding');
 const { loadOfflineMangaAtResolvedDir } = require('./loadOfflineMangaFromDisk');
 const { IMAGE_EXT } = require('../../library/listChapterImageFiles');
+const { parseComicInfoBookmarks } = require('../../export/comicInfo');
 
 /** Thư mục con khi mọi ảnh nằm ở gốc CBZ (không có thư mục chương). */
 const FLAT_CHAPTER_FOLDER = '_cbz_pages';
@@ -38,6 +39,47 @@ function collectRootImageBasenames(mangaDir) {
 function moveRootImagesIntoFlatFolder(mangaDir) {
   const roots = collectRootImageBasenames(mangaDir);
   if (roots.length === 0) return false;
+
+  // Check if ComicInfo.xml exists
+  let comicInfoXml = null;
+  const possibleNames = ['ComicInfo.xml', 'comicinfo.xml', 'COMICINFO.XML'];
+  for (const name of possibleNames) {
+    const full = path.join(mangaDir, name);
+    if (fs.existsSync(full)) {
+      try {
+        comicInfoXml = fs.readFileSync(full, 'utf8');
+        break;
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  const bookmarks = parseComicInfoBookmarks(comicInfoXml);
+  if (bookmarks && bookmarks.length > 0) {
+    // Sort roots naturally
+    roots.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+
+    for (let bi = 0; bi < bookmarks.length; bi++) {
+      const bm = bookmarks[bi];
+      const nextBm = bookmarks[bi + 1];
+      const startIdx = Math.max(0, Math.min(bm.imageIndex, roots.length - 1));
+      const endIdx = nextBm ? Math.min(nextBm.imageIndex, roots.length) : roots.length;
+
+      const folderName = `[${String(bi + 1).padStart(3, '0')}] ${bm.title.replace(/[\\/:*?"<>|]/g, '_')}`;
+      const dest = path.join(mangaDir, folderName);
+      fs.mkdirSync(dest, { recursive: true });
+
+      for (let i = startIdx; i < endIdx; i++) {
+        const file = roots[i];
+        if (file && fs.existsSync(path.join(mangaDir, file))) {
+          fs.renameSync(path.join(mangaDir, file), path.join(dest, file));
+        }
+      }
+    }
+    return true;
+  }
+
   const dest = path.join(mangaDir, FLAT_CHAPTER_FOLDER);
   fs.mkdirSync(dest, { recursive: true });
   for (const name of roots) {

@@ -101,6 +101,7 @@ async function generatePdf(optsOrImages, maybeOutputPath, maybeOpts) {
   const outputPath = String(opts.outputPath || '').trim();
   const metadata = opts.metadata || {};
   const seamless = Boolean(opts.seamless);
+  const generateToc = opts.generateToc !== false;
   const onProgress = opts.onProgress;
 
   if (!images.length) {
@@ -205,10 +206,17 @@ async function generatePdf(optsOrImages, maybeOutputPath, maybeOpts) {
       doc.addPage({ size: [pageWidth, totalHeight], margin: 0 });
 
       let yOffset = 0;
+      let lastChapterTitle = null;
       for (let i = 0; i < resolvedImages.length; i++) {
         const { imgPath, width, height, title } = resolvedImages[i];
         const scaledHeight = Math.round(height * (pageWidth / width));
         doc.image(imgPath, 0, yOffset, { width: pageWidth, height: scaledHeight });
+
+        if (generateToc && title && title !== lastChapterTitle) {
+          doc.outline.addItem(title);
+          lastChapterTitle = title;
+        }
+
         yOffset += scaledHeight;
 
         if (onProgress) {
@@ -217,6 +225,7 @@ async function generatePdf(optsOrImages, maybeOutputPath, maybeOpts) {
       }
     } else {
       // ── Normal mode: one page per image ──
+      let lastChapterTitle = null;
       for (let i = 0; i < images.length; i++) {
         const img = images[i];
         const imgPath = String(img.path || '').trim();
@@ -262,6 +271,11 @@ async function generatePdf(optsOrImages, maybeOutputPath, maybeOpts) {
           // Add page with dimensions matching the image (variable page size)
           doc.addPage({ size: [width, height], margin: 0 });
           doc.image(imagePathToUse, 0, 0, { width, height });
+
+          if (generateToc && imgTitle && imgTitle !== lastChapterTitle) {
+            doc.outline.addItem(imgTitle);
+            lastChapterTitle = imgTitle;
+          }
 
           if (onProgress) {
             onProgress({ done: i + 1, total: images.length, label: imgTitle || path.basename(imgPath) });

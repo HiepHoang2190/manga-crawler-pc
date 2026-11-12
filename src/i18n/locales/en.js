@@ -1536,6 +1536,8 @@ export const en = {
   'cbzExport.openFolderAfter': 'Open containing folder when done',
   'cbzExport.rotateDoublePage': 'Auto-rotate double-page spreads',
   'cbzExport.rotateDoublePageHint': 'Detect pages with width/height ratio ≥ 1.2 and rotate 90° counter-clockwise',
+  'cbzExport.generateToc': 'Generate Table of Contents (ComicInfo.xml)',
+  'cbzExport.generateTocHint': 'Write metadata and chapter bookmarks for comic reader apps (Tachiyomi, Panels...)',
   'cbzExport.loadingList': 'Loading downloaded chapter list…',
   'cbzExport.emptyDownloaded':
     'No completed chapters on disk (per download_db). Download chapters first.',
@@ -1559,6 +1561,8 @@ export const en = {
   'pdfExport.rotateDoublePageHint': 'Detect pages with width/height ratio ≥ 1.4 and rotate 90° clockwise',
   'pdfExport.pdfSeamless': 'PDF seamless (no gaps between images)',
   'pdfExport.pdfSeamlessHint': 'Merge all images into one continuous tall page — ideal for webtoon vertical scroll reading',
+  'pdfExport.generateToc': 'Generate Table of Contents (Bookmarks)',
+  'pdfExport.generateTocHint': 'Create document outline/bookmarks tree viewable in Adobe Acrobat, Foxit Reader, browsers',
   'pdfExport.loadingList': 'Loading downloaded chapter list…',
   'pdfExport.emptyDownloaded':
     'No completed chapters on disk (per download_db). Download chapters first.',

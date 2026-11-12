@@ -32,6 +32,22 @@ export default function CbzExportTab({ savePath = '', onRunningChange }) {
   const [subfoldersWarning, setSubfoldersWarning] = useState(null);
   const [flattenSubfolders, setFlattenSubfolders] = useState(false);
   const [rotateDoublePage, setRotateDoublePage] = useState(false);
+  const [generateToc, setGenerateToc] = useState(() => {
+    try {
+      return localStorage.getItem('cbz_export_generate_toc_v1') !== 'false';
+    } catch {
+      return true;
+    }
+  });
+
+  const handleGenerateTocChange = (checked) => {
+    setGenerateToc(checked);
+    try {
+      localStorage.setItem('cbz_export_generate_toc_v1', String(checked));
+    } catch {
+      /* ignore */
+    }
+  };
   const [sizeSplitEstimate, setSizeSplitEstimate] = useState(null);
   const [sizeSplitEstimateLoading, setSizeSplitEstimateLoading] = useState(false);
 
@@ -262,6 +278,7 @@ export default function CbzExportTab({ savePath = '', onRunningChange }) {
       skipDialog: true,
       flattenSubfolders,
       rotateDoublePage,
+      generateToc,
       absoluteMangaDir: sourceDir,
       ...(outputDir.trim() ? { outputDir: outputDir.trim() } : {}),
       ...(outputBaseName.trim() ? { outputBaseName: outputBaseName.trim() } : {}),
@@ -464,6 +481,15 @@ export default function CbzExportTab({ savePath = '', onRunningChange }) {
                 {t('cbzExport.rotateDoublePage')}
                 <span className="block text-[10px] text-on-surface-variant/50 mt-0.5 leading-relaxed">
                   {t('cbzExport.rotateDoublePageHint')}
+                </span>
+              </span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-2 text-sm text-on-surface-variant hover:text-on-surface">
+              <input type="checkbox" checked={generateToc} onChange={(e) => handleGenerateTocChange(e.target.checked)} disabled={exporting} className="mt-0.5 rounded accent-primary" />
+              <span>
+                {t('cbzExport.generateToc')}
+                <span className="block text-[10px] text-on-surface-variant/50 mt-0.5 leading-relaxed">
+                  {t('cbzExport.generateTocHint')}
                 </span>
               </span>
             </label>

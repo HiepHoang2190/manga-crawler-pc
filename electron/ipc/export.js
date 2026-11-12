@@ -172,6 +172,7 @@ function registerExportIpc(ipc_context) {
         flattenSubfolders: Boolean(payload?.flattenSubfolders),
         rotateDoublePage,
         rotateThreshold,
+        generateToc: payload?.generateToc !== false,
         onProgress: sendProgress,
         ...(effectiveMangaDir ? { absoluteMangaDir: effectiveMangaDir } : {}),
       };
@@ -663,6 +664,7 @@ function registerExportIpc(ipc_context) {
         chapterFolderFormat: ipc_context.getChapterFolderSettings(),
         rotateDoublePage,
         pdfSeamless,
+        generateToc: payload?.generateToc !== false,
         onProgress: sendProgress,
         absoluteMangaDir: mangaDir,
       };

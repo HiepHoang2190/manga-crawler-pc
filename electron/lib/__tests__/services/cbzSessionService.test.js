@@ -93,6 +93,38 @@ describe('cbzSessionService', () => {
       expect(list.ok).toBe(true);
       expect(list.files).toEqual(['01.png', '02.png', '10.png']);
     });
+
+    test('splits flat archive into multiple chapters when ComicInfo.xml contains bookmarks', async () => {
+      const cbz = path.join(tmpRoot, 'flat-with-comicinfo.cbz');
+      const comicInfoXml = `<?xml version="1.0" encoding="utf-8"?>
+<ComicInfo>
+  <Title>Test Comic</Title>
+  <Pages>
+    <Page Image="0" Bookmark="Chapter 1: Intro" Type="Story" />
+    <Page Image="1" Type="Story" />
+    <Page Image="2" Bookmark="Chapter 2: Climax" Type="Story" />
+  </Pages>
+</ComicInfo>`;
+
+      await writeCbz(cbz, [
+        { name: 'ComicInfo.xml', body: Buffer.from(comicInfoXml, 'utf8') },
+        { name: '01.png' },
+        { name: '02.png' },
+        { name: '03.png' },
+      ]);
+
+      const result = await openSession(cbz);
+      expect(result.ok).toBe(true);
+      expect(result.chapters).toHaveLength(2);
+      expect(result.chapters[0].title).toContain('Chapter 1: Intro');
+      expect(result.chapters[1].title).toContain('Chapter 2: Climax');
+
+      const list1 = listChapterFiles(result.sessionId, result.chapters[0].folderBasename);
+      expect(list1.files).toEqual(['01.png', '02.png']);
+
+      const list2 = listChapterFiles(result.sessionId, result.chapters[1].folderBasename);
+      expect(list2.files).toEqual(['03.png']);
+    });
   });
 
   describe('openSession — chapter folders at root', () => {

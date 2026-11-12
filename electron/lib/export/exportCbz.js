@@ -15,6 +15,7 @@ const {
   formatExportZipChapterFolderName,
 } = require('../shared/mangaUtils');
 const { processImageForDoublePageRotation, processRotateDoublePage } = require('./image/rotateDoublePage');
+const { generateComicInfoXml } = require('./comicInfo');
 
 const MAX_CBZ_BASENAME = 180;
 
@@ -386,6 +387,7 @@ async function exportSizeSplitCbz(opts) {
   const flatten = Boolean(opts.flattenSubfolders);
   const rotateDoublePage = Boolean(opts.rotateDoublePage);
   const rotateThreshold = opts.rotateThreshold || 1.2;
+  const generateToc = opts.generateToc !== false;
   
   if (!Number.isFinite(maxBytes) || maxBytes < 1024 * 1024) {
     throw new Error('Giới hạn dung lượng mỗi file không hợp lệ (tối thiểu 1 MB).');
@@ -437,6 +439,16 @@ async function exportSizeSplitCbz(opts) {
       const partPadWidth = flatten ? String(part.length).length : 0;
 
       await runArchiveToFile(outPath, (archive) => {
+        if (generateToc) {
+          const comicInfoXml = generateComicInfoXml({
+            title: `${safePartCbzBaseName(mtResolved, i + 1, totalParts)}`,
+            series: mtResolved,
+            number: i + 1,
+            count: totalParts,
+            items: part,
+          });
+          archive.append(comicInfoXml, { name: 'ComicInfo.xml' });
+        }
         part.forEach((item, localIdx) => {
           // Verify file exists before adding to archive
           if (!fs.existsSync(item.full)) {
@@ -485,6 +497,7 @@ async function exportSingleVolumeCbz(opts) {
   const flatten = Boolean(opts.flattenSubfolders);
   const rotateDoublePage = Boolean(opts.rotateDoublePage);
   const rotateThreshold = opts.rotateThreshold || 1.2;
+  const generateToc = opts.generateToc !== false;
 
   const { allItems } = collectChapterExportItems({
     baseSaveDir: base,
@@ -506,6 +519,14 @@ async function exportSingleVolumeCbz(opts) {
 
   try {
     await runArchiveToFile(outputFile, (archive) => {
+      if (generateToc) {
+        const comicInfoXml = generateComicInfoXml({
+          title: mt,
+          series: mt,
+          items: processedItems,
+        });
+        archive.append(comicInfoXml, { name: 'ComicInfo.xml' });
+      }
       processedItems.forEach((item, idx) => {
         // Verify file exists before adding to archive
         if (!fs.existsSync(item.full)) {
@@ -562,6 +583,7 @@ async function exportChaptersToCbz(opts) {
       flattenSubfolders: opts.flattenSubfolders,
       rotateDoublePage: opts.rotateDoublePage,
       rotateThreshold: opts.rotateThreshold,
+      generateToc: opts.generateToc,
       onProgress: opts.onProgress,
       absoluteMangaDir: opts.absoluteMangaDir,
     });
@@ -578,6 +600,7 @@ async function exportChaptersToCbz(opts) {
       flattenSubfolders: opts.flattenSubfolders,
       rotateDoublePage: opts.rotateDoublePage,
       rotateThreshold: opts.rotateThreshold,
+      generateToc: opts.generateToc,
       onProgress: opts.onProgress,
       absoluteMangaDir: opts.absoluteMangaDir,
     });

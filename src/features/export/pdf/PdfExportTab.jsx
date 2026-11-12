@@ -25,6 +25,22 @@ export default function PdfExportTab({ savePath = '', onRunningChange }) {
   }, [exporting, onRunningChange]);
 
   const [pdfSeamless, setPdfSeamless] = useState(false);
+  const [generateToc, setGenerateToc] = useState(() => {
+    try {
+      return localStorage.getItem('pdf_export_generate_toc_v1') !== 'false';
+    } catch {
+      return true;
+    }
+  });
+
+  const handleGenerateTocChange = (checked) => {
+    setGenerateToc(checked);
+    try {
+      localStorage.setItem('pdf_export_generate_toc_v1', String(checked));
+    } catch {
+      /* ignore */
+    }
+  };
 
   const lastClickedIndexRef = useRef(null);
   const dragAnchorRef = useRef(null);
@@ -160,6 +176,7 @@ export default function PdfExportTab({ savePath = '', onRunningChange }) {
       outputDir: outputDir.trim() || undefined,
       outputBaseName: outputBaseName.trim() || undefined,
       pdfSeamless,
+      generateToc,
       openFolderAfter,
     };
     if (packMode === 'sizeSplit' || packMode === 'chapterSplit') payload.maxMbPerFile = maxMbPerFile;
@@ -326,6 +343,15 @@ export default function PdfExportTab({ savePath = '', onRunningChange }) {
                 {t('pdfExport.pdfSeamless')}
                 <span className="block text-[10px] text-on-surface-variant/50 mt-0.5 leading-relaxed">
                   {t('pdfExport.pdfSeamlessHint')}
+                </span>
+              </span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-2 text-sm text-on-surface-variant hover:text-on-surface">
+              <input type="checkbox" checked={generateToc} onChange={(e) => handleGenerateTocChange(e.target.checked)} disabled={exporting} className="mt-0.5 rounded accent-primary" />
+              <span>
+                {t('pdfExport.generateToc')}
+                <span className="block text-[10px] text-on-surface-variant/50 mt-0.5 leading-relaxed">
+                  {t('pdfExport.generateTocHint')}
                 </span>
               </span>
             </label>

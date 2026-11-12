@@ -196,6 +196,7 @@ async function exportSingleVolumePdf(opts) {
       outputPath: outputFile,
       metadata: { title: mt, creator: 'Manga Crawler Export' },
       seamless: pdfSeamless,
+      generateToc: opts.generateToc,
       onProgress,
     });
     return [outputFile];
@@ -300,6 +301,7 @@ async function exportSizeSplitPdf(opts) {
         outputPath: outPath,
         metadata: { title: `${mt} - Part ${String(i + 1).padStart(2, '0')}`, creator: 'Manga Crawler Export' },
         seamless: pdfSeamless,
+        generateToc: opts.generateToc,
         onProgress,
       });
       outputFiles.push(outPath);
@@ -376,6 +378,7 @@ async function exportChapterSplitPdf(opts) {
         outputPath: outPath,
         metadata: { title: `${mt} - ${ct}`, creator: 'Manga Crawler Export' },
         seamless: pdfSeamless,
+        generateToc: opts.generateToc,
         onProgress,
       });
       outputFiles.push(outPath);

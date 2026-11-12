@@ -1537,6 +1537,8 @@ export const vi = {
   'cbzExport.openFolderAfter': 'Mở thư mục chứa file sau khi xong',
   'cbzExport.rotateDoublePage': 'Tự động xoay ngang các trang đôi (spread)',
   'cbzExport.rotateDoublePageHint': 'Phát hiện trang có tỷ lệ ngang/dọc ≥ 1.2 và xoay 90° ngược chiều kim đồng hồ',
+  'cbzExport.generateToc': 'Tạo mục lục truyện (ComicInfo.xml)',
+  'cbzExport.generateTocHint': 'Ghi metadata và đánh dấu vị trí các chương cho các ứng dụng đọc truyện (Tachiyomi, Panels...)',
   'cbzExport.loadingList': 'Đang tải danh sách chương đã tải…',
   'cbzExport.emptyDownloaded':
     'Chưa có chương nào hoàn thành trên đĩa (theo download_db). Hãy tải chương trước.',
@@ -1560,6 +1562,8 @@ export const vi = {
   'pdfExport.rotateDoublePageHint': 'Phát hiện trang có tỷ lệ ngang/dọc ≥ 1.4 và xoay 90° sang phải',
   'pdfExport.pdfSeamless': 'PDF không khoảng cách giữa các ảnh (webtoon)',
   'pdfExport.pdfSeamlessHint': 'Gộp tất cả ảnh thành một trang dài liên tục — phù hợp với truyện webtoon đọc cuộn dọc',
+  'pdfExport.generateToc': 'Tạo mục lục truyện (Bookmarks)',
+  'pdfExport.generateTocHint': 'Tạo cây mục lục tài liệu (Outline) xem được trên Adobe Acrobat, Foxit Reader, trình duyệt web',
   'pdfExport.loadingList': 'Đang tải danh sách chương đã tải…',
   'pdfExport.emptyDownloaded':
     'Chưa có chương nào hoàn thành trên đĩa (theo download_db). Hãy tải chương trước.',

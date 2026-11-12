@@ -134,6 +134,8 @@ export const BACKUP_SECTIONS = {
       'manga_image_pipeline_templates_v1',
       'manga_image_pipeline_active_template',
       'manga_image_pipeline_destination',
+      'cbz_export_generate_toc_v1',
+      'pdf_export_generate_toc_v1',
     ],
   },
   offlineLibrary: {
