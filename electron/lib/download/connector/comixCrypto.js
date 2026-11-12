@@ -22,10 +22,11 @@ function signComixApiPath(apiPath) {
     (typeof globalThis !== 'undefined' && globalThis.__comixAk) ||
     (typeof window !== 'undefined' && window.__comixAk) ||
     (typeof ak !== 'undefined' ? ak : null);
-  if (!akHelper || typeof akHelper.ho !== 'function') {
+  const signFn = akHelper && (typeof akHelper.ho === 'function' ? akHelper.ho : akHelper.lG);
+  if (!signFn) {
     throw new Error('Comix crypto signing helper is not available');
   }
-  return akHelper.ho(cleanPath);
+  return signFn(cleanPath);
 }
 
 /**
@@ -40,10 +41,11 @@ function decryptComixEncPayload(encPayload) {
     (typeof globalThis !== 'undefined' && globalThis.__comixAk) ||
     (typeof window !== 'undefined' && window.__comixAk) ||
     (typeof ak !== 'undefined' ? ak : null);
-  if (!akHelper || typeof akHelper.vQ !== 'function') {
+  const decFn = akHelper && (typeof akHelper.vQ === 'function' ? akHelper.vQ : akHelper.eB);
+  if (!decFn) {
     throw new Error('Comix crypto decryption helper is not available');
   }
-  return akHelper.vQ(encPayload);
+  return decFn(encPayload);
 }
 
 const TITLE_SLUG_RE = /\/title\/([^/]+)/;

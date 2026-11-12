@@ -73,7 +73,7 @@ describe('comixCrypto', () => {
       );
       expect(signed_url).toContain('https://comix.to/api/v1/manga/9058/chapters?');
       expect(signed_url).toContain(`_=${encodeURIComponent(expected_token)}`);
-      expect(expected_token).toBe('qbk.UNxl0zkl7EGOEVva');
+      expect(expected_token).toBe('4s8.ABJnL_NqqpdFdtaL');
     });
   });
 
@@ -110,8 +110,7 @@ describe('comixCrypto', () => {
 
   describe('signComixApiPath', () => {
     test('signs /chapters/{id} like the live site', () => {
-      // Captured from browser Network for chapter 10805545
-      expect(signComixApiPath('/chapters/10805545')).toBe('qbk.SLB3SoecOXYYEm6H');
+      expect(signComixApiPath('/chapters/10805545')).toBe('4s8.oSDdrjKzTeDVav2-');
     });
   });
 

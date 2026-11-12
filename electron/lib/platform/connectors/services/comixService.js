@@ -617,7 +617,8 @@ const COMIX_SCRAPE_CHAPTERS_SCRIPT = `(async () => {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     if (data && data.e) {
-      const decStr = akHelper ? akHelper.vQ(data.e) : data.e;
+      const decFn = akHelper && (typeof akHelper.vQ === 'function' ? akHelper.vQ : akHelper.eB);
+      const decStr = decFn ? decFn(data.e) : data.e;
       const parsed = typeof decStr === 'string' ? JSON.parse(decStr) : decStr;
       return parsed && parsed.result ? parsed.result : parsed;
     }
