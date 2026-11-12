@@ -62,4 +62,21 @@ describe('encodeOutput', () => {
       .toBuffer();
     expect(cappedBuf.length).toBeLessThan(uncapped.length);
   });
+
+  test('returns size statistics (originalBytes, optimizedBytes, savedBytes, savedPercent)', async () => {
+    const frame = await frameFromInput(await borderedPagePng({ width: 600, height: 800 }));
+    const origSize = 50000;
+    const res = await encodeFrame(
+      frame,
+      { format: 'jpg', quality: 75, resizePercent: 80 },
+      '.png',
+      origSize
+    );
+    expect(res.originalBytes).toBe(origSize);
+    expect(res.optimizedBytes).toBe(res.buffer.length);
+    expect(typeof res.savedBytes).toBe('number');
+    expect(typeof res.savedPercent).toBe('number');
+    expect(res.savedBytes).toBe(origSize - res.optimizedBytes);
+    expect(res.savedPercent).toBe(Math.round(((origSize - res.optimizedBytes) / origSize) * 100));
+  });
 });

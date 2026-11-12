@@ -12,7 +12,7 @@ function resolveOutputExt(srcExt, format) {
 
 async function encodeFrame(
   frame,
-  { format = 'original', quality = 90, resizePercent = null, capToOriginalSize = true } = {},
+  { format = 'original', quality = 90, resizePercent = null, capToOriginalSize = true, chromaSubsampling } = {},
   srcExt = '.jpg',
   originalSize = null
 ) {
@@ -25,7 +25,11 @@ async function encodeFrame(
   function buildPipeline(q) {
     let pipeline = toSharp(frame);
     if (Number.isFinite(pct) && pct > 0 && pct < 100) {
-      pipeline = pipeline.resize({ width: Math.max(1, Math.round((frame.info.width * pct) / 100)) });
+      pipeline = pipeline.resize({
+        width: Math.max(1, Math.round((frame.info.width * pct) / 100)),
+        kernel: 'lanczos3',
+        withoutEnlargement: true,
+      });
     }
 
     if (isGrayscale && lower !== '.png') {
@@ -44,7 +48,7 @@ async function encodeFrame(
       if (frame.info.channels === 4) pipeline = pipeline.flatten({ background: { r: 255, g: 255, b: 255 } });
       const jpegOpts = { quality: q, mozjpeg: true };
       if (!isGrayscale) {
-        jpegOpts.chromaSubsampling = '4:2:0';
+        jpegOpts.chromaSubsampling = chromaSubsampling || (q >= 85 ? '4:4:4' : '4:2:0');
       }
       pipeline = pipeline.jpeg(jpegOpts);
     }
@@ -67,7 +71,12 @@ async function encodeFrame(
     }
   }
 
-  return { buffer, ext };
+  const originalBytes = Number.isFinite(originalSize) && originalSize > 0 ? originalSize : buffer.length;
+  const optimizedBytes = buffer.length;
+  const savedBytes = Math.max(0, originalBytes - optimizedBytes);
+  const savedPercent = originalBytes > 0 ? Math.round((savedBytes / originalBytes) * 100) : 0;
+
+  return { buffer, ext, originalBytes, optimizedBytes, savedBytes, savedPercent };
 }
 
 module.exports = { resolveOutputExt, encodeFrame };

@@ -39,6 +39,10 @@ describe('runPipeline', () => {
     const progress = [];
     const res = await runPipeline({ files: files(), actions, output: { format: 'webp', inPlace: false, outputDir: outDir }, onProgress: (e) => progress.push(e) });
     expect(res).toMatchObject({ ok: true, done: 2, failed: [], cancelled: false });
+    expect(res.totalOriginalBytes).toBeGreaterThan(0);
+    expect(res.totalOptimizedBytes).toBeGreaterThan(0);
+    expect(typeof res.savedBytes).toBe('number');
+    expect(typeof res.savedPercent).toBe('number');
     expect(fs.readdirSync(path.join(outDir, 'ch1')).sort()).toEqual(['p1.webp', 'p2-a.webp', 'p2-b.webp']);
     expect((await sharp(path.join(outDir, 'ch1', 'p1.webp')).metadata()).width).toBe(520);
     expect(progress.map((e) => e.current).sort()).toEqual([1, 2]);

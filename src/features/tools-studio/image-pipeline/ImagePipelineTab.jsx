@@ -1,7 +1,7 @@
 // src/features/tools-studio/image-pipeline/ImagePipelineTab.jsx
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from '../../../context/I18nContext';
-import { SourcePicker, ResizeSplitter, StudioLayout, OutputFormatSelector, OutputDestinationSelector, SearchableSelect, SaveDirErrorModal } from '../../../shared';
+import { SourcePicker, ResizeSplitter, StudioLayout, OutputFormatSelector, OutputDestinationSelector, SearchableSelect, SaveDirErrorModal, CaesiumCompressControl } from '../../../shared';
 import { ToolsStudioActionSlot, ToolsStudioCenterSlot } from '../ToolsStudioActionSlot';
 import { generateId } from './actionTypes';
 import { actionStackReducer, initialStackState, countEnabled } from './actionStack';
@@ -133,6 +133,7 @@ export default function ImagePipelineTab({
   const hasSplit = stack.actions.some((a) => a.enabled && a.type === 'splitPage');
   const hasWork =
     countEnabled(stack.actions) > 0 ||
+    output.caesiumEnabled ||
     output.format !== 'original' ||
     Boolean(output.resizePercent) ||
     (!destination.inPlace && Boolean(destination.outputDir)) ||
@@ -476,11 +477,17 @@ export default function ImagePipelineTab({
         if (!scanOk) return;
       }
       setRunErrors(Object.fromEntries((res.failed || []).map((f) => [f.path, f.error])));
+      let statusText = res.cancelled
+        ? t('imagePipeline.status.cancelled', { done: res.done })
+        : t('imagePipeline.status.done', { done: res.done, failed: res.failed?.length || 0 });
+      if (res.savedBytes && res.savedBytes > 0) {
+        const mb = res.savedBytes / (1024 * 1024);
+        const savedStr = mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.round(res.savedBytes / 1024)} KB`;
+        statusText += ` • Tiết kiệm ${savedStr} (-${res.savedPercent}%)`;
+      }
       setStatus({
         type: res.failed?.length ? 'error' : 'success',
-        text: res.cancelled
-          ? t('imagePipeline.status.cancelled', { done: res.done })
-          : t('imagePipeline.status.done', { done: res.done, failed: res.failed?.length || 0 }),
+        text: statusText,
       });
       if (!res.cancelled && api?.openPath) {
         const target = targetDestination.inPlace
@@ -646,6 +653,9 @@ export default function ImagePipelineTab({
               >
                 <span className="material-symbols-outlined text-[16px] leading-none">output</span>
                 <span className="truncate">{t('imagePipeline.sidebarTab.output')}</span>
+                {output.caesiumEnabled && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" data-tooltip="Caesium Engine đang bật" />
+                )}
               </button>
             </div>
           </div>
@@ -668,7 +678,8 @@ export default function ImagePipelineTab({
               </>
             ) : (
               <>
-                <div className="space-y-3">
+                <div className="space-y-3.5">
+                  {/* 1. Định dạng đầu ra */}
                   <OutputFormatSelector
                     value={output.format}
                     disabled={processing}
@@ -682,48 +693,34 @@ export default function ImagePipelineTab({
                       )
                     }
                   />
-                  {output.format === 'png' ? (
-                    <div className="rounded-lg border border-outline-variant/20 bg-surface-container-high p-2.5 text-[11px] leading-relaxed text-on-surface-variant flex items-start gap-2">
-                      <span className="material-symbols-outlined text-[16px] text-primary shrink-0 select-none mt-0.5">info</span>
-                      <span>{t('imagePipeline.output.pngLosslessHint')}</span>
-                    </div>
-                  ) : (
-                    <label className="block space-y-1 text-xs text-on-surface-variant">
-                      <div className="flex items-center justify-between">
-                        <span>{t('imagePipeline.output.quality', { value: output.quality })}</span>
-                        <span className="text-[10px] text-on-surface-variant/60">{t('imagePipeline.output.qualityHint')}</span>
-                      </div>
-                      <input
-                        type="range"
-                        min={1}
-                        max={100}
-                        value={output.quality}
-                        disabled={processing}
-                        onChange={(e) => setOutput((o) => normalizeOutput({ ...o, quality: Number(e.target.value) }))}
-                        className="w-full accent-primary"
-                      />
-                    </label>
-                  )}
-                  <label className="flex items-center gap-2 text-xs text-on-surface-variant cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="rounded accent-primary"
-                      checked={Boolean(output.resizePercent)}
-                      disabled={processing}
-                      onChange={(e) => setOutput((o) => normalizeOutput({ ...o, resizePercent: e.target.checked ? 80 : null }))}
-                    />
-                    {t('imagePipeline.output.resize')}
-                  </label>
-                  {output.resizePercent && (
-                    <NumberField
-                      label={t('imagePipeline.output.resizePercent')}
-                      value={output.resizePercent}
-                      min={10}
-                      max={99}
-                      disabled={processing}
-                      onChange={(resizePercent) => setOutput((o) => normalizeOutput({ ...o, resizePercent }))}
-                    />
-                  )}
+
+                  {/* 2. Caesium Engine (Nén và tối ưu dung lượng) */}
+                  <CaesiumCompressControl
+                    enabled={output.caesiumEnabled}
+                    onEnabledChange={(enabled) =>
+                      setOutput((o) =>
+                        normalizeOutput({
+                          ...o,
+                          caesiumEnabled: enabled,
+                          quality: enabled ? (o.quality === 100 ? 85 : o.quality) : o.quality,
+                          resizePercent: enabled ? (o.resizePercent ?? 80) : o.resizePercent,
+                        })
+                      )
+                    }
+                    quality={output.quality}
+                    onQualityChange={(quality) => setOutput((o) => normalizeOutput({ ...o, quality }))}
+                    ratio={output.resizePercent ? output.resizePercent / 100 : 1.0}
+                    onRatioChange={(r) =>
+                      setOutput((o) =>
+                        normalizeOutput({
+                          ...o,
+                          resizePercent: r < 0.999 ? Math.round(r * 100) : null,
+                        })
+                      )
+                    }
+                    format={output.format}
+                    disabled={processing}
+                  />
 
                   <div className="space-y-1.5 pt-2 border-t border-outline-variant/15">
                     <div className="flex items-center justify-between">

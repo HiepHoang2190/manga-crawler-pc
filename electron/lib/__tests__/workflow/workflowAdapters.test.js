@@ -842,6 +842,24 @@ describe('Workflow Adapters & Execution', () => {
     expect(progressMessages.length).toBeGreaterThan(0);
   });
 
+  test('image_compress supports Caesium parameters (compressRatio, compressQuality)', async () => {
+    const imagesDir = path.join(tempDir, 'compress_caesium_in');
+    fs.mkdirSync(imagesDir, { recursive: true });
+    const imgPath = path.join(imagesDir, '01.png');
+    fs.writeFileSync(imgPath, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64'));
+
+    const progressMessages = [];
+    const adapters = createAdapters({});
+    const node = { data: { compressRatio: 0.8, compressQuality: 85, inPlace: true } };
+    const inputs = { images_dir: imagesDir, mangaTitle: 'Caesium Test' };
+
+    const result = await adapters.image_compress(node, inputs, (p) => progressMessages.push(p.message));
+    expect(result.images_dir).toBe(imagesDir);
+    expect(result.signal.status).toBe('success');
+    expect(result.totalOriginalBytes).toBeGreaterThan(0);
+    expect(typeof result.savedBytes).toBe('number');
+  });
+
   test('image_compress outputs to custom directory when inPlace is false', async () => {
     const imagesDir = path.join(tempDir, 'compress_custom_in');
     const customOut = path.join(tempDir, 'compress_custom_out');

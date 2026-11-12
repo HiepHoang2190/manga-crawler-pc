@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useI18n } from '../../../context/I18nContext';
-import { ResizeSplitter, SearchableSelect, OutputFormatSelector } from '../../../shared';
+import { ResizeSplitter, SearchableSelect, OutputFormatSelector, CaesiumCompressControl } from '../../../shared';
 import { NODE_DEFINITIONS } from '../engine/nodeDefinitions';
 import { loadThreads } from '../../../utils/appSettings';
 import { useShellNav } from '../../shell';
@@ -1463,76 +1463,18 @@ export default function WorkflowInspector({
               }}
             />
 
-            {/* Quality Slider or PNG Lossless Note */}
-            {(data.format || 'original') === 'png' ? (
-              <div className="rounded-lg border border-outline-variant/20 bg-surface-container-high p-2.5 text-[11px] leading-relaxed text-on-surface-variant flex items-start gap-2">
-                <span className="material-symbols-outlined text-[16px] text-primary shrink-0 select-none mt-0.5">info</span>
-                <span>PNG là định dạng nén không suy hao (Lossless), tối ưu nén kích thước tối đa.</span>
-              </div>
-            ) : (
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-[11px] font-semibold text-on-surface-variant">
-                    {t('workflow.inspector.compressQuality', 'Chất lượng nén (1 - 100)')}
-                  </label>
-                  <span className="text-xs font-mono font-bold text-primary">
-                    {data.quality ?? 90}%
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="1"
-                  max="100"
-                  step="1"
-                  value={data.quality ?? 90}
-                  onChange={(e) => handleChange('quality', Number(e.target.value))}
-                  className="w-full accent-primary cursor-pointer"
-                />
-                <p className="text-[10px] text-on-surface-variant/60 leading-relaxed">
-                  {(data.format || 'original') === 'webp'
-                    ? 'Nén WebP chất lượng cao, giữ chi tiết sắc nét và dung lượng siêu nhẹ.'
-                    : 'Thuật toán MozJPEG tối ưu tỷ lệ nén cao mà mắt thường không thấy suy giảm chất lượng.'}
-                </p>
-              </div>
-            )}
-
-            {/* Resize Option */}
-            <div className="space-y-2 pt-1 border-t border-outline-variant/15">
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={Boolean(data.resizeEnabled)}
-                  onChange={(e) => handleChange('resizeEnabled', e.target.checked)}
-                  className="rounded accent-primary"
-                />
-                <span className="text-xs font-semibold text-on-surface">
-                  {t('workflow.inspector.compressResizeEnable', 'Thu nhỏ kích thước ảnh theo %')}
-                </span>
-              </label>
-
-              {data.resizeEnabled && (
-                <div className="space-y-1 pl-5">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-on-surface-variant">{t('workflow.inspector.compressResizePercent', 'Tỉ lệ kích thước')}:</span>
-                    <span className="font-mono font-bold text-primary">{data.resizePercent ?? 80}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="10"
-                    max="99"
-                    step="5"
-                    value={data.resizePercent ?? 80}
-                    onChange={(e) => handleChange('resizePercent', Number(e.target.value))}
-                    className="w-full accent-primary cursor-pointer"
-                  />
-                  <div className="flex justify-between text-[10px] text-on-surface-variant/50">
-                    <span>10% (Rất nhỏ)</span>
-                    <span>50% (Một nửa)</span>
-                    <span>99% (Gần gốc)</span>
-                  </div>
-                </div>
-              )}
-            </div>
+            {/* Caesium Compress Control */}
+            <CaesiumCompressControl
+              showToggle={false}
+              quality={data.quality ?? 85}
+              onQualityChange={(quality) => handleChange('quality', quality)}
+              ratio={data.compressRatio !== undefined ? (parseFloat(data.compressRatio) || 1.0) : (data.resizePercent ? data.resizePercent / 100 : 0.8)}
+              onRatioChange={(r) => {
+                handleChange('compressRatio', r);
+                handleChange('resizePercent', r < 0.999 ? Math.round(r * 100) : null);
+              }}
+              format={data.format || 'original'}
+            />
 
             {/* Output Destination: In-place vs custom folder */}
             <div className="space-y-2 pt-1 border-t border-outline-variant/15">

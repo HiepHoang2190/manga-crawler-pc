@@ -2,6 +2,7 @@
 import { createRequire } from 'module';
 import { ACTION_TYPES, ACTION_TYPE_ORDER, createAction } from './actionTypes.js';
 import { actionStackReducer, initialStackState, countEnabled } from './actionStack.js';
+import { ensureTemplates, SYSTEM_TEMPLATE_ID, CAESIUM_TEMPLATE_ID } from './templates.js';
 
 const require = createRequire(import.meta.url);
 
@@ -76,5 +77,14 @@ describe('actionStackReducer', () => {
     expect(removed.actions).toHaveLength(2);
     expect(removed.selectedId).toBe(removed.actions[0].id);
     expect(actionStackReducer(removed, { type: 'clear' })).toEqual({ actions: [], selectedId: null });
+  });
+
+  test('ensureTemplates returns default system template and Caesium template', () => {
+    const list = ensureTemplates(null);
+    expect(list.some((t) => t.id === SYSTEM_TEMPLATE_ID)).toBe(true);
+    expect(list.some((t) => t.id === CAESIUM_TEMPLATE_ID)).toBe(true);
+    const caesium = list.find((t) => t.id === CAESIUM_TEMPLATE_ID);
+    expect(caesium.output.resizePercent).toBeNull();
+    expect(caesium.output.quality).toBe(85);
   });
 });

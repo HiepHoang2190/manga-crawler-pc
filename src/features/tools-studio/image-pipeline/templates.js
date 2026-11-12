@@ -6,7 +6,8 @@ export const ACTIVE_TEMPLATE_KEY = 'manga_image_pipeline_active_template';
 export const DESTINATION_KEY = 'manga_image_pipeline_destination';
 export const TEMPLATE_VERSION = 1;
 export const SYSTEM_TEMPLATE_ID = 'tpl_system_clean_scan';
-export const DEFAULT_OUTPUT = { format: 'original', quality: 100, resizePercent: null, concurrency: 'auto' };
+export const CAESIUM_TEMPLATE_ID = 'tpl_system_caesium_compress';
+export const DEFAULT_OUTPUT = { format: 'original', quality: 100, resizePercent: null, concurrency: 'auto', caesiumEnabled: false };
 
 const OUTPUT_FORMATS = ['original', 'jpg', 'png', 'webp'];
 const CONCURRENCY_OPTIONS = ['auto', '2', '4', '8', 'max'];
@@ -38,11 +39,13 @@ export function normalizeOutput(output = {}) {
   const defaultQuality = format === 'original' ? 100 : 90;
   const resize = Number(o.resizePercent);
   const concurrency = CONCURRENCY_OPTIONS.includes(String(o.concurrency)) ? String(o.concurrency) : 'auto';
+  const caesiumEnabled = Boolean(o.caesiumEnabled);
   return {
     format,
     quality: Number.isFinite(quality) ? Math.max(1, Math.min(100, Math.round(quality))) : defaultQuality,
     resizePercent: Number.isFinite(resize) && resize > 0 && resize < 100 ? Math.max(10, Math.round(resize)) : null,
     concurrency,
+    caesiumEnabled,
   };
 }
 
@@ -77,6 +80,18 @@ export function buildSystemTemplate() {
   };
 }
 
+export function buildCaesiumTemplate() {
+  return {
+    id: CAESIUM_TEMPLATE_ID,
+    name: 'Nén tối ưu (Caesium)',
+    nameKey: 'imagePipeline.template.caesiumCompress',
+    system: true,
+    version: TEMPLATE_VERSION,
+    actions: [],
+    output: { ...DEFAULT_OUTPUT, quality: 85, resizePercent: null, caesiumEnabled: true },
+  };
+}
+
 export function buildLegacyTemplate() {
   return null;
 }
@@ -98,7 +113,7 @@ export function loadTemplates(storage) {
     const list = JSON.parse(raw);
     if (!Array.isArray(list)) return null;
     return list
-      .filter((t) => isObject(t) && typeof t.id === 'string' && t.id !== SYSTEM_TEMPLATE_ID)
+      .filter((t) => isObject(t) && typeof t.id === 'string' && t.id !== SYSTEM_TEMPLATE_ID && t.id !== CAESIUM_TEMPLATE_ID)
       .map((t) => ({
         id: t.id,
         name: typeof t.name === 'string' ? t.name : 'Template',
@@ -117,13 +132,14 @@ export function saveTemplates(storage, list) {
 
 export function ensureTemplates(storage) {
   const system = buildSystemTemplate();
+  const caesium = buildCaesiumTemplate();
   const stored = loadTemplates(storage);
   if (stored) {
     const user = stored.filter((t) => !(t.name === 'Mặc định' && t.actions?.length === 3));
     if (user.length !== stored.length) saveTemplates(storage, user);
-    return [system, ...user];
+    return [system, caesium, ...user];
   }
-  return [system];
+  return [system, caesium];
 }
 
 export function parseImportedTemplate(text, existingIds = []) {
@@ -136,7 +152,7 @@ export function parseImportedTemplate(text, existingIds = []) {
   if (!isObject(data) || !Array.isArray(data.actions)) throw new Error('INVALID_TEMPLATE');
   if (typeof data.version === 'number' && data.version > TEMPLATE_VERSION) throw new Error('UNSUPPORTED_VERSION');
   const { actions, dropped } = sanitizeActions(data.actions);
-  const taken = new Set([...existingIds, SYSTEM_TEMPLATE_ID]);
+  const taken = new Set([...existingIds, SYSTEM_TEMPLATE_ID, CAESIUM_TEMPLATE_ID]);
   const id = typeof data.id === 'string' && data.id && !taken.has(data.id) ? data.id : generateId('tpl');
   const name = typeof data.name === 'string' && data.name.trim() ? data.name.trim().slice(0, 80) : 'Template';
   return { template: { id, name, version: TEMPLATE_VERSION, actions, output: normalizeOutput(data.output) }, dropped };

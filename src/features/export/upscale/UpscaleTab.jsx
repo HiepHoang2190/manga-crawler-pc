@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useI18n } from '../../../context/I18nContext';
-import { SourcePicker, ResizeSplitter, useToolsSidebarResize, SearchableSelect, OutputFormatSelector, OutputDestinationSelector, SaveDirErrorModal } from '../../../shared';
+import { SourcePicker, ResizeSplitter, useToolsSidebarResize, SearchableSelect, OutputFormatSelector, OutputDestinationSelector, SaveDirErrorModal, CaesiumCompressControl } from '../../../shared';
 import { ToolsStudioActionSlot, ToolsStudioCenterSlot } from '../../tools-studio/ToolsStudioActionSlot';
 import { getUpscaleSuffix, buildUpscaleOutputPath, getUpscaleOutputFolder, sortImages } from './upscaleNaming';
 import InteractiveUpscalePreviewModal from './InteractiveUpscalePreviewModal';
@@ -1384,108 +1384,19 @@ export default function UpscaleTab({
                 )}
 
                 {/* 2. Caesium Engine (Nén & Tối ưu dung lượng) */}
-                <div className="space-y-3 rounded-xl border border-outline-variant/20 bg-surface-container-high/40 p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="material-symbols-outlined text-primary text-[18px]">bolt</span>
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface truncate">
-                        {t('upscale.compress.title')}
-                      </span>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                      <input
-                        type="checkbox"
-                        checked={compressEnabled}
-                        onChange={(e) => setCompressEnabled(e.target.checked)}
-                        disabled={processing}
-                        className="sr-only peer"
-                      />
-                      <div className="w-8 h-4 bg-outline-variant/40 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3.5 after:transition-all peer-checked:bg-primary"></div>
-                    </label>
-                  </div>
-
-                  {compressEnabled ? (
-                    <div className="space-y-3 pt-1">
-                      {/* Scale / Resize Ratio Pills */}
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/70">
-                          <span>{t('upscale.compress.ratioLabel')}</span>
-                          <span className="text-primary font-bold">{Math.round(compressRatio * 100)}%</span>
-                        </div>
-                        <div className="grid grid-cols-3 gap-1.5">
-                          {[
-                            { value: 0.8, label: '80%', sub: 'Caesium', desc: t('upscale.compress.ratio80') },
-                            { value: 0.75, label: '75%', sub: 'Siêu nhẹ', desc: t('upscale.compress.ratio75') },
-                            { value: 1.0, label: '100%', sub: 'Gốc', desc: t('upscale.compress.ratio100') },
-                          ].map((opt) => {
-                            const isSel = Math.abs(compressRatio - opt.value) < 0.01;
-                            return (
-                              <button
-                                key={opt.value}
-                                type="button"
-                                disabled={processing}
-                                onClick={() => setCompressRatio(opt.value)}
-                                data-tooltip={opt.desc}
-                                className={`flex flex-col items-center justify-center py-1.5 px-2 rounded-lg border text-xs transition-all cursor-pointer ${
-                                  isSel
-                                    ? 'border-primary bg-primary/10 text-primary font-semibold shadow-xs ring-1 ring-primary/30'
-                                    : 'border-outline-variant/30 bg-surface-container hover:bg-surface-container-highest text-on-surface-variant'
-                                }`}
-                              >
-                                <span className="text-xs">{opt.label}</span>
-                                <span className="text-[9px] opacity-75">{opt.sub}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* Compression Quality Pills */}
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/70">
-                          <span>{t('upscale.compress.qualityLabel')}</span>
-                          <span className="text-primary font-bold">{compressQuality}</span>
-                        </div>
-                        <div className="grid grid-cols-3 gap-1.5">
-                          {[
-                            { value: 85, label: '85', sub: 'Cân bằng', desc: t('upscale.compress.quality85') },
-                            { value: 90, label: '90', sub: 'Nét cao', desc: t('upscale.compress.quality90') },
-                            { value: 75, label: '75', sub: 'Tiết kiệm', desc: t('upscale.compress.quality75') },
-                          ].map((opt) => {
-                            const isSel = compressQuality === opt.value;
-                            return (
-                              <button
-                                key={opt.value}
-                                type="button"
-                                disabled={processing}
-                                onClick={() => setCompressQuality(opt.value)}
-                                data-tooltip={opt.desc}
-                                className={`flex flex-col items-center justify-center py-1.5 px-2 rounded-lg border text-xs transition-all cursor-pointer ${
-                                  isSel
-                                    ? 'border-primary bg-primary/10 text-primary font-semibold shadow-xs ring-1 ring-primary/30'
-                                    : 'border-outline-variant/30 bg-surface-container hover:bg-surface-container-highest text-on-surface-variant'
-                                }`}
-                              >
-                                <span className="text-xs">{opt.label}</span>
-                                <span className="text-[9px] opacity-75">{opt.sub}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* Savings callout badge */}
-                      <p className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-2 text-[11px] leading-relaxed text-emerald-400 dark:text-emerald-300 flex items-start gap-1.5">
-                        <span className="material-symbols-outlined text-[15px] shrink-0 mt-0.5 text-emerald-400">check_circle</span>
-                        <span>{t('upscale.compress.callout')}</span>
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="text-[11px] text-on-surface-variant/60 leading-relaxed italic pt-1">
-                      Ảnh phóng to sẽ xuất nguyên kích thước đầy đủ (dung lượng có thể từ 3–10MB/ảnh).
-                    </p>
-                  )}
-                </div>
+                <CaesiumCompressControl
+                  enabled={compressEnabled}
+                  onEnabledChange={setCompressEnabled}
+                  quality={compressQuality}
+                  onQualityChange={setCompressQuality}
+                  ratio={compressRatio}
+                  onRatioChange={setCompressRatio}
+                  format={outputFormat}
+                  disabled={processing}
+                  title={t('upscale.compress.title')}
+                  callout={t('upscale.compress.callout')}
+                  disabledHint={t('caesium.upscaleDisabledHint')}
+                />
 
                 {/* 3. Output Destination */}
                 <OutputDestinationSelector

@@ -17,6 +17,7 @@ export {
 export { StudioLayout, useStudioLayout } from './layout';
 export { default as OutputFormatSelector, OUTPUT_FORMATS } from './ui/OutputFormatSelector.jsx';
 export { default as OutputDestinationSelector } from './ui/OutputDestinationSelector.jsx';
+export { default as CaesiumCompressControl, COMPRESS_QUALITY_PRESETS } from './ui/CaesiumCompressControl.jsx';
 export { default as StudioTable } from './ui/StudioTable.jsx';
 export { default as SaveDirErrorModal } from './ui/SaveDirErrorModal.jsx';
 

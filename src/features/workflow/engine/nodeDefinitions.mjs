@@ -170,16 +170,14 @@ export const NODE_DEFINITIONS = {
     title: 'Tối Ưu & Nén Ảnh',
     icon: 'tune',
     color: 'from-sky-500/20 to-blue-600/10 border-sky-500/40',
-    description: 'Đổi định dạng (JPG, WebP, PNG), nén chất lượng MozJPEG và thu nhỏ kích thước ảnh.',
+    description: 'Đổi định dạng (JPG, WebP, PNG) và nén chất lượng MozJPEG tối ưu dung lượng.',
     inputs: [{ id: 'images_dir', type: 'images_dir', label: 'Folder Ảnh' }],
     outputs: [
       { id: 'images_dir', type: 'images_dir', label: 'Folder Đã Tối Ưu' },
     ],
     defaultData: {
       format: 'original',
-      quality: 90,
-      resizeEnabled: false,
-      resizePercent: 80,
+      quality: 85,
       inPlace: true,
       outputDir: '',
     },

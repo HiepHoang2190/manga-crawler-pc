@@ -85,10 +85,12 @@ async function processFile(file, ctx, fileIndex) {
   const targetDir = resolveTargetDir(file, ctx.output);
   const encoded = [];
   const isSingleOutput = frames.length === 1;
+  let fileOptimizedBytes = 0;
   for (const frame of frames) {
     const sizeBudget = isSingleOutput ? originalSize : Math.round(originalSize * 0.7);
-    const { buffer, ext } = await encodeFrame(frame, ctx.output, srcExt, sizeBudget);
-    encoded.push({ buffer, target: path.join(targetDir, buildOutputName(file.absolutePath, frame.suffix, ext)) });
+    const encResult = await encodeFrame(frame, ctx.output, srcExt, sizeBudget);
+    fileOptimizedBytes += (encResult.optimizedBytes || encResult.buffer.length);
+    encoded.push({ buffer: encResult.buffer, target: path.join(targetDir, buildOutputName(file.absolutePath, frame.suffix, encResult.ext)) });
   }
   if (ctx.isCancelled()) throw new Error('CANCELLED');
 
@@ -100,7 +102,7 @@ async function processFile(file, ctx, fileIndex) {
   if (ctx.output.inPlace && !written.some((p) => samePath(p, file.absolutePath))) {
     await fs.promises.rm(file.absolutePath, { force: true });
   }
-  return written;
+  return { written, originalBytes: originalSize, optimizedBytes: fileOptimizedBytes };
 }
 
 async function runPipeline({
@@ -131,6 +133,8 @@ async function runPipeline({
   let done = 0;
   let completed = 0;
   let next = 0;
+  let totalOriginalBytes = 0;
+  let totalOptimizedBytes = 0;
 
   async function worker() {
     while (!isCancelled()) {
@@ -139,10 +143,27 @@ async function runPipeline({
       const file = files[index];
       const label = file.relativePath || path.basename(file.absolutePath);
       try {
-        outputs.push(...(await processFile(file, ctx, index)));
+        const fileRes = await processFile(file, ctx, index);
+        outputs.push(...fileRes.written);
+        totalOriginalBytes += fileRes.originalBytes;
+        totalOptimizedBytes += fileRes.optimizedBytes;
         done += 1;
         completed += 1;
-        onProgress({ phase: 'run', current: completed, total, file: label, status: 'done' });
+        const fileSavedBytes = Math.max(0, fileRes.originalBytes - fileRes.optimizedBytes);
+        const fileSavedPercent = fileRes.originalBytes > 0 ? Math.round((fileSavedBytes / fileRes.originalBytes) * 100) : 0;
+        onProgress({
+          phase: 'run',
+          current: completed,
+          total,
+          file: label,
+          status: 'done',
+          originalBytes: fileRes.originalBytes,
+          optimizedBytes: fileRes.optimizedBytes,
+          savedBytes: fileSavedBytes,
+          savedPercent: fileSavedPercent,
+          totalOriginalBytes,
+          totalOptimizedBytes,
+        });
       } catch (err) {
         if (String(err?.message) === 'CANCELLED') return;
         const message = String(err?.message || err);
@@ -170,7 +191,19 @@ async function runPipeline({
       if (typeof prevConcurrency === 'number') sharp.concurrency(prevConcurrency);
     } catch {}
   }
-  return { ok: true, done, failed, outputs, cancelled: Boolean(isCancelled()) };
+  const totalSavedBytes = Math.max(0, totalOriginalBytes - totalOptimizedBytes);
+  const totalSavedPercent = totalOriginalBytes > 0 ? Math.round((totalSavedBytes / totalOriginalBytes) * 100) : 0;
+  return {
+    ok: failed.length === 0,
+    done,
+    failed,
+    outputs,
+    cancelled: Boolean(isCancelled()),
+    totalOriginalBytes,
+    totalOptimizedBytes,
+    savedBytes: totalSavedBytes,
+    savedPercent: totalSavedPercent,
+  };
 }
 
 module.exports = { runPipeline, writeAtomic, safeRename, buildOutputName, samePath, resolveTargetDir, resolveConcurrency };

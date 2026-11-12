@@ -298,8 +298,7 @@ describe('workflowGraph engine', () => {
       expect(def.outputs.length).toBe(1);
       expect(def.defaultData).toMatchObject({
         format: 'original',
-        quality: 90,
-        resizeEnabled: false,
+        quality: 85,
         inPlace: true,
       });
     });

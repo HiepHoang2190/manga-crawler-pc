@@ -1112,9 +1112,22 @@ function createAdapters({ connectors = null, ipc_context = null } = {}) {
 
       const rawFormat = node.data?.format || node.data?.targetFormat || 'original';
       const format = rawFormat === 'jpeg' ? 'jpg' : rawFormat;
-      const quality = typeof node.data?.quality === 'number' ? node.data.quality : 90;
-      const resizeEnabled = Boolean(node.data?.resizeEnabled);
-      const resizePercent = resizeEnabled ? (Number(node.data?.resizePercent) || 80) : null;
+      const quality = typeof node.data?.quality === 'number'
+        ? node.data.quality
+        : (typeof node.data?.compressQuality === 'number' ? node.data.compressQuality : 85);
+
+      let resizePercent = null;
+      if (node.data?.compressRatio !== undefined && node.data?.compressRatio !== null) {
+        const ratio = parseFloat(node.data.compressRatio);
+        if (Number.isFinite(ratio) && ratio > 0 && ratio < 1.0) {
+          resizePercent = Math.round(ratio * 100);
+        } else if (ratio === 1.0) {
+          resizePercent = null;
+        }
+      } else if (Boolean(node.data?.resizeEnabled)) {
+        resizePercent = Number(node.data?.resizePercent) || 80;
+      }
+
       const inPlace = node.data?.inPlace !== false;
       const finalOutputDir = inPlace ? imagesDir : (node.data?.outputDir || path.join(imagesDir, 'optimized'));
 
@@ -1150,7 +1163,7 @@ function createAdapters({ connectors = null, ipc_context = null } = {}) {
 
       const formatLabel = format === 'original' ? 'Giữ gốc' : format.toUpperCase();
       onProgress({
-        message: `Tìm thấy ${foundImages.length} ảnh. Bắt đầu tối ưu (${formatLabel}, Chất lượng: ${quality}%, Resize: ${resizeEnabled ? `${resizePercent}%` : 'Tắt'})...`,
+        message: `Tìm thấy ${foundImages.length} ảnh. Bắt đầu tối ưu (${formatLabel}, Chất lượng: ${quality}%, Resize: ${resizePercent ? `${resizePercent}%` : 'Giữ kích thước'})...`,
         step: 'compress',
       });
 
@@ -1173,7 +1186,7 @@ function createAdapters({ connectors = null, ipc_context = null } = {}) {
         isCancelled: () => Boolean(signal?.aborted || isAborted),
         onProgress: (p) => {
           onProgress({
-            message: `[${p.current}/${p.total}] Tối ưu: ${path.basename(p.item || '')}`,
+            message: `[${p.current}/${p.total}] Tối ưu: ${path.basename(p.file || p.item || '')}`,
             step: 'compress',
             percent: p.percent || Math.round((p.current / p.total) * 100),
             current: p.current,
@@ -1182,8 +1195,21 @@ function createAdapters({ connectors = null, ipc_context = null } = {}) {
         },
       });
 
+      function formatBytes(bytes) {
+        if (!bytes || bytes <= 0) return '0 B';
+        const mb = bytes / (1024 * 1024);
+        if (mb >= 1) return `${mb.toFixed(1)} MB`;
+        const kb = bytes / 1024;
+        return `${kb.toFixed(0)} KB`;
+      }
+
+      let sizeInfo = '';
+      if (res.savedBytes && res.savedBytes > 0) {
+        sizeInfo = ` Tiết kiệm ${formatBytes(res.savedBytes)} (-${res.savedPercent}%).`;
+      }
+
       onProgress({
-        message: `Hoàn tất tối ưu & nén: ${res.done || 0}/${foundImages.length} thành công${res.failed?.length ? `, ${res.failed.length} lỗi` : ''}.`,
+        message: `Hoàn tất tối ưu & nén: ${res.done || 0}/${foundImages.length} thành công${res.failed?.length ? `, ${res.failed.length} lỗi` : ''}.${sizeInfo}`,
         step: 'compress',
         type: res.failed?.length ? 'warning' : 'success',
       });
@@ -1192,6 +1218,10 @@ function createAdapters({ connectors = null, ipc_context = null } = {}) {
         images_dir: finalOutputDir,
         mangaTitle: inputs.mangaTitle,
         baseSaveDir: inputs.baseSaveDir,
+        totalOriginalBytes: res.totalOriginalBytes,
+        totalOptimizedBytes: res.totalOptimizedBytes,
+        savedBytes: res.savedBytes,
+        savedPercent: res.savedPercent,
         signal: { status: 'success' },
       };
     },
