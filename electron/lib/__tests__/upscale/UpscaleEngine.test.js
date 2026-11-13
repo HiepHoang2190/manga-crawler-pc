@@ -165,7 +165,7 @@ describe('UpscaleEngine', () => {
       expect(nIdx).toBeGreaterThan(-1);
       expect(args[nIdx + 1]).toBe('-1');
     });
-    test('omits tile size when 0 (auto)', () => {
+    test('uses safe default tile size (256) when tileSize is 0 (auto) for waifu2x scale 2', () => {
       const args = engine.buildArgs({
         engineId: 'waifu2x',
         modelId: 'cunet',
@@ -174,7 +174,23 @@ describe('UpscaleEngine', () => {
         scale: 2,
         tileSize: 0,
       });
-      expect(args).not.toContain('-t');
+      const tIdx = args.indexOf('-t');
+      expect(tIdx).toBeGreaterThan(-1);
+      expect(args[tIdx + 1]).toBe('256');
+    });
+
+    test('uses safe tile size 200 for scale 3 to prevent Vulkan OOM / black tiles', () => {
+      const args = engine.buildArgs({
+        engineId: 'realcugan',
+        modelId: 'realcugan-se',
+        input: '/tmp/in.png',
+        output: '/tmp/out.png',
+        scale: 3,
+        tileSize: 0,
+      });
+      const tIdx = args.indexOf('-t');
+      expect(tIdx).toBeGreaterThan(-1);
+      expect(args[tIdx + 1]).toBe('200');
     });
 
     test('returns empty array for unknown engine', () => {

@@ -197,6 +197,35 @@ class UpscaleEngine {
   }
 
   /**
+   * Determine safe tile size to prevent Vulkan OOM and black-tile output.
+   * Auto tile size (0) can over-allocate VRAM on Windows with shared memory.
+   * Enforces safe bounds based on engine and scale factor.
+   * @param {number|string} tileSize
+   * @param {string} engineId
+   * @param {number} scale
+   * @returns {number}
+   */
+  getEffectiveTileSize(tileSize, engineId, scale) {
+    const explicitTile = parseInt(tileSize, 10);
+    if (Number.isFinite(explicitTile) && explicitTile > 0) {
+      return explicitTile;
+    }
+
+    // Auto tile size calculation:
+    // Scale 3x/4x increases intermediate tensor dimensions exponentially.
+    // Real-CUGAN UNet: 200px prevents Vulkan device lost / black images across all scales.
+    const numScale = parseInt(scale, 10) || 2;
+    if (engineId === 'realcugan') {
+      return 200;
+    }
+    if (engineId === 'realesrgan') {
+      return 256;
+    }
+    // waifu2x (cunet / uprgb)
+    return numScale >= 3 ? 200 : 256;
+  }
+
+  /**
    * Build CLI arguments for the given engine/model/options.
    * @param {Object} opts
    * @returns {string[]}
@@ -266,9 +295,10 @@ class UpscaleEngine {
       }
     }
 
-    // Tile size (0 = auto)
-    if (tileSize > 0) {
-      args.push('-t', String(tileSize));
+    // Safe tile size calculation to prevent Vulkan OOM / black tiles on large resolutions
+    const effectiveTile = this.getEffectiveTileSize(tileSize, engineId, scale);
+    if (effectiveTile > 0) {
+      args.push('-t', String(effectiveTile));
     }
 
     // Single proc thread: cuts VRAM usage in half on low-VRAM GPUs (waifu2x/cugan/esrgan default to 1:2:2)
@@ -421,6 +451,7 @@ class UpscaleEngine {
       tileSize,
       gpuId = 'auto',
       engineMode = 'auto',
+      outputFormat = 'original',
       compress = null,
       skipExisting = false,
       useBatchRunner = true,
@@ -505,6 +536,7 @@ class UpscaleEngine {
             denoise,
             tileSize,
             gpuId,
+            outputFormat,
             compress,
             outputDir: targetOutputDir,
             onProgress: (p) => {

@@ -178,5 +178,85 @@ describe('NcnnBatchRunner', () => {
       expect(events.length).toBe(0);
     });
   });
+
+  describe('getEffectiveTileSize (Vulkan OOM & Black Tile Prevention)', () => {
+    test('uses safe tile size 200 for realcugan across all scales (2x, 3x, 4x) to prevent Vulkan OOM and black tiles', () => {
+      expect(runner.getEffectiveTileSize(0, 'realcugan', 2)).toBe(200);
+      expect(runner.getEffectiveTileSize(0, 'realcugan', 3)).toBe(200);
+      expect(runner.getEffectiveTileSize(0, 'realcugan', 4)).toBe(200);
+    });
+
+    test('uses safe tile size 256 for waifu2x scale 2 and 200 for scale 3', () => {
+      expect(runner.getEffectiveTileSize(0, 'waifu2x', 2)).toBe(256);
+      expect(runner.getEffectiveTileSize(0, 'waifu2x', 3)).toBe(200);
+    });
+
+    test('uses safe tile size 256 for realesrgan', () => {
+      expect(runner.getEffectiveTileSize(0, 'realesrgan', 4)).toBe(256);
+    });
+
+    test('respects explicit tile size when user specifies one', () => {
+      expect(runner.getEffectiveTileSize(100, 'realcugan', 3)).toBe(100);
+      expect(runner.getEffectiveTileSize(512, 'realcugan', 2)).toBe(512);
+    });
+  });
+
+  describe('extractDiscoveredGpus', () => {
+    test('extracts GPU devices from NCNN diagnostic output', () => {
+      const stderr = `
+[0 NVIDIA GeForce RTX 3060]  queueC=0[1]  queueG=0[1]
+[1 Intel(R) UHD Graphics]  queueC=0[1]  queueG=0[1]
+`;
+      const gpus = runner.extractDiscoveredGpus(stderr);
+      expect(gpus).toHaveLength(2);
+      expect(gpus[0]).toEqual({ id: 0, name: 'NVIDIA GeForce RTX 3060' });
+      expect(gpus[1]).toEqual({ id: 1, name: 'Intel(R) UHD Graphics' });
+    });
+  });
+
+  describe('finalizeOutputFile with Black Image Detection', () => {
+    const fs = require('fs');
+    const os = require('os');
+    const sharp = require('sharp');
+
+    test('detects and rejects an all-black image rendered due to Vulkan OOM', async () => {
+      const tmpDir = path.join(os.tmpdir(), `test_black_${Date.now()}`);
+      fs.mkdirSync(tmpDir, { recursive: true });
+
+      const blackFile = path.join(tmpDir, 'black.jpg');
+      const targetDest = path.join(tmpDir, 'out_black.jpg');
+
+      await sharp({
+        create: { width: 50, height: 50, channels: 3, background: { r: 0, g: 0, b: 0 } },
+      }).jpeg().toFile(blackFile);
+
+      const result = await runner.finalizeOutputFile(blackFile, targetDest, { enabled: false });
+
+      expect(result.success).toBe(false);
+      expect(result.isBlackImage).toBe(true);
+      expect(fs.existsSync(targetDest)).toBe(false);
+
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    test('accepts and copies a normal non-black image', async () => {
+      const tmpDir = path.join(os.tmpdir(), `test_normal_${Date.now()}`);
+      fs.mkdirSync(tmpDir, { recursive: true });
+
+      const normalFile = path.join(tmpDir, 'normal.jpg');
+      const targetDest = path.join(tmpDir, 'out_normal.jpg');
+
+      await sharp({
+        create: { width: 50, height: 50, channels: 3, background: { r: 255, g: 255, b: 255 } },
+      }).jpeg().toFile(normalFile);
+
+      const result = await runner.finalizeOutputFile(normalFile, targetDest, { enabled: false });
+
+      expect(result.success).toBe(true);
+      expect(fs.existsSync(targetDest)).toBe(true);
+
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+  });
 });
 

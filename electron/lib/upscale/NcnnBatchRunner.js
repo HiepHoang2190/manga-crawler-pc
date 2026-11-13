@@ -39,6 +39,54 @@ class NcnnBatchRunner {
   }
 
   /**
+   * Determine safe tile size to prevent Vulkan OOM and black-tile output.
+   * Auto tile size (0) can over-allocate VRAM on Windows with shared memory.
+   * Enforces safe bounds based on engine and scale factor.
+   * @param {number|string} tileSize
+   * @param {string} engineId
+   * @param {number} scale
+   * @returns {number}
+   */
+  getEffectiveTileSize(tileSize, engineId, scale) {
+    const explicitTile = parseInt(tileSize, 10);
+    if (Number.isFinite(explicitTile) && explicitTile > 0) {
+      return explicitTile;
+    }
+
+    // Auto tile size calculation:
+    // Scale 3x/4x increases intermediate tensor dimensions exponentially.
+    // Real-CUGAN UNet: 200px prevents Vulkan device lost / black images across all scales.
+    const numScale = parseInt(scale, 10) || 2;
+    if (engineId === 'realcugan') {
+      return 200;
+    }
+    if (engineId === 'realesrgan') {
+      return 256;
+    }
+    // waifu2x (cunet / uprgb)
+    return numScale >= 3 ? 200 : 256;
+  }
+
+  /**
+   * Extract discovered GPUs from NCNN stderr diagnostic lines.
+   * @param {string} stderrData
+   * @returns {Array<{ id: number, name: string }>}
+   */
+  extractDiscoveredGpus(stderrData) {
+    if (!stderrData) return [];
+    const gpus = [];
+    const matches = stderrData.matchAll(/\[(\d+)\s+([^\]]+)\]/g);
+    for (const m of matches) {
+      const id = parseInt(m[1], 10);
+      const name = m[2].trim();
+      if (!gpus.some((g) => g.id === id)) {
+        gpus.push({ id, name });
+      }
+    }
+    return gpus;
+  }
+
+  /**
    * Build CLI arguments for NCNN batch directory execution.
    * @param {Object} opts
    * @returns {string[]}
@@ -93,8 +141,9 @@ class NcnnBatchRunner {
       args.push('-n', String(effectiveDenoise));
     }
 
-    if (tileSize > 0) {
-      args.push('-t', String(tileSize));
+    const effectiveTile = this.getEffectiveTileSize(tileSize, engineId, scale);
+    if (effectiveTile > 0) {
+      args.push('-t', String(effectiveTile));
     }
 
     // Sequential single-image GPU pipeline (1:1:1) for seamless, consecutive image-by-image progress
@@ -162,6 +211,28 @@ class NcnnBatchRunner {
     if (!fs.existsSync(targetDir)) {
       await fs.promises.mkdir(targetDir, { recursive: true });
     }
+
+    // Safety guard: detect if NCNN generated a corrupt all-black image (Vulkan OOM/device lost)
+    try {
+      const sharp = require('sharp');
+      const inputBuffer = await fs.promises.readFile(srcOut);
+      const stats = await sharp(inputBuffer).stats();
+      // Check RGB color channels only (ignoring alpha channel if present)
+      const colorChannels = stats.channels.slice(0, 3);
+      const isBlack = colorChannels.length > 0 && colorChannels.every((c) => c.mean < 0.5 && c.max < 5.0);
+      if (isBlack) {
+        console.warn(`[NcnnBatchRunner] Detected corrupt all-black output from NCNN: ${srcOut}`);
+        return {
+          success: false,
+          isBlackImage: true,
+          error: 'Tệp ảnh đầu ra bị đen hoàn toàn (GPU tràn VRAM hoặc lỗi Vulkan).',
+          originalBytes: 0,
+          optimizedBytes: 0,
+          savedBytes: 0,
+          savedPercent: 0,
+        };
+      }
+    } catch {}
 
     if (compressOptions?.enabled) {
       try {
@@ -297,18 +368,14 @@ class NcnnBatchRunner {
         let processedCount = 0;
         let lastTilePercent = 0;
         let childClosed = false;
+        let blackImagesDetected = 0;
         const emittedFiles = new Set();
         const inFlightFiles = new Set();
         const readyEntries = new Set();
-        // Map<entry, { size: number, count: number }> — requires STABLE_POLLS consecutive
-        // same-size polls before processing, to avoid reading partially-flushed NCNN output.
         const prevFileSizes = new Map();
-        const STABLE_POLLS = 2; // 3 consecutive polls × 40ms = ≥120ms of size stability
+        let finalizeQueue = Promise.resolve();
 
         const processCompletedEntry = async (entry, srcOut) => {
-          if (emittedFiles.has(entry) || inFlightFiles.has(entry)) return;
-          inFlightFiles.add(entry);
-
           try {
             const entryBase = entry.slice(0, entry.lastIndexOf('.')) || entry;
             let mapped = null;
@@ -335,6 +402,29 @@ class NcnnBatchRunner {
             const optResult = await this.finalizeOutputFile(srcOut, targetDest, compress);
             emittedFiles.add(entry);
             inFlightFiles.delete(entry);
+
+            if (optResult?.isBlackImage) {
+              blackImagesDetected++;
+              // Fallback: Copy original source file so output folder never has missing/corrupted files
+              try {
+                await fs.promises.copyFile(mapped.sourcePath, targetDest);
+              } catch {}
+              processedCount++;
+              onProgress?.({
+                current: Math.min(processedCount, images.length),
+                total: images.length,
+                inputPath: mapped.sourcePath,
+                outputPath: targetDest,
+                currentFile: mapped.targetFileName,
+                percent: Math.min(100, Math.round((processedCount / images.length) * 100)),
+                filePercent: 100,
+                status: 'error',
+                error: 'Ảnh đầu ra bị đen (GPU tràn VRAM hoặc lỗi Vulkan). Đã giữ lại ảnh gốc làm dự phòng.',
+                engineType: 'ncnn',
+              });
+              return;
+            }
+
             processedCount++;
 
             const current = Math.min(processedCount, images.length);
@@ -376,6 +466,19 @@ class NcnnBatchRunner {
           }
         };
 
+        const queueProcessEntry = (entry, srcOut) => {
+          if (emittedFiles.has(entry) || inFlightFiles.has(entry)) return;
+          inFlightFiles.add(entry);
+
+          finalizeQueue = finalizeQueue.then(async () => {
+            try {
+              await processCompletedEntry(entry, srcOut);
+            } catch (err) {
+              console.error('[NcnnBatchRunner] queueProcessEntry error:', err);
+            }
+          });
+        };
+
         const checkCompletedFiles = () => {
           try {
             if (!fs.existsSync(stagingOut)) return;
@@ -394,22 +497,13 @@ class NcnnBatchRunner {
                 continue;
               }
 
-              // Anti-race condition guard: ensure file is completely flushed.
-              // NCNN's -j 1:1:1 pipeline emits "done" from the process thread while the
-              // save thread may still be writing.  Requiring STABLE_POLLS consecutive polls
-              // with the same non-zero size (≥120ms) prevents reading a partial file.
-              const prev = prevFileSizes.get(entry); // { size, count } or undefined
-              if (prev && prev.size === currentSize) {
-                prevFileSizes.set(entry, { size: currentSize, count: prev.count + 1 });
-              } else {
-                prevFileSizes.set(entry, { size: currentSize, count: 0 });
-              }
-              const stableCount = prevFileSizes.get(entry).count;
-              const isConfirmed = childClosed;
-              const isStable = stableCount >= STABLE_POLLS;
+              // Stability check across polls
+              const prev = prevFileSizes.get(entry);
+              const isStable = prev === currentSize;
+              prevFileSizes.set(entry, currentSize);
 
-              if (isConfirmed || isStable) {
-                processCompletedEntry(entry, srcOut);
+              if (childClosed || readyEntries.has(entry) || isStable) {
+                queueProcessEntry(entry, srcOut);
               }
             }
           } catch {}
@@ -448,15 +542,9 @@ class NcnnBatchRunner {
           if (events.length > 0) {
             for (const ev of events) {
               const entryName = path.basename(ev.outputFile);
-              // Only mark as ready — do NOT call processCompletedEntry immediately.
-              // NCNN's -j 1:1:1 pipeline emits "done" from the process thread while the
-              // save thread may still be writing the file to disk.  The polling loop
-              // will pick this up once the file size has been stable for STABLE_POLLS
-              // consecutive intervals (≥120ms), guaranteeing the write is fully flushed.
               readyEntries.add(entryName);
+              queueProcessEntry(entryName, ev.outputFile);
             }
-            // Trigger an immediate poll cycle so readyEntries are acted on promptly
-            checkCompletedFiles();
           } else {
             // Check files on disk
             checkCompletedFiles();
@@ -503,11 +591,32 @@ class NcnnBatchRunner {
             return;
           }
 
+          // Cache discovered GPUs from NCNN diagnostic output
+          const gpus = this.extractDiscoveredGpus(stderrData);
+          if (gpus.length > 0) {
+            try {
+              const { UpscaleEngine } = require('./UpscaleEngine');
+              UpscaleEngine.discoveredGpus = gpus;
+            } catch {}
+          }
+
           if (code === 0) {
             // Ensure all output files are moved and reported
             checkCompletedFiles();
+            await finalizeQueue;
             while (inFlightFiles.size > 0) {
               await new Promise((r) => setTimeout(r, 20));
+            }
+
+            if (blackImagesDetected > 0) {
+              resolve({
+                success: true,
+                hasBlackImages: true,
+                blackImagesDetected,
+                processedCount: processedCount > 0 ? processedCount : images.length,
+                warning: `Phát hiện ${blackImagesDetected} ảnh bị đen (GPU tràn VRAM hoặc lỗi Vulkan). Đã tự động sao chép ảnh gốc làm dự phòng.`,
+              });
+              return;
             }
 
             resolve({
