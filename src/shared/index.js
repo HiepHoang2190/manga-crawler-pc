@@ -20,4 +20,6 @@ export { default as OutputDestinationSelector } from './ui/OutputDestinationSele
 export { default as CaesiumCompressControl, COMPRESS_QUALITY_PRESETS } from './ui/CaesiumCompressControl.jsx';
 export { default as StudioTable } from './ui/StudioTable.jsx';
 export { default as SaveDirErrorModal } from './ui/SaveDirErrorModal.jsx';
+export { default as ViewModeToggle } from './ui/ViewModeToggle.jsx';
+export { default as MultiSelectDropdown } from './ui/MultiSelectDropdown.jsx';
 

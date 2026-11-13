@@ -3,7 +3,7 @@ import { useI18n } from '../../context/I18nContext';
 import { isFavoriteTabBadgeUnread } from './favoriteTabBadge';
 import { loadPanelUi, savePanelUi } from '../../utils/panelUiPrefs';
 import { QueueCoverThumb } from '../download';
-import { SearchableSelect, EmptyState, StudioTable } from '../../shared';
+import { SearchableSelect, EmptyState, StudioTable, ViewModeToggle } from '../../shared';
 
 const SORT_CYCLE = ['titleAsc', 'titleDesc', 'dateDesc', 'dateAsc'];
 
@@ -334,26 +334,6 @@ export default function FavoritesTab({
     });
   }, []);
 
-  /** Cùng chiều cao với ô tìm kiếm / dropdown (h-11). */
-  const viewToggleBtn = (mode, icon, labelKey) => {
-    const active = viewMode === mode;
-    return (
-      <button
-        type="button"
-        aria-pressed={active}
-        onClick={() => setViewMode(mode)}
-        className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md transition-colors cursor-pointer ${
-          active
-            ? 'bg-primary/15 text-primary ring-1 ring-primary/35'
-            : 'bg-surface-container-high text-outline hover:text-on-surface'
-        }`}
-        data-tooltip={t(labelKey)}
-      >
-        <span className="material-symbols-outlined text-[20px] leading-none">{icon}</span>
-      </button>
-    );
-  };
-
   return (
     <div className="flex-1 flex flex-col bg-surface overflow-hidden min-h-0">
       <div className="flex-1 flex flex-col px-6 pt-4 pb-6 gap-4 sm:px-8 overflow-hidden min-h-0">
@@ -386,8 +366,11 @@ export default function FavoritesTab({
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            {viewToggleBtn('grid', 'grid_view', 'favorites.viewGrid')}
-            {viewToggleBtn('list', 'view_list', 'favorites.viewList')}
+            <ViewModeToggle
+              viewMode={viewMode}
+              onChange={setViewMode}
+              size="lg"
+            />
             <div className="h-6 w-px shrink-0 bg-outline-variant/30 mx-0.5 self-center" aria-hidden />
             <button
               type="button"

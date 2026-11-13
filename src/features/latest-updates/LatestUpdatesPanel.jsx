@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { SearchableSelect, StudioLayout, useStudioLayout } from '../../shared';
+import {
+  MultiSelectDropdown,
+  SearchableSelect,
+  StudioLayout,
+  useStudioLayout,
+  ViewModeToggle,
+} from '../../shared';
 import { ChaptersDrawer } from '../reader';
 import { useI18n } from '../../context/I18nContext';
 import { latestListingItemChapterActionsEnabled } from './latestListingChapterActions.js';
@@ -63,6 +69,32 @@ function loadSearchAllSourcesPref() {
 function persistSearchAllSourcesPref(enabled) {
   try {
     localStorage.setItem(SEARCH_ALL_SOURCES_KEY, enabled ? '1' : '0');
+  } catch {
+    /* ignore */
+  }
+}
+
+const MULTI_SEARCH_SELECTED_SITES_KEY = 'mangaLatestUpdatesMultiSearchSelectedSites_v1';
+
+function loadMultiSearchSelectedSiteIds(availableIds) {
+  if (typeof window === 'undefined') return [...availableIds];
+  try {
+    const raw = localStorage.getItem(MULTI_SEARCH_SELECTED_SITES_KEY);
+    if (raw != null) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((id) => availableIds.includes(String(id || '').trim()));
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return [...availableIds];
+}
+
+function persistMultiSearchSelectedSiteIds(ids) {
+  try {
+    localStorage.setItem(MULTI_SEARCH_SELECTED_SITES_KEY, JSON.stringify(ids));
   } catch {
     /* ignore */
   }
@@ -218,6 +250,17 @@ function persistPanelMinotruyenCategory(category) {
 }
 
 /**
+ * In-memory cache for latest updates listing to avoid redundant fetches on tab switch / remount.
+ */
+export const latestUpdatesListingCache = {
+  key: '',
+  page: 1,
+  rows: [],
+  listingTotalPages: 1,
+  fetchError: '',
+};
+
+/**
  * Sites that expose connector.fetchLatestUpdates (main process).
  *
  * @param {{ id: string, label?: string, supportsLatestUpdates?: boolean }[]} connectors
@@ -322,12 +365,15 @@ export default function LatestUpdatesPanel({
     persistSiteId(id);
   }, []);
 
-  const [page, setPage] = useState(1);
-  const [raw_page_input, setRawPageInput] = useState('1');
-  const [rows, setRows] = useState([]);
-  const [listingTotalPages, setListingTotalPages] = useState(1);
-  const [fetchError, setFetchError] = useState('');
+  const [page, setPage] = useState(() => latestUpdatesListingCache.page || 1);
+  const [raw_page_input, setRawPageInput] = useState(() => String(latestUpdatesListingCache.page || 1));
+  const [rows, setRows] = useState(() => (Array.isArray(latestUpdatesListingCache.rows) ? latestUpdatesListingCache.rows : []));
+  const [listingTotalPages, setListingTotalPages] = useState(() => latestUpdatesListingCache.listingTotalPages || 1);
+  const [fetchError, setFetchError] = useState(() => latestUpdatesListingCache.fetchError || '');
+  const [errorDismissed, setErrorDismissed] = useState(false);
+  const [errorDetailsExpanded, setErrorDetailsExpanded] = useState(false);
   const [busyList, setBusyList] = useState(false);
+  const [isSearchLoading, setIsSearchLoading] = useState(false);
   const [enqueueKey, setEnqueueKey] = useState('');
   const [inlineChapterBusyKey, setInlineChapterBusyKey] = useState('');
   const [chapterDrawerOpen, setChapterDrawerOpen] = useState(false);
@@ -343,6 +389,20 @@ export default function LatestUpdatesPanel({
     [drawerChapters],
   );
   const [viewMode, setViewMode] = useState(() => loadLayoutPref());
+
+  const multiErrorItems = useMemo(() => {
+    if (!fetchError || typeof fetchError !== 'string') return [];
+    if (!fetchError.includes(' • ')) return [];
+    return fetchError
+      .split(' • ')
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }, [fetchError]);
+
+  useEffect(() => {
+    setErrorDismissed(false);
+    setErrorDetailsExpanded(false);
+  }, [fetchError]);
   const [searchDraft, setSearchDraft] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
   const [searchAllSources, setSearchAllSources] = useState(() => loadSearchAllSourcesPref());
@@ -419,6 +479,50 @@ export default function LatestUpdatesPanel({
     [supported],
   );
 
+  const [selectedMultiSearchSiteIds, setSelectedMultiSearchSiteIds] = useState(() =>
+    loadMultiSearchSelectedSiteIds(searchCapableSiteIds),
+  );
+
+  useEffect(() => {
+    if (!searchCapableSiteIds.length) return;
+    setSelectedMultiSearchSiteIds((prev) => {
+      if (prev && prev.length > 0) {
+        const valid = prev.filter((id) => searchCapableSiteIds.includes(id));
+        return valid.length > 0 ? valid : prev;
+      }
+      return loadMultiSearchSelectedSiteIds(searchCapableSiteIds);
+    });
+  }, [searchCapableSiteIds]);
+
+  const handleMultiSearchSiteIdsChange = useCallback((nextIds) => {
+    const list = Array.isArray(nextIds) ? nextIds : [];
+    setSelectedMultiSearchSiteIds(list);
+    persistMultiSearchSelectedSiteIds(list);
+  }, []);
+
+  const searchCapableSiteOptions = useMemo(
+    () =>
+      searchCapableSiteIds.map((id) => {
+        const c = supported.find((item) => item.id === id);
+        return {
+          value: id,
+          label: c?.label || id,
+          hint: c?.domain ? connectorHost(c.domain) : '',
+          icon: c?.icon,
+        };
+      }),
+    [searchCapableSiteIds, supported],
+  );
+
+  const selectedMultiDescriptors = useMemo(() => {
+    if (!searchAllSources) return [];
+    const idSet = new Set(selectedMultiSearchSiteIds);
+    return searchCapableSiteIds
+      .filter((id) => idSet.has(id))
+      .map((id) => supported.find((c) => c.id === id))
+      .filter(Boolean);
+  }, [searchAllSources, selectedMultiSearchSiteIds, searchCapableSiteIds, supported]);
+
   const isSearchActive = Boolean(String(appliedSearch || '').trim());
   const isMultiSourceSearch = isSearchActive && searchAllSources;
 
@@ -432,10 +536,14 @@ export default function LatestUpdatesPanel({
 
   const activeFetchSiteIds = useMemo(() => {
     if (isMultiSourceSearch && searchCapableSiteIds.length) {
-      return dropMoeFamilySearchTwins(searchCapableSiteIds);
+      if (selectedMultiSearchSiteIds.length === 0) {
+        return [];
+      }
+      const filtered = searchCapableSiteIds.filter((id) => selectedMultiSearchSiteIds.includes(id));
+      return dropMoeFamilySearchTwins(filtered);
     }
     return selectedSiteId ? [selectedSiteId] : [];
-  }, [isMultiSourceSearch, searchCapableSiteIds, selectedSiteId]);
+  }, [isMultiSourceSearch, searchCapableSiteIds, selectedMultiSearchSiteIds, selectedSiteId]);
 
   const is_plugin_source = Boolean(selectedDescriptor?.isJsPlugin);
   selectedSiteIdRef.current = selectedSiteId;
@@ -612,7 +720,9 @@ export default function LatestUpdatesPanel({
   }, []);
 
   const latestListFetchTriggerKey = useMemo(() => {
-    const scope = searchAllSources ? 'all' : 'one';
+    const scope = searchAllSources
+      ? `all:${selectedMultiSearchSiteIds.slice().sort().join(',')}`
+      : 'one';
     if (selectedSiteId === 'mangadex') {
       return `${selectedSiteId}|${appliedSearch}|${scope}|${panelMangadexLanguage}`;
     }
@@ -624,6 +734,7 @@ export default function LatestUpdatesPanel({
     selectedSiteId,
     appliedSearch,
     searchAllSources,
+    selectedMultiSearchSiteIds,
     panelMangadexLanguage,
     panelMinotruyenCategory,
   ]);
@@ -636,6 +747,7 @@ export default function LatestUpdatesPanel({
     setFetchError('');
     setSearchDraft('');
     setAppliedSearch('');
+    setIsSearchLoading(false);
     setPluginConsoleLines([]);
     setPluginConsoleOpen(false);
   }, [selectedSourcesKey]);
@@ -664,26 +776,32 @@ export default function LatestUpdatesPanel({
 
   /** `pageNum` tường minh để Prev/Next không dùng state `page` bị stale. */
   const runFetchForPage = useCallback(
-    async (pageNum) => {
+    async (pageNum, overrideSearch) => {
       const api = window.electronAPI;
       const p = clampLatestListingPage(pageNum);
       if (!api?.fetchLatestUpdates) {
+        setIsSearchLoading(false);
         setFetchError(t('latestUpdates.needElectron'));
         return;
       }
       if (!activeFetchSiteIds.length) {
+        setIsSearchLoading(false);
         setFetchError(t('latestUpdates.pickSource'));
         return;
       }
       setBusyList(true);
       setFetchError('');
       try {
+        const searchTerm =
+          typeof overrideSearch === 'string' ? overrideSearch : appliedSearch;
+        const searchEffective = Boolean(String(searchTerm || '').trim());
+        const multiEffective = searchEffective && searchAllSources;
         const res = await api.fetchLatestUpdates({
           siteIds: activeFetchSiteIds,
           page: p,
           ...effectiveMangaLoadOpts,
           latestUpdatesSearch:
-            isSearchActive && (isMultiSourceSearch || selectedSupportsSearch) ? appliedSearch : '',
+            searchEffective && (multiEffective || selectedSupportsSearch) ? searchTerm : '',
         });
         if (!res?.ok || !Array.isArray(res.results)) {
           setRows([]);
@@ -709,9 +827,8 @@ export default function LatestUpdatesPanel({
             });
           }
         }
-        setListingTotalPages(
-          isMultiSourceSearch ? 1 : clampLatestListingTotalPages(maxPg),
-        );
+        const calculatedTotalPages = isMultiSourceSearch ? 1 : clampLatestListingTotalPages(maxPg);
+        setListingTotalPages(calculatedTotalPages);
         setPage(p);
         setRows(merged);
         let warn = '';
@@ -734,15 +851,21 @@ export default function LatestUpdatesPanel({
           if (errs.length) warn = errs.join(' · ');
         }
         setFetchError(warn);
+        latestUpdatesListingCache.key = latestListFetchTriggerKey;
+        latestUpdatesListingCache.page = p;
+        latestUpdatesListingCache.rows = merged;
+        latestUpdatesListingCache.listingTotalPages = calculatedTotalPages;
+        latestUpdatesListingCache.fetchError = warn;
       } catch (e) {
         setFetchError(String(e?.message || e || t('latestUpdates.fetchFailed')));
         setRows([]);
         setListingTotalPages(1);
       } finally {
         setBusyList(false);
+        setIsSearchLoading(false);
       }
     },
-    [activeFetchSiteIds, supported, effectiveMangaLoadOpts, t, appliedSearch, isSearchActive, isMultiSourceSearch, selectedSupportsSearch],
+    [activeFetchSiteIds, supported, effectiveMangaLoadOpts, t, appliedSearch, selectedSupportsSearch, searchAllSources],
   );
 
   const pagination_search_locked =
@@ -778,6 +901,8 @@ export default function LatestUpdatesPanel({
   }, [raw_page_input, listingTotalPages, page, runFetchForPage]);
 
   const handleManualRefresh = useCallback(() => {
+    latestUpdatesListingCache.key = '';
+    latestUpdatesListingCache.rows = [];
     setPage(1);
     setRawPageInput('1');
     void runFetchForPage(1);
@@ -786,20 +911,36 @@ export default function LatestUpdatesPanel({
   /** Đổi nguồn, từ khóa tìm, hoặc ngôn ngữ MangaDex (ô trong tab) → tải trang 1. */
   useEffect(() => {
     if (!selectedSiteId) return;
+    if (
+      latestUpdatesListingCache.key === latestListFetchTriggerKey &&
+      latestUpdatesListingCache.rows?.length > 0 &&
+      latestUpdatesListingCache.page === 1
+    ) {
+      setRows(latestUpdatesListingCache.rows);
+      setListingTotalPages(latestUpdatesListingCache.listingTotalPages || 1);
+      setFetchError(latestUpdatesListingCache.fetchError || '');
+      setIsSearchLoading(false);
+      return;
+    }
     void runFetchForPage(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- latestListFetchTriggerKey
   }, [latestListFetchTriggerKey]);
 
   const handleApplyLatestSearch = useCallback(() => {
     const trimmed = String(searchDraft || '').trim();
+    setIsSearchLoading(true);
     setAppliedSearch(trimmed);
     setPage(1);
     setRawPageInput('1');
-  }, [searchDraft]);
+    if (trimmed === appliedSearch && page === 1) {
+      void runFetchForPage(1, trimmed);
+    }
+  }, [searchDraft, appliedSearch, page, runFetchForPage]);
 
   const handleClearLatestSearch = useCallback(() => {
     setSearchDraft('');
     setAppliedSearch('');
+    setIsSearchLoading(false);
     setPage(1);
   }, []);
 
@@ -1067,6 +1208,16 @@ export default function LatestUpdatesPanel({
             <span className="truncate">{t('latestUpdates.searchScopeAll')}</span>
           </button>
         </div>
+        {searchAllSources && (
+          <div className="pt-0.5">
+            <MultiSelectDropdown
+              options={searchCapableSiteOptions}
+              selectedValues={selectedMultiSearchSiteIds}
+              onChange={handleMultiSearchSiteIdsChange}
+              size="sm"
+            />
+          </div>
+        )}
       </div>
     ) : null;
 
@@ -1094,8 +1245,14 @@ export default function LatestUpdatesPanel({
             {hasLatestUpdatesSearch ? (
               <div className="flex items-center gap-1.5 min-w-0">
                 <div className="relative flex items-center min-w-[14rem] max-w-sm">
-                  <span className="material-symbols-outlined absolute left-2.5 text-[17px] text-on-surface-variant/60 pointer-events-none">
-                    search
+                  <span
+                    className={`material-symbols-outlined absolute left-2.5 text-[17px] pointer-events-none transition-colors ${
+                      isSearchLoading
+                        ? 'text-primary animate-spin'
+                        : 'text-on-surface-variant/60'
+                    }`}
+                  >
+                    {isSearchLoading ? 'progress_activity' : 'search'}
                   </span>
                   <input
                     type="text"
@@ -1104,6 +1261,7 @@ export default function LatestUpdatesPanel({
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         e.preventDefault();
+                        if (searchAllSources && selectedMultiSearchSiteIds.length === 0) return;
                         handleApplyLatestSearch();
                       }
                     }}
@@ -1112,7 +1270,7 @@ export default function LatestUpdatesPanel({
                     className="h-8 w-full rounded-lg bg-surface-container-high/60 pl-8 pr-7 text-xs text-on-surface outline-none border border-outline-variant/25 focus:border-primary/50 focus:ring-1 focus:ring-primary/30"
                     autoComplete="off"
                   />
-                  {searchDraft ? (
+                  {searchDraft && !isSearchLoading ? (
                     <button
                       type="button"
                       onClick={handleClearLatestSearch}
@@ -1124,11 +1282,15 @@ export default function LatestUpdatesPanel({
                 </div>
                 <button
                   type="button"
-                  disabled={busyList}
+                  disabled={busyList || (searchAllSources && selectedMultiSearchSiteIds.length === 0)}
                   onClick={handleApplyLatestSearch}
-                  className="h-8 px-2.5 rounded-lg bg-primary text-on-primary text-xs font-semibold hover:opacity-90 disabled:opacity-40 cursor-pointer flex items-center gap-1 shrink-0"
+                  aria-label={isSearchLoading ? t('latestUpdates.searching') : t('latestUpdates.searchSubmit')}
+                  className="h-8 px-2.5 rounded-lg bg-primary text-on-primary text-xs font-semibold hover:opacity-90 disabled:opacity-40 disabled:pointer-events-none cursor-pointer flex items-center gap-1.5 shrink-0 select-none transition-all"
                 >
-                  <span>{t('latestUpdates.searchSubmit')}</span>
+                  <span className={`material-symbols-outlined text-[15px] leading-none ${isSearchLoading ? 'animate-spin' : ''}`}>
+                    {isSearchLoading ? 'progress_activity' : 'search'}
+                  </span>
+                  <span>{isSearchLoading ? t('latestUpdates.searching') : t('latestUpdates.searchSubmit')}</span>
                 </button>
               </div>
             ) : null}
@@ -1136,31 +1298,6 @@ export default function LatestUpdatesPanel({
         }
         rightSlot={
           <div className="flex items-center gap-2">
-            <div className="flex items-center rounded-lg border border-outline-variant/20 p-0.5 bg-surface-container-high/40">
-              <button
-                type="button"
-                onClick={() => setViewModePersist('grid')}
-                data-tooltip={t('favorites.viewGrid')}
-                aria-pressed={viewMode === 'grid'}
-                className={`inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors cursor-pointer ${
-                  viewMode === 'grid' ? 'bg-primary/20 text-primary font-bold' : 'text-on-surface-variant hover:bg-surface-bright'
-                }`}
-              >
-                <span className="material-symbols-outlined text-[16px] leading-none">grid_view</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewModePersist('list')}
-                data-tooltip={t('favorites.viewList')}
-                aria-pressed={viewMode === 'list'}
-                className={`inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors cursor-pointer ${
-                  viewMode === 'list' ? 'bg-primary/20 text-primary font-bold' : 'text-on-surface-variant hover:bg-surface-bright'
-                }`}
-              >
-                <span className="material-symbols-outlined text-[16px] leading-none">view_list</span>
-              </button>
-            </div>
-
             <div className="flex items-center gap-1 text-xs text-on-surface-variant">
               <span className="tabular-nums px-1 max-sm:hidden">
                 {t('latestUpdates.pageOf', { page, total: listingTotalPages })}
@@ -1276,6 +1413,12 @@ export default function LatestUpdatesPanel({
                 ) : null}
               </button>
             ) : null}
+
+            <ViewModeToggle
+              viewMode={viewMode}
+              onChange={setViewModePersist}
+              size="sm"
+            />
           </div>
         }
       />
@@ -1301,7 +1444,7 @@ export default function LatestUpdatesPanel({
               />
             </div>
 
-            {selectedSiteId === 'mangadex' && (
+            {!searchAllSources && selectedSiteId === 'mangadex' && (
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant shrink-0">
                   {t('sidebar.mangadexTranslationLang')}
@@ -1316,7 +1459,7 @@ export default function LatestUpdatesPanel({
               </div>
             )}
 
-            {selectedSiteId === 'minotruyen' && (
+            {!searchAllSources && selectedSiteId === 'minotruyen' && (
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant shrink-0">
                   {t('latestUpdates.minotruyenCategoryLabel')}
@@ -1337,26 +1480,49 @@ export default function LatestUpdatesPanel({
               </div>
             )}
 
-            {selectedSiteId === 'cuutruyen' && (
+            {!searchAllSources && selectedSiteId === 'cuutruyen' && (
               <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-100 leading-relaxed">
                 {t('latestUpdates.cuutruyenVpnNotice')}
               </div>
             )}
 
-            {selectedDescriptor && (
-              <div className="rounded-xl border border-outline-variant/15 bg-surface-container-low/50 p-3 space-y-1 text-xs text-on-surface-variant">
-                <div className="flex items-center justify-between font-semibold text-on-surface">
-                  <span className="truncate">{selectedDescriptor.label || selectedSiteId}</span>
-                  {selectedDescriptor.domain && (
-                    <span className="text-[10px] font-normal text-on-surface-variant/70 shrink-0 ml-1">
-                      {connectorHost(selectedDescriptor.domain)}
-                    </span>
-                  )}
-                </div>
-                <div className="text-[11px] text-on-surface-variant/80">
-                  {t('latestUpdates.pageOf', { page, total: listingTotalPages })}
-                </div>
+            {searchAllSources ? (
+              <div className="space-y-2">
+                {selectedMultiDescriptors.map((desc) => (
+                  <div
+                    key={desc.id}
+                    className="rounded-xl border border-outline-variant/15 bg-surface-container-low/50 p-3 space-y-1 text-xs text-on-surface-variant hover:border-outline-variant/30 transition-colors"
+                  >
+                    <div className="flex items-center justify-between font-semibold text-on-surface">
+                      <span className="truncate">{desc.label || desc.id}</span>
+                      {desc.domain && (
+                        <span className="text-[10px] font-normal text-on-surface-variant/70 shrink-0 ml-1">
+                          {connectorHost(desc.domain)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-on-surface-variant/80">
+                      {t('latestUpdates.pageOf', { page: 1, total: 1 })}
+                    </div>
+                  </div>
+                ))}
               </div>
+            ) : (
+              selectedDescriptor && (
+                <div className="rounded-xl border border-outline-variant/15 bg-surface-container-low/50 p-3 space-y-1 text-xs text-on-surface-variant">
+                  <div className="flex items-center justify-between font-semibold text-on-surface">
+                    <span className="truncate">{selectedDescriptor.label || selectedSiteId}</span>
+                    {selectedDescriptor.domain && (
+                      <span className="text-[10px] font-normal text-on-surface-variant/70 shrink-0 ml-1">
+                        {connectorHost(selectedDescriptor.domain)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[11px] text-on-surface-variant/80">
+                    {t('latestUpdates.pageOf', { page, total: listingTotalPages })}
+                  </div>
+                </div>
+              )
             )}
           </div>
         </StudioLayout.LeftSidebar>
@@ -1364,10 +1530,67 @@ export default function LatestUpdatesPanel({
         <StudioLayout.Content>
           <div className="custom-scrollbar flex-1 min-h-0 overflow-auto px-4 py-4 sm:px-6 sm:py-5">
             <div className="w-full min-w-0">
-          {fetchError ? (
-            <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-100">
-              {fetchError}
-            </div>
+          {fetchError && !errorDismissed ? (
+            multiErrorItems.length > 1 ? (
+              <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-100 shadow-2xs">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="material-symbols-outlined text-amber-500 text-[18px] shrink-0 leading-none">
+                      wifi_off
+                    </span>
+                    <span className="font-medium truncate">
+                      {t('latestUpdates.multiFetchErrorSummary', { count: multiErrorItems.length })}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setErrorDetailsExpanded((prev) => !prev)}
+                      className="px-2 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-[11px] font-semibold transition-colors cursor-pointer select-none"
+                    >
+                      {errorDetailsExpanded ? t('latestUpdates.hideDetails') : t('latestUpdates.viewDetails')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setErrorDismissed(true)}
+                      data-tooltip={t('latestUpdates.dismissError')}
+                      aria-label={t('latestUpdates.dismissError')}
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-lg hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 transition-colors cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[16px] leading-none">close</span>
+                    </button>
+                  </div>
+                </div>
+                {errorDetailsExpanded && (
+                  <ul className="mt-2.5 space-y-1.5 border-t border-amber-500/20 pt-2 text-[11px] leading-relaxed">
+                    {multiErrorItems.map((err, idx) => (
+                      <li key={idx} className="flex items-start gap-1.5 text-amber-900/90 dark:text-amber-200/90">
+                        <span className="text-amber-500 font-bold shrink-0">•</span>
+                        <span>{err}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ) : (
+              <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-100 flex items-center justify-between gap-2 shadow-2xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="material-symbols-outlined text-amber-500 text-[18px] shrink-0 leading-none">
+                    warning
+                  </span>
+                  <span className="truncate">{fetchError}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setErrorDismissed(true)}
+                  data-tooltip={t('latestUpdates.dismissError')}
+                  aria-label={t('latestUpdates.dismissError')}
+                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 transition-colors cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[16px] leading-none">close</span>
+                </button>
+              </div>
+            )
           ) : null}
 
           {pluginConsoleOpen && is_plugin_source ? (
@@ -1426,7 +1649,8 @@ export default function LatestUpdatesPanel({
           ) : null}
 
           {rows.length > 0 ? (
-            viewMode === 'grid' ? (
+            <div className={`transition-opacity duration-200 ${isSearchLoading ? 'opacity-40 pointer-events-none' : ''}`}>
+              {viewMode === 'grid' ? (
               <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
                 {rows.map((row) => {
                   const k = `${row.siteId}::${row.mangaUrl}`;
@@ -1448,7 +1672,11 @@ export default function LatestUpdatesPanel({
                       key={k}
                       className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-outline-variant/20 bg-surface-container-high/35 transition-colors hover:border-outline-variant/40 hover:bg-surface-container-high/55"
                     >
-                      <div className="relative aspect-[3/4.2] bg-surface-container-highest">
+                      <div className="relative aspect-[3/4.2] bg-surface-container-highest flex items-center justify-center overflow-hidden">
+                        <div className="flex flex-col items-center justify-center gap-1 text-on-surface-variant/40 p-2 text-center pointer-events-none select-none">
+                          <span className="material-symbols-outlined text-[32px] leading-none">menu_book</span>
+                          <span className="text-[10px] font-medium leading-tight line-clamp-1">{t('latestUpdates.noCover')}</span>
+                        </div>
                         {row.coverUrl ? (
                           <img
                             src={row.coverUrl}
@@ -1456,6 +1684,9 @@ export default function LatestUpdatesPanel({
                             className="absolute inset-0 size-full object-cover"
                             loading="lazy"
                             decoding="async"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                            }}
                           />
                         ) : null}
                         <span className="pointer-events-none absolute left-2 top-2 z-[1] max-w-[calc(100%-1rem)] truncate rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
@@ -1500,35 +1731,47 @@ export default function LatestUpdatesPanel({
                         {row.latestChapterLabel ? (
                           <p className="text-xs text-on-surface-variant">{row.latestChapterLabel}</p>
                         ) : null}
-                        <div className="mt-auto flex w-full flex-col gap-2">
+                        <div className="mt-auto flex w-full items-center gap-1.5 pt-1">
                           {pickEnabled ? (
                             <button
                               type="button"
                               disabled={chapterListDisabled}
                               data-tooltip={chapter_actions_disabled_title}
                               onClick={() => handleOpenChapterListButton(row.siteId, row)}
-                              className="w-full rounded-lg bg-secondary-container py-2 text-xs font-semibold text-on-secondary-container shadow-sm transition-[opacity,box-shadow] hover:opacity-90 hover:shadow-md disabled:pointer-events-none disabled:opacity-45 sm:text-sm"
+                              className="flex-1 min-w-0 h-8 rounded-lg bg-primary text-on-primary hover:opacity-90 text-xs font-semibold transition-all flex items-center justify-center gap-1.5 disabled:pointer-events-none disabled:opacity-45 cursor-pointer shadow-2xs"
                             >
                               {openBusy ? (
-                                <span className="inline-flex items-center justify-center gap-1.5">
-                                  <span className="material-symbols-outlined animate-spin text-[16px] leading-none">
+                                <span className="inline-flex items-center justify-center gap-1">
+                                  <span className="material-symbols-outlined animate-spin text-[14px] leading-none">
                                     progress_activity
                                   </span>
-                                  {t('latestUpdates.loading')}
+                                  <span className="truncate">{t('latestUpdates.loading')}</span>
                                 </span>
                               ) : (
-                                t('latestUpdates.openChapterList')
+                                <>
+                                  <span className="material-symbols-outlined text-[15px] leading-none">list</span>
+                                  <span className="truncate">{t('latestUpdates.openChapterList')}</span>
+                                </>
                               )}
                             </button>
                           ) : null}
                           <button
                             type="button"
                             disabled={enqueueDisabled}
-                            data-tooltip={chapter_actions_disabled_title}
+                            data-tooltip={chapter_actions_disabled_title || t('latestUpdates.addToQueue')}
+                            aria-label={t('latestUpdates.addToQueue')}
                             onClick={() => handleEnqueue(row.siteId, row)}
-                            className="w-full rounded-lg bg-primary py-2 text-xs font-medium text-on-primary hover:opacity-90 disabled:pointer-events-none disabled:opacity-50 sm:text-sm"
+                            className="h-8 w-8 shrink-0 rounded-lg bg-primary text-on-primary hover:opacity-90 transition-all flex items-center justify-center disabled:pointer-events-none disabled:opacity-45 cursor-pointer shadow-2xs"
                           >
-                            {enqBusy ? t('latestUpdates.enqueueBusy') : t('latestUpdates.addToQueue')}
+                            {enqBusy ? (
+                              <span className="material-symbols-outlined animate-spin text-[15px] leading-none">
+                                progress_activity
+                              </span>
+                            ) : (
+                              <span className="material-symbols-outlined text-[17px] leading-none">
+                                playlist_add
+                              </span>
+                            )}
                           </button>
                         </div>
                       </div>
@@ -1560,14 +1803,18 @@ export default function LatestUpdatesPanel({
                     >
                       <div className="flex min-w-0 gap-3 sm:flex-1 sm:items-center">
                       <div className="relative shrink-0 overflow-hidden rounded-md bg-surface-container-highest">
-                        <div className="size-[4.5rem] shrink-0 sm:size-24">
+                        <div className="size-[4.5rem] shrink-0 sm:size-24 relative flex items-center justify-center bg-surface-container-highest overflow-hidden">
+                          <span className="material-symbols-outlined text-[24px] text-on-surface-variant/40 leading-none select-none">menu_book</span>
                           {row.coverUrl ? (
                             <img
                               src={row.coverUrl}
                               alt=""
-                              className="size-full object-cover"
+                              className="absolute inset-0 size-full object-cover"
                               loading="lazy"
                               decoding="async"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                              }}
                             />
                           ) : null}
                         </div>
@@ -1650,7 +1897,17 @@ export default function LatestUpdatesPanel({
                   );
                 })}
               </ul>
-            )
+            )}
+            </div>
+          ) : isSearchLoading ? (
+            <div className="flex flex-col items-center justify-center py-24 gap-3 text-on-surface-variant select-none">
+              <span className="material-symbols-outlined text-4xl animate-spin text-primary">
+                progress_activity
+              </span>
+              <p className="text-sm font-medium text-on-surface">
+                {t('latestUpdates.searchingHint')}
+              </p>
+            </div>
           ) : !busyList && !fetchError ? (
             <p className="py-10 text-center text-sm text-on-surface-variant">{t('latestUpdates.hintBelow')}</p>
           ) : null}

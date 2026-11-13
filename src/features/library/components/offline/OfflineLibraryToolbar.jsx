@@ -1,5 +1,5 @@
 import React from 'react';
-import { SearchableSelect } from '../../../../shared';
+import { SearchableSelect, ViewModeToggle } from '../../../../shared';
 import { SORT_LABEL_KEYS } from './offlineLibraryUtils';
 
 export function OfflineLibraryToolbar({
@@ -13,30 +13,14 @@ export function OfflineLibraryToolbar({
   setSourceFilter,
   t,
 }) {
-  const viewToggleBtn = (mode, icon, labelKey) => {
-    const active = viewMode === mode;
-    return (
-      <button
-        type="button"
-        aria-pressed={active}
-        onClick={() => setViewMode(mode)}
-        className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition-colors cursor-pointer ${
-          active
-            ? 'border-primary/40 bg-primary/15 text-primary font-bold shadow-xs'
-            : 'border-outline-variant/25 bg-surface-container-highest text-on-surface-variant hover:text-on-surface hover:border-outline-variant/50'
-        }`}
-        data-tooltip={t(labelKey)}
-      >
-        <span className="material-symbols-outlined text-[20px] leading-none">{icon}</span>
-      </button>
-    );
-  };
-
   return (
     <div className="flex flex-wrap items-center gap-3 shrink-0">
       <div className="flex items-center gap-2 shrink-0">
-        {viewToggleBtn('grid', 'grid_view', 'favorites.viewGrid')}
-        {viewToggleBtn('list', 'view_list', 'favorites.viewList')}
+        <ViewModeToggle
+          viewMode={viewMode}
+          onChange={setViewMode}
+          size="lg"
+        />
         <div className="h-6 w-px shrink-0 bg-outline-variant/30 mx-0.5 self-center" aria-hidden />
         <button
           type="button"

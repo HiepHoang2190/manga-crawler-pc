@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useI18n } from '../../context/I18nContext';
 import LatestUpdatesPanel from '../latest-updates';
 import BulkScanPanel from '../bulk-scan';
@@ -38,6 +38,12 @@ export default function ExplorePanel({
     }
     return loadExploreSubtab('latest');
   });
+
+  useEffect(() => {
+    if (initialSubtab === 'bulk' || initialSubtab === 'latest') {
+      setActiveSubtab(initialSubtab);
+    }
+  }, [initialSubtab]);
 
   const handleSelectSubtab = useCallback((subtab) => {
     if (subtab !== 'latest' && subtab !== 'bulk') return;

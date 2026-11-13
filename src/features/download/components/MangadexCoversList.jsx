@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useI18n } from '../../../context/I18nContext';
+import { ViewModeToggle } from '../../../shared';
 
 /**
  * MangaDex Covers List Component (for ChaptersDrawer tab)
@@ -145,32 +146,12 @@ export default function MangadexCoversList({
         {!loading && covers.length > 0 && (
           <div className="flex items-center justify-between gap-2">
             {/* View mode toggle */}
-            <div className="flex gap-1 bg-surface-container-highest/60 rounded-lg p-1">
-              <button
-                type="button"
-                onClick={() => setViewMode('grid')}
-                className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
-                  viewMode === 'grid'
-                    ? 'bg-primary text-on-primary'
-                    : 'text-on-surface-variant hover:text-on-surface'
-                }`}
-                data-tooltip={t('mangadex.gridView', 'Grid view')}
-              >
-                <span className="material-symbols-outlined text-sm">grid_view</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('list')}
-                className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
-                  viewMode === 'list'
-                    ? 'bg-primary text-on-primary'
-                    : 'text-on-surface-variant hover:text-on-surface'
-                }`}
-                data-tooltip={t('mangadex.listView', 'List view')}
-              >
-                <span className="material-symbols-outlined text-sm">view_list</span>
-              </button>
-            </div>
+            <ViewModeToggle
+              viewMode={viewMode}
+              onChange={setViewMode}
+              size="sm"
+              disabled={downloading}
+            />
 
             {/* Download button */}
             <button

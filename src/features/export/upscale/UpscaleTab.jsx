@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useI18n } from '../../../context/I18nContext';
-import { SourcePicker, ResizeSplitter, useToolsSidebarResize, SearchableSelect, OutputFormatSelector, OutputDestinationSelector, SaveDirErrorModal, CaesiumCompressControl } from '../../../shared';
+import { SourcePicker, ResizeSplitter, useToolsSidebarResize, SearchableSelect, OutputFormatSelector, OutputDestinationSelector, SaveDirErrorModal, CaesiumCompressControl, ViewModeToggle } from '../../../shared';
 import { ToolsStudioActionSlot, ToolsStudioCenterSlot } from '../../tools-studio/ToolsStudioActionSlot';
 import { getUpscaleSuffix, buildUpscaleOutputPath, getUpscaleOutputFolder, sortImages } from './upscaleNaming';
 import InteractiveUpscalePreviewModal from './InteractiveUpscalePreviewModal';
@@ -1055,38 +1055,6 @@ export default function UpscaleTab({
     <div className="flex-1 flex min-h-0 min-w-0 overflow-hidden bg-surface" data-testid="tab-content-upscale">
       <ToolsStudioCenterSlot active={isActive}>
         <div className="flex items-center gap-2">
-          {/* View Mode Toggle: Grid (waifu2x) vs List */}
-          <div className="flex items-center p-0.5 rounded-lg bg-surface-container-highest border border-outline-variant/20 text-xs select-none">
-            <button
-              type="button"
-              data-tooltip="Xem dạng Lưới thẻ trực quan (phong cách waifu2x)"
-              onClick={() => setViewMode('grid')}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
-                viewMode === 'grid'
-                  ? 'bg-primary text-on-primary shadow-xs'
-                  : 'text-on-surface-variant hover:text-on-surface'
-              }`}
-            >
-              <span className="material-symbols-outlined text-[15px] leading-none">grid_view</span>
-              <span className="hidden sm:inline">Lưới thẻ</span>
-            </button>
-            <button
-              type="button"
-              data-tooltip="Xem dạng Danh sách dòng truyền thống"
-              onClick={() => setViewMode('list')}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
-                viewMode === 'list'
-                  ? 'bg-primary text-on-primary shadow-xs'
-                  : 'text-on-surface-variant hover:text-on-surface'
-              }`}
-            >
-              <span className="material-symbols-outlined text-[15px] leading-none">view_list</span>
-              <span className="hidden sm:inline">Danh sách</span>
-            </button>
-          </div>
-
-          <div className="h-4 w-px bg-outline-variant/20 mx-0.5"></div>
-
           <button
             type="button"
             data-testid="upscale-start-btn"
@@ -1548,34 +1516,13 @@ export default function UpscaleTab({
 
           <div className="flex items-center gap-2">
             {/* View Mode Toggle: Grid vs List */}
-            <div className="flex items-center p-0.5 rounded-lg bg-surface-container-highest border border-outline-variant/20 text-xs select-none shrink-0">
-              <button
-                type="button"
-                data-tooltip="Xem dạng Lưới ảnh"
-                onClick={() => setViewMode('grid')}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
-                  viewMode === 'grid'
-                    ? 'bg-primary text-on-primary shadow-xs'
-                    : 'text-on-surface-variant hover:text-on-surface'
-                }`}
-              >
-                <span className="material-symbols-outlined text-[15px] leading-none">grid_view</span>
-                <span className="hidden md:inline">Lưới</span>
-              </button>
-              <button
-                type="button"
-                data-tooltip="Xem dạng Danh sách chi tiết"
-                onClick={() => setViewMode('list')}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
-                  viewMode === 'list'
-                    ? 'bg-primary text-on-primary shadow-xs'
-                    : 'text-on-surface-variant hover:text-on-surface'
-                }`}
-              >
-                <span className="material-symbols-outlined text-[15px] leading-none">view_list</span>
-                <span className="hidden md:inline">Danh sách</span>
-              </button>
-            </div>
+            <ViewModeToggle
+              viewMode={viewMode}
+              onChange={setViewMode}
+              size="md"
+              tooltipGrid="Xem dạng Lưới ảnh"
+              tooltipList="Xem dạng Danh sách chi tiết"
+            />
 
             {/* Open Output Folder Button */}
             {(outputDir || inPlace) && (

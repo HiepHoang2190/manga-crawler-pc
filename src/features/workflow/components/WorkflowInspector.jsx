@@ -20,6 +20,7 @@ function FolderPickerInput({
   disabled = false,
   defaultPath = '',
 }) {
+  const { t } = useI18n();
   const handleBrowse = async () => {
     if (disabled) return;
     const api = window.electronAPI || window.electron;

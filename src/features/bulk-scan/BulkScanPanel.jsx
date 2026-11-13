@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from '../../context/I18nContext';
-import { ResizeSplitter, SearchableSelect, StudioLayout, useStudioLayout } from '../../shared';
+import { ResizeSplitter, SearchableSelect, StudioLayout, useStudioLayout, ViewModeToggle } from '../../shared';
 import {
   buildSessionAfterScan,
   filterBulkScanItems,
@@ -95,7 +95,6 @@ export default function BulkScanPanel({
   });
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
-  const [rawPageInput, setRawPageInput] = useState('1');
   const cancelRef = useRef(false);
   const selectedSiteIdRef = useRef('');
   /** Absolute index in `visibleItems` — shift+click range select (ChapterList pattern). */
@@ -228,20 +227,6 @@ export default function BulkScanPanel({
   useEffect(() => {
     if (page !== safePage) setPage(safePage);
   }, [page, safePage]);
-
-  useEffect(() => {
-    setRawPageInput(String(safePage));
-  }, [safePage]);
-
-  const handleJumpPageSubmit = (e) => {
-    if (e) e.preventDefault();
-    const parsed = parseInt(rawPageInput, 10);
-    if (!Number.isNaN(parsed) && parsed >= 1 && parsed <= totalPages) {
-      setPage(parsed);
-    } else {
-      setRawPageInput(String(safePage));
-    }
-  };
 
   useEffect(() => {
     lastClickedIndexRef.current = null;
@@ -500,120 +485,21 @@ export default function BulkScanPanel({
           </div>
         }
         rightSlot={
-          <div className="flex items-center gap-2">
-            {items.length > 0 ? (
-              <>
-                <span className="text-xs font-medium tabular-nums text-on-surface-variant bg-surface-container-high px-2.5 py-1 rounded-md border border-outline-variant/20 max-xl:hidden">
-                  {t('bulkScan.selectedCount', { count: selectedCount })}
-                  {items.length ? ` / ${items.length}` : ''}
-                </span>
-
-                <div className="flex items-center rounded-lg border border-outline-variant/20 p-0.5 bg-surface-container-high/40">
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('grid')}
-                    disabled={controlsBusy}
-                    data-tooltip={t('favorites.viewGrid')}
-                    aria-label={t('favorites.viewGrid')}
-                    aria-pressed={viewMode === 'grid'}
-                    className={`inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors cursor-pointer disabled:opacity-45 ${
-                      viewMode === 'grid'
-                        ? 'bg-primary/20 text-primary font-bold'
-                        : 'text-on-surface-variant hover:bg-surface-bright'
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-[16px] leading-none">grid_view</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('list')}
-                    disabled={controlsBusy}
-                    data-tooltip={t('favorites.viewList')}
-                    aria-label={t('favorites.viewList')}
-                    aria-pressed={viewMode === 'list'}
-                    className={`inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors cursor-pointer disabled:opacity-45 ${
-                      viewMode === 'list'
-                        ? 'bg-primary/20 text-primary font-bold'
-                        : 'text-on-surface-variant hover:bg-surface-bright'
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-[16px] leading-none">view_list</span>
-                  </button>
-                </div>
-
-                <div className="flex items-center gap-1 text-xs text-on-surface-variant">
-                  <span className="tabular-nums px-1 max-sm:hidden">
-                    {t('latestUpdates.pageOf', { page: safePage, total: totalPages })}
-                  </span>
-                  <button
-                    type="button"
-                    data-tooltip={t('latestUpdates.firstPage')}
-                    aria-label={t('latestUpdates.firstPage')}
-                    disabled={safePage <= 1 || controlsBusy}
-                    onClick={() => setPage(1)}
-                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-outline-variant/30 bg-surface-container-high text-on-surface-variant hover:bg-surface-bright disabled:pointer-events-none disabled:opacity-40 cursor-pointer"
-                  >
-                    <span className="material-symbols-outlined text-[16px] leading-none">first_page</span>
-                  </button>
-                  <button
-                    type="button"
-                    disabled={safePage <= 1 || controlsBusy}
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    className="h-7 shrink-0 rounded-md border border-outline-variant/30 bg-surface-container-high px-2 text-xs hover:bg-surface-bright disabled:opacity-40 cursor-pointer"
-                  >
-                    {t('latestUpdates.prevPage')}
-                  </button>
-                  <form
-                    className="flex min-w-0 items-center gap-1"
-                    onSubmit={handleJumpPageSubmit}
-                  >
-                    <input
-                      type="number"
-                      min={1}
-                      max={totalPages}
-                      inputMode="numeric"
-                      aria-label={t('latestUpdates.pageInputAria', { total: totalPages })}
-                      disabled={controlsBusy}
-                      value={rawPageInput}
-                      onChange={(e) => setRawPageInput(e.target.value)}
-                      className="h-7 w-11 shrink-0 rounded-md border border-outline-variant/30 bg-surface px-1 text-center text-xs font-mono text-on-surface outline-none focus:border-primary/50 disabled:opacity-40"
-                    />
-                  </form>
-                  <button
-                    type="button"
-                    disabled={safePage >= totalPages || controlsBusy}
-                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                    className="h-7 shrink-0 rounded-md border border-outline-variant/30 bg-surface-container-high px-2 text-xs hover:bg-surface-bright disabled:opacity-40 cursor-pointer"
-                  >
-                    {t('latestUpdates.nextPage')}
-                  </button>
-                  <button
-                    type="button"
-                    data-tooltip={t('latestUpdates.lastPage')}
-                    aria-label={t('latestUpdates.lastPage')}
-                    disabled={safePage >= totalPages || controlsBusy}
-                    onClick={() => setPage(totalPages)}
-                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-outline-variant/30 bg-surface-container-high text-on-surface-variant hover:bg-surface-bright disabled:pointer-events-none disabled:opacity-40 cursor-pointer"
-                  >
-                    <span className="material-symbols-outlined text-[16px] leading-none">last_page</span>
-                  </button>
-                </div>
-              </>
-            ) : null}
-
-            <button
-              type="button"
-              data-testid="bulk-load-btn"
-              disabled={controlsBusy || !selectedSiteId}
-              onClick={() => void runLoad()}
-              className="h-7.5 shrink-0 rounded-lg bg-primary px-3 text-xs font-semibold text-on-primary transition-opacity hover:opacity-90 disabled:pointer-events-none disabled:opacity-50 flex items-center gap-1.5 cursor-pointer shadow-xs"
-            >
-              <span className={`material-symbols-outlined text-[16px] leading-none ${busyList ? 'animate-spin' : ''}`}>
-                sync
+          items.length > 0 ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium tabular-nums text-on-surface-variant bg-surface-container-high px-2.5 py-1 rounded-md border border-outline-variant/20 max-xl:hidden">
+                {t('bulkScan.selectedCount', { count: selectedCount })}
+                {items.length ? ` / ${items.length}` : ''}
               </span>
-              <span>{busyList ? t('bulkScan.loading') : t('bulkScan.load')}</span>
-            </button>
-          </div>
+
+              <ViewModeToggle
+                viewMode={viewMode}
+                onChange={setViewMode}
+                size="sm"
+                disabled={controlsBusy}
+              />
+            </div>
+          ) : null
         }
       />
 
@@ -644,6 +530,25 @@ export default function BulkScanPanel({
             <div className="space-y-2 pt-1">
               <button
                 type="button"
+                data-testid="bulk-sidebar-scan-btn"
+                className={`w-full ${items.length > 0 ? BTN_SURFACE : BTN_PRIMARY}`}
+                disabled={controlsBusy || !selectedSiteId}
+                onClick={() => void runLoad()}
+              >
+                <span className={`material-symbols-outlined text-[18px] ${busyList ? 'animate-spin' : ''}`}>
+                  sync
+                </span>
+                <span>
+                  {busyList
+                    ? t('bulkScan.loading')
+                    : items.length > 0
+                      ? t('bulkScan.rescanSource')
+                      : t('bulkScan.scanSource')}
+                </span>
+              </button>
+
+              <button
+                type="button"
                 data-testid="bulk-enqueue-btn"
                 className={`w-full ${BTN_PRIMARY}`}
                 disabled={!selectedCount || controlsBusy || !selectedSiteId}
@@ -662,40 +567,42 @@ export default function BulkScanPanel({
 
             {/* Alerts & Hints */}
             {cookieHint ? (
-              <div className="rounded-xl border border-outline-variant/25 bg-surface-container-high/40 p-3 text-xs leading-relaxed text-on-surface-variant">
-                {cookieHint}
+              <div className="rounded-xl border border-outline-variant/20 bg-surface-container-high/30 p-2.5 text-xs leading-relaxed text-on-surface-variant flex items-start gap-2">
+                <span className="material-symbols-outlined text-[16px] shrink-0 text-on-surface-variant/70 mt-0.5">
+                  vpn_key
+                </span>
+                <span className="leading-snug">{cookieHint}</span>
               </div>
             ) : null}
 
             {restoredHint || listStatus ? (
-              <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs text-primary flex items-start gap-2">
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-2.5 text-xs text-primary flex items-start gap-2">
                 <span className="material-symbols-outlined text-[16px] shrink-0 mt-0.5">info</span>
                 <span className="leading-snug">{restoredHint || listStatus}</span>
               </div>
             ) : null}
 
             {persistWarning ? (
-              <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-100 flex items-start gap-2">
+              <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-100 flex items-start gap-2">
                 <span className="material-symbols-outlined text-[16px] shrink-0 mt-0.5">warning</span>
                 <span className="leading-snug">{t('bulkScan.persistWarning')}</span>
               </div>
             ) : null}
 
             {fetchError ? (
-              <div className="rounded-xl border border-error/40 bg-error/10 p-3 text-xs text-error flex items-start gap-2">
+              <div className="rounded-xl border border-error/40 bg-error/10 p-2.5 text-xs text-error flex items-start gap-2">
                 <span className="material-symbols-outlined text-[16px] shrink-0 mt-0.5">error</span>
                 <span className="leading-snug">{fetchError}</span>
               </div>
             ) : null}
 
             {items.length > 0 ? (
-              <div className="rounded-xl border border-outline-variant/20 bg-surface-container-high/20 p-3 text-[11px] text-on-surface-variant/80">
+              <div className="rounded-xl border border-outline-variant/15 bg-surface-container-high/25 p-2.5 text-[11px] text-on-surface-variant/80 flex items-start gap-2">
+                <span className="material-symbols-outlined text-[16px] text-primary/70 shrink-0 mt-0.5">
+                  touch_app
+                </span>
                 <p className="leading-relaxed">
-                  {t('bulkScan.hint1')}
-                  <kbd className="mx-1 rounded bg-surface-container-highest px-1.5 py-0.5 text-[10px] font-semibold text-on-surface">
-                    Shift
-                  </kbd>
-                  {t('bulkScan.hint2')}
+                  {t('bulkScan.shiftTip')}
                 </p>
               </div>
             ) : null}
@@ -759,15 +666,21 @@ export default function BulkScanPanel({
                               }}
                             />
                           </div>
-                          <div className="aspect-[2/3] bg-surface-container-highest">
+                          <div className="relative aspect-[2/3] bg-surface-container-highest flex items-center justify-center overflow-hidden">
+                            <span className="material-symbols-outlined text-[28px] text-on-surface-variant/40 leading-none select-none">
+                              menu_book
+                            </span>
                             {item.coverUrl ? (
                               <img
                                 src={item.coverUrl}
                                 alt=""
-                                className="pointer-events-none h-full w-full object-cover"
+                                className="pointer-events-none absolute inset-0 size-full object-cover"
                                 loading="lazy"
                                 decoding="async"
                                 referrerPolicy="no-referrer"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                }}
                               />
                             ) : null}
                           </div>
@@ -786,50 +699,83 @@ export default function BulkScanPanel({
                     })}
                   </div>
                 ) : (
-                  <div className="rounded-xl border border-outline-variant/20 bg-surface-container-low/30 overflow-hidden">
-                    <ul className="divide-y divide-outline-variant/15">
+                  <div className="rounded-2xl border border-outline-variant/20 bg-surface-container-low/30 p-2 overflow-hidden">
+                    <ul className="space-y-1">
                       {pageItems.map((item, index) => {
                         const checked = selected.has(item.mangaUrl);
                         return (
                           <li
                             key={item.mangaUrl}
-                            className={`flex cursor-pointer select-none items-center gap-3 px-3 py-2.5 sm:px-4 ${
-                              checked ? 'bg-primary/5' : 'hover:bg-surface-container-high/60'
+                            className={`group flex cursor-pointer select-none items-center justify-between gap-3 px-3 py-2.5 sm:px-4 rounded-xl border transition-all ${
+                              checked
+                                ? 'bg-primary/8 border-primary/25 shadow-xs'
+                                : 'bg-surface-container-low/20 border-transparent hover:border-outline-variant/20 hover:bg-surface-container-high/60'
                             } ${controlsBusy ? 'pointer-events-none opacity-60' : ''}`}
                             onClick={(e) => applyRowSelection(e, item, index)}
                           >
-                            <input
-                              type="checkbox"
-                              className="size-4 shrink-0 accent-primary"
-                              checked={checked}
-                              disabled={controlsBusy}
-                              onClick={(e) => e.stopPropagation()}
-                              onChange={(e) => {
-                                e.stopPropagation();
-                                applyRowSelection(e, item, index);
-                              }}
-                            />
-                            {item.coverUrl ? (
-                              <img
-                                src={item.coverUrl}
-                                alt=""
-                                className="pointer-events-none h-12 w-9 shrink-0 rounded-md object-cover sm:h-14 sm:w-10"
-                                loading="lazy"
-                                decoding="async"
-                                referrerPolicy="no-referrer"
+                            <div className="flex min-w-0 items-center gap-3">
+                              <input
+                                type="checkbox"
+                                className="size-4 shrink-0 accent-primary cursor-pointer"
+                                checked={checked}
+                                disabled={controlsBusy}
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={(e) => {
+                                  e.stopPropagation();
+                                  applyRowSelection(e, item, index);
+                                }}
                               />
-                            ) : (
-                              <div className="h-12 w-9 shrink-0 rounded-md bg-surface-container-highest sm:h-14 sm:w-10" />
-                            )}
-                            <div className="min-w-0 flex-1">
-                              <div className="truncate text-sm font-medium text-on-surface">
-                                {item.title}
+                              <div className="relative h-12 w-9 shrink-0 overflow-hidden rounded-md bg-surface-container-highest flex items-center justify-center shadow-xs sm:h-14 sm:w-10">
+                                <span className="material-symbols-outlined text-[20px] text-on-surface-variant/40 leading-none select-none">
+                                  menu_book
+                                </span>
+                                {item.coverUrl ? (
+                                  <img
+                                    src={item.coverUrl}
+                                    alt=""
+                                    className="pointer-events-none absolute inset-0 size-full object-cover"
+                                    loading="lazy"
+                                    decoding="async"
+                                    referrerPolicy="no-referrer"
+                                    onError={(e) => {
+                                      e.currentTarget.style.display = 'none';
+                                    }}
+                                  />
+                                ) : null}
                               </div>
-                              {item.latestChapterLabel ? (
-                                <div className="truncate text-xs text-on-surface-variant">
-                                  {item.latestChapterLabel}
+                              <div className="min-w-0">
+                                <div className="truncate text-sm font-semibold text-on-surface group-hover:text-primary transition-colors">
+                                  {item.title}
                                 </div>
+                                <div className="truncate text-[11px] text-on-surface-variant/60 font-mono">
+                                  {item.mangaUrl ? connectorHost(item.mangaUrl) : ''}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-3 shrink-0">
+                              {item.latestChapterLabel ? (
+                                <span className="inline-flex items-center gap-1.5 rounded-full border border-outline-variant/30 bg-surface-container-highest px-3 py-1 text-xs font-medium text-on-surface-variant">
+                                  <span className="material-symbols-outlined text-[15px] text-primary/70">
+                                    bookmark
+                                  </span>
+                                  <span className="truncate max-w-[14rem] sm:max-w-[20rem]">
+                                    {item.latestChapterLabel}
+                                  </span>
+                                </span>
                               ) : null}
+
+                              <div className="flex items-center justify-center w-7 h-7">
+                                {checked ? (
+                                  <span className="material-symbols-outlined text-[20px] text-primary">
+                                    check_circle
+                                  </span>
+                                ) : (
+                                  <span className="material-symbols-outlined text-[20px] text-outline-variant/30 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    radio_button_unchecked
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </li>
                         );
@@ -879,10 +825,23 @@ export default function BulkScanPanel({
                     <div className="inline-flex items-center gap-1">
                       <button
                         type="button"
+                        onClick={() => setPage(1)}
+                        disabled={safePage <= 1 || controlsBusy}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-outline-variant/50 bg-surface-bright text-on-surface shadow-sm transition hover:border-primary/30 hover:bg-surface-container-highest disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
+                        aria-label={t('latestUpdates.firstPage')}
+                        data-tooltip={t('latestUpdates.firstPage')}
+                      >
+                        <span className="material-symbols-outlined text-[18px] leading-none" aria-hidden>
+                          first_page
+                        </span>
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => setPage((p) => Math.max(1, p - 1))}
                         disabled={safePage <= 1 || controlsBusy}
                         className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-outline-variant/50 bg-surface-bright text-on-surface shadow-sm transition hover:border-primary/30 hover:bg-surface-container-highest disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
                         aria-label={t('bulkScan.pagePrev')}
+                        data-tooltip={t('bulkScan.pagePrev')}
                       >
                         <span className="material-symbols-outlined text-[20px] leading-none" aria-hidden>
                           chevron_left
@@ -894,9 +853,22 @@ export default function BulkScanPanel({
                         disabled={safePage >= totalPages || controlsBusy}
                         className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-outline-variant/50 bg-surface-bright text-on-surface shadow-sm transition hover:border-primary/30 hover:bg-surface-container-highest disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
                         aria-label={t('bulkScan.pageNext')}
+                        data-tooltip={t('bulkScan.pageNext')}
                       >
                         <span className="material-symbols-outlined text-[20px] leading-none" aria-hidden>
                           chevron_right
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPage(totalPages)}
+                        disabled={safePage >= totalPages || controlsBusy}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-outline-variant/50 bg-surface-bright text-on-surface shadow-sm transition hover:border-primary/30 hover:bg-surface-container-highest disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
+                        aria-label={t('latestUpdates.lastPage')}
+                        data-tooltip={t('latestUpdates.lastPage')}
+                      >
+                        <span className="material-symbols-outlined text-[18px] leading-none" aria-hidden>
+                          last_page
                         </span>
                       </button>
                     </div>

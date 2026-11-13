@@ -158,6 +158,17 @@ export default function ShellLayout() {
     handleReorderMenu,
     handleResetMenuPrefs,
   } = useShellNav();
+  const isExploreView =
+    menuView === 'explore' || menuView === 'latestUpdates' || menuView === 'bulkScan';
+  const [hasVisitedExplore, setHasVisitedExplore] = useState(
+    () => isExploreView,
+  );
+
+  useEffect(() => {
+    if (isExploreView) {
+      setHasVisitedExplore(true);
+    }
+  }, [isExploreView]);
   const {
     queue,
     queueSelectedIds,
@@ -1067,10 +1078,43 @@ export default function ShellLayout() {
         />
       </div>
 
+      {/* Giữ nguyên phiên làm việc của Khám phá (ExplorePanel: Mới cập nhật & Quét hàng loạt) không bị reset khi chuyển qua lại giữa các menu */}
+      {hasVisitedExplore ? (
+        <div
+          data-testid="tab-content-explore"
+          className={
+            isExploreView
+              ? 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden'
+              : 'hidden'
+          }
+          aria-hidden={!isExploreView}
+        >
+          <ExplorePanel
+            initialSubtab={menuView === 'bulkScan' ? 'bulk' : 'latest'}
+            connectors={connectorList}
+            mangaLoadOpts={latestMangaLoadOpts}
+            onEnqueueLoadedManga={handleEnqueueLoadedMangaFromLatest}
+            queue={queue}
+            onAddQueuedFromLatest={handleAddQueuedFromLatest}
+            onDownloadMangadexCovers={handleDownloadMangadexCovers}
+            savePath={savePath}
+            prepareDrawerMangaForRead={prepareLatestDrawerForRead}
+            onOpenReaderForDrawerChapter={(ch) => {
+              openReader(ch);
+            }}
+            onReadChapterOnlineForDrawerChapter={(ch) => {
+              openReader(ch, { stream: true });
+            }}
+            favorites={favorites}
+            onToggleFavorite={toggleFavoriteFromLatest}
+          />
+        </div>
+      ) : null}
+
       {/* Conditional tab content — persistent tabs have their own data-testid above */}
       <div
         data-testid={
-          !['workflow', 'translate', 'ebookStudio', 'toolsStudio', 'siteChecker'].includes(menuView)
+          !['workflow', 'translate', 'ebookStudio', 'toolsStudio', 'siteChecker', 'explore', 'latestUpdates', 'bulkScan'].includes(menuView)
             ? `tab-content-${menuView}`
             : undefined
         }
@@ -1104,26 +1148,6 @@ export default function ShellLayout() {
             setMenuView('settings');
             setScrollSettingsToSection('downloads');
           }}
-        />
-      ) : menuView === 'explore' || menuView === 'latestUpdates' || menuView === 'bulkScan' ? (
-        <ExplorePanel
-          initialSubtab={menuView === 'bulkScan' ? 'bulk' : 'latest'}
-          connectors={connectorList}
-          mangaLoadOpts={latestMangaLoadOpts}
-          onEnqueueLoadedManga={handleEnqueueLoadedMangaFromLatest}
-          queue={queue}
-          onAddQueuedFromLatest={handleAddQueuedFromLatest}
-          onDownloadMangadexCovers={handleDownloadMangadexCovers}
-          savePath={savePath}
-          prepareDrawerMangaForRead={prepareLatestDrawerForRead}
-          onOpenReaderForDrawerChapter={(ch) => {
-            openReader(ch);
-          }}
-          onReadChapterOnlineForDrawerChapter={(ch) => {
-            openReader(ch, { stream: true });
-          }}
-          favorites={favorites}
-          onToggleFavorite={toggleFavoriteFromLatest}
         />
       ) : menuView === 'workflow' || menuView === 'translate' ? null : menuView === 'settings' ? (
         <SettingsPanel
