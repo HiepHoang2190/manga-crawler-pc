@@ -300,7 +300,10 @@ class NcnnBatchRunner {
         const emittedFiles = new Set();
         const inFlightFiles = new Set();
         const readyEntries = new Set();
+        // Map<entry, { size: number, count: number }> — requires STABLE_POLLS consecutive
+        // same-size polls before processing, to avoid reading partially-flushed NCNN output.
         const prevFileSizes = new Map();
+        const STABLE_POLLS = 2; // 3 consecutive polls × 40ms = ≥120ms of size stability
 
         const processCompletedEntry = async (entry, srcOut) => {
           if (emittedFiles.has(entry) || inFlightFiles.has(entry)) return;
@@ -391,10 +394,19 @@ class NcnnBatchRunner {
                 continue;
               }
 
-              // Anti-race condition guard: ensure file is completely flushed
-              const isConfirmed = readyEntries.has(entry) || childClosed;
-              const isStable = prevFileSizes.get(entry) === currentSize;
-              prevFileSizes.set(entry, currentSize);
+              // Anti-race condition guard: ensure file is completely flushed.
+              // NCNN's -j 1:1:1 pipeline emits "done" from the process thread while the
+              // save thread may still be writing.  Requiring STABLE_POLLS consecutive polls
+              // with the same non-zero size (≥120ms) prevents reading a partial file.
+              const prev = prevFileSizes.get(entry); // { size, count } or undefined
+              if (prev && prev.size === currentSize) {
+                prevFileSizes.set(entry, { size: currentSize, count: prev.count + 1 });
+              } else {
+                prevFileSizes.set(entry, { size: currentSize, count: 0 });
+              }
+              const stableCount = prevFileSizes.get(entry).count;
+              const isConfirmed = childClosed;
+              const isStable = stableCount >= STABLE_POLLS;
 
               if (isConfirmed || isStable) {
                 processCompletedEntry(entry, srcOut);
@@ -436,10 +448,15 @@ class NcnnBatchRunner {
           if (events.length > 0) {
             for (const ev of events) {
               const entryName = path.basename(ev.outputFile);
+              // Only mark as ready — do NOT call processCompletedEntry immediately.
+              // NCNN's -j 1:1:1 pipeline emits "done" from the process thread while the
+              // save thread may still be writing the file to disk.  The polling loop
+              // will pick this up once the file size has been stable for STABLE_POLLS
+              // consecutive intervals (≥120ms), guaranteeing the write is fully flushed.
               readyEntries.add(entryName);
-              if (emittedFiles.has(entryName) || inFlightFiles.has(entryName)) continue;
-              processCompletedEntry(entryName, ev.outputFile);
             }
+            // Trigger an immediate poll cycle so readyEntries are acted on promptly
+            checkCompletedFiles();
           } else {
             // Check files on disk
             checkCompletedFiles();
