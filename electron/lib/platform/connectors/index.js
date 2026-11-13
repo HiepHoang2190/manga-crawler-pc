@@ -3,6 +3,7 @@
  * Thêm site: tạo file trong ./ (vd. mangadex.js), đăng ký vào REGISTRY.
  */
 const logger = require('../../shared/logger');
+const { isNavShortcutChapter } = require('../../shared/mangaUtils');
 const { getImageRefererForUrl } = require('../../download/connector/connectorReferer');
 const { enrichDownloadChapterResult } = require('../../download/connector/downloadChapterResult');
 const cuuTruyen = require('./cuuTruyen');
@@ -351,7 +352,11 @@ async function load(siteId, url, options = {}) {
         'Không nhận diện được site từ URL — chọn Site trong danh sách hoặc dán URL đúng domain (vd. nettrom.com, hetcuutruyen.net, cuutruyen.net, truyenqqko.com).',
     };
   }
-  return c.load(url, options);
+  const result = await c.load(url, options);
+  if (result && result.ok && Array.isArray(result.chapters)) {
+    result.chapters = result.chapters.filter((ch) => !isNavShortcutChapter(ch?.title || ch));
+  }
+  return result;
 }
 
 async function downloadChapter(siteId, payload) {

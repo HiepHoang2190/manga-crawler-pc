@@ -1,6 +1,7 @@
 const {
   formatFolderName,
   formatChapterTitle,
+  isNavShortcutChapter,
   formatChapterFolderName,
   extractChapterNumberString,
   formatChapterPageFileName,
@@ -150,6 +151,46 @@ describe('mangaUtils - Windows path compatibility', () => {
       const fmt = { mode: 'numbered', prefix: 'Chap', padDigits: 3, layout: 'flat' };
       expect(getFlatChapterImageNamePrefix('Chapter 12', fmt)).toBe('Chap 012_');
       expect(isFlatChapterLayout(fmt)).toBe(true);
+    });
+  });
+
+  describe('isNavShortcutChapter', () => {
+    test('identifies Vietnamese navigation buttons', () => {
+      expect(isNavShortcutChapter('Đọc từ đầu')).toBe(true);
+      expect(isNavShortcutChapter('Đọc mới nhất')).toBe(true);
+      expect(isNavShortcutChapter('Đọc tiếp')).toBe(true);
+      expect(isNavShortcutChapter('  Đọc   từ   đầu  ')).toBe(true);
+      expect(isNavShortcutChapter('doc tu dau')).toBe(true);
+      expect(isNavShortcutChapter('doc moi nhat')).toBe(true);
+      expect(isNavShortcutChapter('doc tiep')).toBe(true);
+    });
+
+    test('identifies English navigation buttons', () => {
+      expect(isNavShortcutChapter('Read First')).toBe(true);
+      expect(isNavShortcutChapter('Read First Chapter')).toBe(true);
+      expect(isNavShortcutChapter('Read Latest')).toBe(true);
+      expect(isNavShortcutChapter('Read Now')).toBe(true);
+      expect(isNavShortcutChapter('Start Reading')).toBe(true);
+    });
+
+    test('identifies navigation buttons from chapter objects or cheerio mocks', () => {
+      expect(isNavShortcutChapter({ title: 'Đọc từ đầu', url: 'https://example.com/ch-0' })).toBe(true);
+      const mockCheerio = {
+        text: () => 'Đọc từ đầu',
+        attr: (name) => (name === 'title' ? 'Đọc truyện ngay' : ''),
+      };
+      expect(isNavShortcutChapter(mockCheerio)).toBe(true);
+    });
+
+    test('does NOT block genuine chapters', () => {
+      expect(isNavShortcutChapter('Chapter 0')).toBe(false);
+      expect(isNavShortcutChapter('Chapter 1')).toBe(false);
+      expect(isNavShortcutChapter('Chương 292')).toBe(false);
+      expect(isNavShortcutChapter('Chap 100 - Bắt đầu')).toBe(false);
+      expect(isNavShortcutChapter('Chương 12: Đọc từ đầu đến cuối')).toBe(false);
+      expect(isNavShortcutChapter('')).toBe(false);
+      expect(isNavShortcutChapter(null)).toBe(false);
+      expect(isNavShortcutChapter(undefined)).toBe(false);
     });
   });
 });

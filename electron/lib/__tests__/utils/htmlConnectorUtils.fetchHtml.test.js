@@ -121,4 +121,30 @@ describe('fetchHtml options.cookie', () => {
       }),
     );
   });
+
+  describe('parseMangaPage navigation button filtering', () => {
+    const { parseMangaPage } = require('../../download/connector/htmlConnectorUtils');
+
+    it('filters out "Đọc từ đầu" and "Đọc mới nhất" shortcut links', () => {
+      const html = `
+        <h1>Sample Manga</h1>
+        <a href="/chap-1">Đọc từ đầu</a>
+        <a href="/chap-50">Đọc mới nhất</a>
+        <div class="list">
+          <a href="/chap-50">Chapter 50</a>
+          <a href="/chap-49">Chapter 49</a>
+          <a href="/chap-1">Chapter 1</a>
+        </div>
+      `;
+      const res = parseMangaPage(html, 'https://example.com/sample', {
+        title: 'h1',
+        chapterLinks: 'a[href^="/chap-"]',
+      });
+      expect(res.chapters).toHaveLength(3);
+      expect(res.chapters[0].title).toBe('Chapter 50');
+      expect(res.chapters[1].title).toBe('Chapter 49');
+      expect(res.chapters[2].title).toBe('Chapter 1');
+      expect(res.chapters.some((c) => c.title.includes('Đọc'))).toBe(false);
+    });
+  });
 });

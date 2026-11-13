@@ -240,4 +240,32 @@ describe('TruyenQQVn - Service Tests', () => {
       expect(delay).toBe(50);
     });
   });
+
+  describe('Chapter Parsing & Navigation Button Filtering', () => {
+    test('filters out "Đọc từ đầu" navigation button and preserves genuine chapter 0', () => {
+      const html = `
+        <html>
+          <body>
+            <h1>Thăng Cấp Vô Hạn Trong Murim</h1>
+            <div>
+              <a href="/thang-cap-vo-han-trong-murim/chapter-0">
+                <span class="btn_truyen btn_readnow"><svg></svg> Đọc từ đầu</span>
+              </a>
+            </div>
+            <div class="reading-list">
+              <div class="item-name"><a href="/thang-cap-vo-han-trong-murim/chapter-2" class="chapter-name d-block">Chapter 2</a></div>
+              <div class="item-name"><a href="/thang-cap-vo-han-trong-murim/chapter-1" class="chapter-name d-block">Chapter 1</a></div>
+              <div class="item-name"><a href="/thang-cap-vo-han-trong-murim/chapter-0" class="chapter-name d-block">Chapter 0</a></div>
+            </div>
+          </body>
+        </html>
+      `;
+      const result = truyenqqvnService._parseMangaPage(html, 'https://truyenqq.com.vn/thang-cap-vo-han-trong-murim');
+      expect(result.chapters).toHaveLength(3);
+      expect(result.chapters[0].title).toBe('Chapter 2');
+      expect(result.chapters[1].title).toBe('Chapter 1');
+      expect(result.chapters[2].title).toBe('Chapter 0');
+      expect(result.chapters.some((c) => c.title.includes('Đọc từ đầu'))).toBe(false);
+    });
+  });
 });

@@ -2,6 +2,7 @@
  * Helpers tương đương ConnectorServicesImp + MangaUtils (ảnh) cho connector HTML.
  */
 const cheerio = require('cheerio');
+const { isNavShortcutChapter } = require('../../shared/mangaUtils');
 
 const USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -229,12 +230,16 @@ function parseMangaPage(html, pageUrl, selectors) {
     }
   }
   const chapters = [];
+  const seenUrls = new Set();
   $(selectors.chapterLinks).each((_, el) => {
     const $a = $(el);
     let href = ($a.attr('href') || '').trim();
     const text = $a.text().trim();
     if (!href) return;
+    if (isNavShortcutChapter($a) || isNavShortcutChapter(text)) return;
     href = resolveUrl(pageUrl, href);
+    if (seenUrls.has(href)) return;
+    seenUrls.add(href);
     chapters.push({ url: href, title: text || href });
   });
   return { title, coverUrl, chapters };

@@ -17,6 +17,7 @@ const {
   resolveUrl,
   collectTruyenQQChapterImages,
 } = require('../../../download/connector/htmlConnectorUtils');
+const { isNavShortcutChapter } = require('../../../shared/mangaUtils');
 
 const DOMAIN = 'https://truyenqqko.com/';
 const ORIGIN_BASE = String(DOMAIN || '').replace(/\/$/, '');
@@ -413,11 +414,15 @@ class TruyenQQService extends HtmlConnectorService {
       coverUrl = resolveUrl(pageUrl, raw);
     }
     const chapters = [];
+    const seen = new Set();
     $(SELECTORS.chapterLinks).each((_, el) => {
       const $a = $(el);
       let href = ($a.attr('href') || '').trim();
       const text = $a.text().trim();
       if (!href) return;
+      if (isNavShortcutChapter($a) || isNavShortcutChapter(text)) return;
+      if (seen.has(href)) return;
+      seen.add(href);
       href = resolveUrl(pageUrl, href);
       chapters.push({ url: href, title: text || href });
     });

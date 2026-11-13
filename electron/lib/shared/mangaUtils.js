@@ -40,6 +40,43 @@ function formatChapterTitle(title) {
   return result.replace(/[\s.]+$/g, '');
 }
 
+/**
+ * Detect if a title, link text, or Cheerio element is a reader navigation shortcut
+ * (e.g. "Đọc từ đầu", "Đọc mới nhất", "Đọc tiếp", "Read First", "Start Reading")
+ * rather than an actual manga chapter.
+ * @param {string|object} textOrEl - String title, Cheerio element, or chapter object
+ * @returns {boolean}
+ */
+function isNavShortcutChapter(textOrEl) {
+  if (!textOrEl) return false;
+  let text = '';
+  if (typeof textOrEl === 'string') {
+    text = textOrEl;
+  } else if (typeof textOrEl.text === 'function') {
+    const $el = textOrEl;
+    text = `${$el.text() || ''} ${$el.attr('title') || ''} ${$el.attr('aria-label') || ''}`;
+  } else if (typeof textOrEl === 'object' && textOrEl.title) {
+    text = String(textOrEl.title);
+  }
+  const clean = String(text).replace(/\s+/g, ' ').trim();
+  if (!clean) return false;
+
+  const isShortcut =
+    /^(đọc\s*(từ\s*đầu|mới\s*nhất|tiếp)|doc\s*(tu\s*dau|moi\s*nhat|tiep)|read\s*(first|latest|now)(\s*chapter)?|start\s*reading)\b/i.test(clean) ||
+    /đọc\s*từ\s*đầu/i.test(clean) ||
+    /đọc\s*mới\s*nhất/i.test(clean) ||
+    /đọc\s*tiếp/i.test(clean);
+
+  if (!isShortcut) return false;
+
+  // Guard: if it explicitly starts with Chapter/Chương/Chap number, it's a real chapter
+  if (/^(chapter|chap|chương)\s*\d+/i.test(clean)) {
+    return false;
+  }
+
+  return true;
+}
+
 const DEFAULT_CHAPTER_FOLDER_FORMAT = {
   mode: 'numbered',
   prefix: 'Chap',
@@ -211,6 +248,7 @@ module.exports = {
   DEFAULT_CHAPTER_FOLDER_FORMAT,
   formatFolderName,
   formatChapterTitle,
+  isNavShortcutChapter,
   normalizeChapterFolderFormat,
   formatChapterFolderName,
   extractChapterNumberString,

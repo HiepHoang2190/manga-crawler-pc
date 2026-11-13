@@ -10,7 +10,7 @@ const {
   getFileExt,
   USER_AGENT_JSOUP,
 } = require('../../../download/connector/htmlConnectorUtils');
-const { formatChapterTitle } = require('../../../shared/mangaUtils');
+const { formatChapterTitle, isNavShortcutChapter } = require('../../../shared/mangaUtils');
 const { connectorDomainManager } = require('../domain/ConnectorDomainManager');
 
 const DOMAIN = 'https://nhattruyenqq.com/';
@@ -329,11 +329,11 @@ class NhattruyenService extends HtmlConnectorService {
           const $a = $(el);
           let href = ($a.attr('href') || '').trim();
           if (!href || !href.includes('/chuong-')) return;
+          let rawTitle = $a.text().replace(/\s+/g, ' ').trim();
+          if (isNavShortcutChapter($a) || isNavShortcutChapter(rawTitle)) return;
           href = resolveUrl(finalUrl, href);
           if (seenUrls.has(href)) return;
           seenUrls.add(href);
-
-          let rawTitle = $a.text().replace(/\s+/g, ' ').trim();
           if (!rawTitle) rawTitle = href;
           chapters.push({
             url: href,

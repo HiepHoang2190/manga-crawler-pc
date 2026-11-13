@@ -13,13 +13,14 @@ const {
   getFileExt,
   fetchHtml,
 } = require('../../../download/connector/htmlConnectorUtils');
+const { isNavShortcutChapter } = require('../../../shared/mangaUtils');
 const cookieManager = require('../../cookies/cookieManager');
 
 const DOMAIN = 'https://truyenqq.com.vn/';
 const LABEL = 'TruyenQQ.vn';
 
 const SELECTORS = {
-  chapterLinks: 'a[href*="/chapter-"]',
+  chapterLinks: '.reading-list a.chapter-name, .reading-list a, .chapter-list a.chapter-name, a[href*="/chapter-"]',
   title: 'h1',
   cover: 'img[src*="/media/book/"]',
 };
@@ -197,13 +198,22 @@ class TruyenqqVnService extends HtmlConnectorService {
     // Chapters
     const chapters = [];
     const seen = new Set();
-    $('a[href*="/chapter-"]').each((_, el) => {
+    // Prioritize dedicated chapter list container, falling back to all chapter links
+    const $chapterLinks =
+      $('.reading-list a.chapter-name, .reading-list a, .chapter-list a.chapter-name').length > 0
+        ? $('.reading-list a.chapter-name, .reading-list a, .chapter-list a.chapter-name')
+        : $('a[href*="/chapter-"]');
+
+    $chapterLinks.each((_, el) => {
       const $a = $(el);
       let href = ($a.attr('href') || '').trim();
-      if (!href || seen.has(href)) return;
+      const text = $a.text().trim();
+      if (!href) return;
+      // Skip navigation buttons like "Đọc từ đầu", "Đọc mới nhất" before deduplicating
+      if (isNavShortcutChapter($a) || isNavShortcutChapter(text)) return;
+      if (seen.has(href)) return;
       seen.add(href);
       href = resolveUrl(pageUrl, href);
-      const text = $a.text().trim();
       chapters.push({ url: href, title: text || href });
     });
 
@@ -331,6 +341,7 @@ module.exports = {
   LABEL,
   isCloudflareBlockedHtml,
   isLoginRequiredHtml,
+  _parseMangaPage: (html, pageUrl) => service._parseMangaPage(html, pageUrl),
   load: (url, options) => service.load(url, options),
   downloadChapter: (payload, connector) => service.downloadChapter(payload, connector || LABEL),
 };
