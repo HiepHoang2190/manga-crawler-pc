@@ -60,6 +60,18 @@ describe('parseChapterTitleMetadata', () => {
     }).not.toThrow();
   });
 
+  test('handles Hồi and Tập followed by Hồi titles properly', () => {
+    const rawHoi = 'Hồi 636: Kiêm Ái Minh Quỷ';
+    const resHoi = parseChapterTitleMetadata(rawHoi);
+    expect(resHoi.chapterLabel).toBe('Hồi 636');
+    expect(resHoi.cleanTitle).toBe('Kiêm Ái Minh Quỷ');
+
+    const rawTapHoi = 'Tập 82 - Hồi 636: Kiêm Ái Minh Quỷ';
+    const resTapHoi = parseChapterTitleMetadata(rawTapHoi);
+    expect(resTapHoi.chapterLabel).toBe('Hồi 636');
+    expect(resTapHoi.cleanTitle).toBe('Kiêm Ái Minh Quỷ');
+  });
+
   test('handles empty or invalid input safely', () => {
     expect(parseChapterTitleMetadata('')).toEqual({
       chapterLabel: '',

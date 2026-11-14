@@ -64,6 +64,7 @@ const ICON_MAP = {
   sangchanhteam: 'sangchanhteam.png',
   tcbscanmanga: 'tcbscanmanga.png',
   kingdomhoiquan: 'kingdomhoiquan.png',
+  hoaphunglieunguyen: 'hoaphunglieunguyen.png',
 };
 
 /**

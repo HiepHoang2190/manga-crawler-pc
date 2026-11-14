@@ -55,10 +55,13 @@ export function parseChapterTitleMetadata(rawTitle, currentVolume = null) {
     working = working.replace(/\s*\(Vol\.?\s*[0-9.]+\)\s*/gi, ' ').trim();
   }
 
+  // 3b. Khử tiền tố Tập X khi có chương/hồi đi liền sau (vd: "Tập 82 - Hồi 636...")
+  working = working.replace(/^Tập\s*[0-9.]+\s*[-:–—]\s*(?=(?:Hồi|Chương|Chapter|Chap)\b)/i, '').trim();
+
   // 4. Bóc tách số chương / chapter label:
-  // Hỗ trợ "Chapter 7", "Ch. 7", "Chương 10", "Tập 1", "Oneshot"...
+  // Hỗ trợ "Chapter 7", "Ch. 7", "Chương 10", "Hồi 1", "Tập 1", "Oneshot"...
   const prefixMatch = working.match(
-    /^(Chapter\s+[\d.]+|Ch\.\s*[\d.]+|Chương\s+[\d.]+|Tập\s+[\d.]+|Hồi\s+[\d.]+|Oneshot)\b(?:\s*[-:–—]\s*)?/i
+    /^(Chapter\s+[\d.]+|Ch\.\s*[\d.]+|Chương\s+[\d.]+|Hồi\s+[\d.]+|Tập\s+[\d.]+|Oneshot)\b(?:\s*[-:–—]\s*)?/i
   );
 
   let chapterLabel = '';

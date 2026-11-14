@@ -71,7 +71,7 @@ export function extractChapterNumberString(title) {
   if (title == null || title === '') return null;
   const s = String(title);
   const afterKw =
-    /(?:chapter|chapters|chương|chap(?:ter)?|ch\.|c\.)\s*[-#:]?\s*(\d+(?:\.\d+)?)/i;
+    /(?:chapter|chapters|chương|chap(?:ter)?|hồi|hoi|ch\.|c\.)\s*[-#:]?\s*(\d+(?:\.\d+)?)/i;
   const m1 = s.match(afterKw);
   if (m1) return m1[1];
   const hash = /#\s*(\d+(?:\.\d+)?)/;

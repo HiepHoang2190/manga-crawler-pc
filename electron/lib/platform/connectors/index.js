@@ -65,6 +65,7 @@ const flamecomics = require('./flamecomics');
 const sangchanhteam = require('./sangchanhteam');
 const tcbscanmanga = require('./tcbscanmanga');
 const kingdomhoiquan = require('./kingdomhoiquan');
+const hoaphunglieunguyen = require('./hoaphunglieunguyen');
 
 // JS Plugin Manager
 const JsPluginManager = require('../../plugins/JsPluginManager');
@@ -135,6 +136,7 @@ const REGISTRY = {
   [sangchanhteam.id]: sangchanhteam,
   [tcbscanmanga.id]: tcbscanmanga,
   [kingdomhoiquan.id]: kingdomhoiquan,
+  [hoaphunglieunguyen.id]: hoaphunglieunguyen,
 };
 
 function get(siteId) {

@@ -125,6 +125,12 @@ describe('mangaUtils - Windows path compatibility', () => {
       expect(extractChapterNumberString('第13话')).toBe('13');
       expect(extractChapterNumberString('第12.5话')).toBe('12.5');
     });
+
+    test('supports Vietnamese chapter marker (Hồi/hoi) over volume (Tập)', () => {
+      expect(extractChapterNumberString('Hồi 636: Kiêm Ái Minh Quỷ')).toBe('636');
+      expect(extractChapterNumberString('Tập 82 - Hồi 636: Kiêm Ái Minh Quỷ')).toBe('636');
+      expect(extractChapterNumberString('Tập 82 - Hồi 637: Tri kỷ đồng hành')).toBe('637');
+    });
   });
 
   describe('formatChapterFolderName volume prefix', () => {
