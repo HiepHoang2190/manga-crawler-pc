@@ -169,6 +169,17 @@ async function downloadCoverIfNeeded(coverUrl, mangaDir, referer, userAgent, log
  */
 async function downloadImageToFile(imageUrl, filePath, headers, signal) {
   try {
+    if (typeof imageUrl === 'string' && imageUrl.startsWith('data:')) {
+      const comma = imageUrl.indexOf(',');
+      if (comma === -1) return { ok: false, error: 'invalid data url' };
+      const base64Data = imageUrl.slice(comma + 1);
+      const buf = Buffer.from(base64Data, 'base64');
+      if (!buf.length) return { ok: false, error: 'empty buffer' };
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(filePath, buf);
+      return { ok: true };
+    }
+
     const res = await fetch(imageUrl, {
       headers,
       redirect: 'follow',

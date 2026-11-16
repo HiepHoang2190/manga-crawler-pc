@@ -8,7 +8,7 @@ const { parseChapterImages } = luottruyenService;
 describe('LuotTruyen - Service Tests', () => {
   describe('Service Configuration', () => {
     test('should have correct domain', () => {
-      expect(luottruyenService.DOMAIN).toBe('https://luottruyen19.com/');
+      expect(luottruyenService.DOMAIN).toBe('https://luottruyen21.com/');
     });
 
     test('should have correct label', () => {
@@ -148,6 +148,36 @@ describe('LuotTruyen - Service Tests', () => {
         'https://img3.dichvucdn.com/Upload02/ImageContent/20260904/b73c74ca-bbc4-4b4b-a3d7-ca1fdb820249-639241056144988300.jpg',
         'https://img3.dichvucdn.com/Upload02/ImageContent/20260904/real-page-2.jpg',
       ]);
+    });
+
+    test('should parse inline base64 images when embedded in chapter pages', () => {
+      const sampleBase64 = 'data:image/jpeg;base64,' + 'A'.repeat(500);
+      const html = `
+        <div class="reading-detail">
+          <div class="page-chapter">
+            <img alt="Trang 1" data-index="1" src="https://img3.dichvucdn.com/page1.jpg">
+          </div>
+          <div class="page-chapter">
+            <img alt="Trang 2" data-index="2" src="${sampleBase64}">
+          </div>
+          <div class="page-chapter">
+            <img alt="Trang 3" data-index="3" data-src="https://img3.dichvucdn.com/page3.png">
+          </div>
+        </div>`;
+      const images = parseChapterImages(html, chapter_page_url);
+      expect(images).toHaveLength(3);
+      expect(images[0]).toEqual({
+        imageUrl: 'https://img3.dichvucdn.com/page1.jpg',
+        ext: 'jpg',
+      });
+      expect(images[1]).toEqual({
+        imageUrl: sampleBase64,
+        ext: 'jpg',
+      });
+      expect(images[2]).toEqual({
+        imageUrl: 'https://img3.dichvucdn.com/page3.png',
+        ext: 'png',
+      });
     });
   });
 

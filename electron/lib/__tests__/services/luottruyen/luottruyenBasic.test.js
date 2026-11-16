@@ -18,7 +18,7 @@ describe('LuotTruyen - Basic Tests', () => {
     });
 
     test('should have correct domain', () => {
-      expect(luottruyenConnector.domain).toBe('https://luottruyen20.com/');
+      expect(luottruyenConnector.domain).toBe('https://luottruyen21.com/');
     });
 
     test('should not require VPN', () => {
@@ -125,7 +125,7 @@ describe('LuotTruyen - Basic Tests', () => {
     });
 
     test('should export DOMAIN constant', () => {
-      expect(luottruyenService.DOMAIN).toBe('https://luottruyen20.com/');
+      expect(luottruyenService.DOMAIN).toBe('https://luottruyen21.com/');
     });
 
     test('should export LABEL constant', () => {

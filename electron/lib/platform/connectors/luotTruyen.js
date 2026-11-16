@@ -12,7 +12,7 @@ const LABEL = 'LuotTruyen';
 module.exports = {
   id: 'luottruyen',
   label: LABEL,
-  domain: 'https://luottruyen20.com/', // default domain for display; actual requests use URL's domain
+  domain: 'https://luottruyen21.com/', // default domain for display; actual requests use URL's domain
   hostIncludes: ['luottruyen'],
   requiresCookie: true,
   hasLockedChapters: true,

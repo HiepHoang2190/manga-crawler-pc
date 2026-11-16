@@ -439,21 +439,40 @@ function uniqueHttpUrls(...candidates) {
   return out;
 }
 
-function filterCookiesForTargetHost(cookies, targetUrl) {
-  let targetHost = '';
-  try {
-    targetHost = new URL(targetUrl).hostname.replace(/^www\./, '').toLowerCase();
-  } catch {
-    return cookies;
+function filterCookiesForTargetHost(cookies, targetUrl, currentUrl = '') {
+  const allowedHosts = new Set();
+  const addHost = (urlStr) => {
+    try {
+      const h = new URL(urlStr).hostname.replace(/^www\./, '').toLowerCase();
+      if (h) allowedHosts.add(h);
+    } catch {
+      /* ignore */
+    }
+  };
+  addHost(targetUrl);
+  if (currentUrl) {
+    try {
+      const ch = new URL(currentUrl).hostname.replace(/^www\./, '').toLowerCase();
+      if (ch && !isOauthLoginHost(ch) && !isCloudflareHost(ch)) {
+        allowedHosts.add(ch);
+      }
+    } catch {
+      /* ignore */
+    }
   }
-  if (!targetHost) return cookies;
+  if (allowedHosts.size === 0) return cookies;
   const filtered = (cookies || []).filter((c) => {
     const d = String(c.domain || '')
       .replace(/^\./, '')
       .toLowerCase();
     // Host-only cookies may omit domain; collectCookiesForUrls stamps it from the source URL.
     if (!d) return true;
-    return d === targetHost || d.endsWith(`.${targetHost}`) || targetHost.endsWith(d);
+    for (const host of allowedHosts) {
+      if (d === host || d.endsWith(`.${host}`) || host.endsWith(d)) {
+        return true;
+      }
+    }
+    return false;
   });
   return filtered;
 }
@@ -650,7 +669,7 @@ async function openLoginPopupAndGetCookies(targetUrl) {
           (popup.webContents && popup.webContents.session && popup.webContents.session.cookies) ||
           session.defaultSession.cookies;
         const cookies = await collectCookiesForUrls(cookie_store, urls);
-        const filtered_cookies = filterCookiesForTargetHost(cookies, target);
+        const filtered_cookies = filterCookiesForTargetHost(cookies, target, currentUrl);
         resolve({
           cookies: filtered_cookies,
           loginDetected: Boolean(loginDetected) || cookiesIndicateLogin(filtered_cookies),

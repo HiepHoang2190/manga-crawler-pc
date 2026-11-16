@@ -298,6 +298,22 @@ describe('cookieExtractor', () => {
     expect(cookie_names).not.toContain('c_user');
   });
 
+  it('filterCookiesForTargetHost keeps cookies for both target host and redirected site host, excluding oauth hosts', () => {
+    const filtered_cookies = filterCookiesForTargetHost(
+      [
+        { name: 'old_cookie', value: 'v1', domain: '.luottruyen20.com' },
+        { name: 'new_cookie', value: 'v2', domain: '.luottruyen21.com' },
+        { name: 'fb_cookie', value: 'fb', domain: '.facebook.com' },
+      ],
+      'https://luottruyen20.com/',
+      'https://luottruyen21.com/truyen-tranh/manga-1',
+    );
+    const names = filtered_cookies.map((c) => c.name);
+    expect(names).toContain('old_cookie');
+    expect(names).toContain('new_cookie');
+    expect(names).not.toContain('fb_cookie');
+  });
+
   it('buildUrlBarInjectJs embeds page url and copy control', () => {
     const manga_url = 'https://example.com/truyen/one-piece';
     const inject_js = buildUrlBarInjectJs(manga_url);

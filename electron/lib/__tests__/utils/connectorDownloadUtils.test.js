@@ -1,4 +1,4 @@
-const { describe, it, expect, jest, beforeEach, afterEach } = require('@jest/globals');
+const { describe, it, expect, beforeEach, afterEach } = require('@jest/globals');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -30,7 +30,7 @@ describe('connectorDownloadUtils', () => {
       
       global.fetch.mockResolvedValueOnce({
         ok: true,
-        arrayBuffer: async () => mockBuffer.buffer,
+        arrayBuffer: async () => Uint8Array.from(mockBuffer).buffer,
       });
 
       await downloadCoverIfNeeded(
@@ -87,7 +87,7 @@ describe('connectorDownloadUtils', () => {
       
       global.fetch.mockResolvedValueOnce({
         ok: true,
-        arrayBuffer: async () => mockBuffer.buffer,
+        arrayBuffer: async () => Uint8Array.from(mockBuffer).buffer,
       });
 
       await downloadCoverIfNeeded(
@@ -181,7 +181,7 @@ describe('connectorDownloadUtils', () => {
       
       global.fetch.mockResolvedValueOnce({
         ok: true,
-        arrayBuffer: async () => mockBuffer.buffer,
+        arrayBuffer: async () => Uint8Array.from(mockBuffer).buffer,
       });
 
       const filePath = path.join(tempDir, 'test.jpg');
@@ -201,7 +201,7 @@ describe('connectorDownloadUtils', () => {
       
       global.fetch.mockResolvedValueOnce({
         ok: true,
-        arrayBuffer: async () => mockBuffer.buffer,
+        arrayBuffer: async () => Uint8Array.from(mockBuffer).buffer,
       });
 
       const filePath = path.join(tempDir, 'nested', 'dir', 'test.jpg');
@@ -267,7 +267,7 @@ describe('connectorDownloadUtils', () => {
       
       global.fetch.mockResolvedValueOnce({
         ok: true,
-        arrayBuffer: async () => mockBuffer.buffer,
+        arrayBuffer: async () => Uint8Array.from(mockBuffer).buffer,
       });
 
       const filePath = path.join(tempDir, 'test.jpg');
@@ -278,6 +278,25 @@ describe('connectorDownloadUtils', () => {
         expect.objectContaining({ redirect: 'follow' })
       );
     });
+
+    it('should decode base64 data URLs directly without network fetch', async () => {
+      const base64Str = Buffer.from('hello-manga-image').toString('base64');
+      const dataUrl = `data:image/jpeg;base64,${base64Str}`;
+      const filePath = path.join(tempDir, 'data-image.jpg');
+
+      const result = await downloadImageToFile(dataUrl, filePath, {});
+      expect(result.ok).toBe(true);
+      expect(fs.existsSync(filePath)).toBe(true);
+      expect(fs.readFileSync(filePath).toString()).toBe('hello-manga-image');
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it('should return error for invalid data URL format', async () => {
+      const filePath = path.join(tempDir, 'invalid-data.jpg');
+      const result = await downloadImageToFile('data:invalid', filePath, {});
+      expect(result.ok).toBe(false);
+      expect(result.error).toBe('invalid data url');
+    });
   });
 
   describe('downloadImageWithRetry', () => {
@@ -286,7 +305,7 @@ describe('connectorDownloadUtils', () => {
       
       global.fetch.mockResolvedValueOnce({
         ok: true,
-        arrayBuffer: async () => mockBuffer.buffer,
+        arrayBuffer: async () => Uint8Array.from(mockBuffer).buffer,
       });
 
       const filePath = path.join(tempDir, 'test.jpg');

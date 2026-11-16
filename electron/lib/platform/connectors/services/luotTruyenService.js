@@ -9,7 +9,7 @@ const { USER_AGENT_JSOUP, resolveUrl } = require('../../../download/connector/ht
 const cookieManager = require('../../cookies/cookieManager');
 const { connectorDomainManager } = require('../domain/ConnectorDomainManager');
 
-const DOMAIN = 'https://luottruyen20.com/'; // fallback default, overridden at runtime by URL
+const DOMAIN = 'https://luottruyen21.com/'; // fallback default, overridden at runtime by URL
 const LABEL = 'LuotTruyen';
 
 // Session state for cookie management
@@ -165,6 +165,14 @@ function parseChapterImages(html, pageUrl) {
   const IMAGE_EXT = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif']);
 
   function getExt(src) {
+    if (String(src).startsWith('data:image/')) {
+      const match = /^data:image\/([a-zA-Z0-9+]+);base64,/i.exec(src);
+      if (match) {
+        let sub = match[1].toLowerCase();
+        if (sub === 'jpeg') sub = 'jpg';
+        return IMAGE_EXT.has(sub) ? sub : 'jpg';
+      }
+    }
     const noQuery = String(src).split('?')[0];
     const seg = noQuery.split('/').pop() || '';
     const dot = seg.lastIndexOf('.');
@@ -173,12 +181,33 @@ function parseChapterImages(html, pageUrl) {
     return IMAGE_EXT.has(ext) ? ext : '';
   }
 
+  function pickImageSource($el) {
+    const candidates = [
+      ($el.attr('data-src') || '').trim(),
+      ($el.attr('data-original') || '').trim(),
+      ($el.attr('data-cdn') || '').trim(),
+      ($el.attr('src') || '').trim(),
+    ].filter(Boolean);
+
+    // 1. Look for non-data HTTP/HTTPS or relative URLs first
+    for (const c of candidates) {
+      if (!/^data:/i.test(c)) return c;
+    }
+    // 2. Look for real image data URLs (e.g. data:image/jpeg;base64,...)
+    for (const c of candidates) {
+      if (/^data:image\/(jpeg|jpg|png|webp|gif|avif);base64,/i.test(c) && c.length > 200) {
+        return c;
+      }
+    }
+    return '';
+  }
+
   function pushImage($el, sort_index) {
-    const dataSrc = ($el.attr('data-src') || '').trim();
-    const src = ($el.attr('src') || '').trim();
-    let imgSrc = dataSrc && !/^data:/i.test(dataSrc) ? dataSrc : src;
-    if (!imgSrc || /^data:/i.test(imgSrc)) return;
-    imgSrc = resolveUrl(pageUrl, imgSrc);
+    let imgSrc = pickImageSource($el);
+    if (!imgSrc) return;
+    if (!imgSrc.startsWith('data:')) {
+      imgSrc = resolveUrl(pageUrl, imgSrc);
+    }
     const ext = getExt(imgSrc);
     if (!ext) return;
     out.push({ sort_index, imageUrl: imgSrc, ext });
@@ -364,4 +393,5 @@ module.exports = {
   load: (url, options) => service.load(url, options),
   downloadChapter: (payload, connector) => service.downloadChapter(payload, connector || LABEL),
   parseChapterImages,
+  service,
 };

@@ -4,7 +4,7 @@ const { connectorDomainManager } = require('../../platform/connectors/domain/Con
 describe('connectorReferer dynamic resolution', () => {
   test('should return default referer for LuotTruyen image CDN when no override is set', () => {
     const referer = getImageRefererForUrl('https://img.dichvucdn.com/uploads/chapter/1.jpg');
-    expect(referer).toBe('https://luottruyen20.com/');
+    expect(referer).toBe('https://luottruyen21.com/');
   });
 
   test('should return dynamically updated referer when domain changes in ConnectorDomainManager', () => {
