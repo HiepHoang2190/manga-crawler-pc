@@ -133,7 +133,7 @@ export default function RenameTab({
   // fromRel values the user unchecked — default empty = all preview ops selected
   const [deselectedRels, setDeselectedRels] = useState(() => new Set());
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('changed');
 
   const handleModeChange = (next_mode) => {
     if (applying || next_mode === renameMode) return;

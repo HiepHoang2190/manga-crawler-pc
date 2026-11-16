@@ -63,6 +63,7 @@ test('PipelineImageList follows the Tools Studio list standard and supports keyb
     'SearchableSelect', 'sort_by_alpha', 'imagePipeline.badge.skew', 'imagePipeline.badge.stale',
     'h-1 bg-surface-container-highest', 'custom-scrollbar', 'EmptyState',
     "'ArrowDown'", "'ArrowUp'", "'Enter'", 'scrollIntoView', 'data-active',
+    'activeProcessingPath', 'progress_activity', 'animate-spin',
   ]) {
     expect(src).toContain(token);
   }
@@ -112,7 +113,7 @@ test('ImagePipelineTab composes the Tools Studio standard layout', () => {
     '<ToolsStudioActionSlot active={isActive}>', '<ToolsStudioCenterSlot active={isActive}>', 'SourcePicker',
     'OutputFormatSelector', 'OutputDestinationSelector',
     'ResizeSplitter', 'StudioLayout.RightSidebar', 'ActionStackPanel', 'PipelineImageList', 'PipelinePreviewPanel',
-    'PipelinePreviewModal', 'TemplateToolbar', 'SaveTemplateDialog', 'image-pipeline-start-btn', 'image-pipeline-stop-btn',
+    'PipelinePreviewModal', 'PipelineCompletionModal', 'TemplateToolbar', 'SaveTemplateDialog', 'image-pipeline-start-btn', 'image-pipeline-stop-btn',
     'stop_circle', 'mr-1.5', 'subscribePipelineProgress', 'pipelineRun', 'pipelineAnalyze', 'pipelineCancel',
     'markDownstreamStaleAll', 'markReorderStale', 'removeActionOverrides', 'ensureTemplates', 'parseImportedTemplate',
   ]) {

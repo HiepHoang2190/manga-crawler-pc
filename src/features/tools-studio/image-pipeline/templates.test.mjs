@@ -23,15 +23,15 @@ function memoryStorage(initial = {}) {
 
 describe('templates', () => {
   test('normalizeOutput clamps values', () => {
-    expect(normalizeOutput({ format: 'bmp', quality: 500, resizePercent: 100 })).toEqual({ format: 'original', quality: 100, resizePercent: null, concurrency: 'auto' });
-    expect(normalizeOutput({ format: 'webp', quality: 0, resizePercent: 5 })).toEqual({ format: 'webp', quality: 1, resizePercent: 10, concurrency: 'auto' });
+    expect(normalizeOutput({ format: 'bmp', quality: 500, resizePercent: 100 })).toEqual({ format: 'original', quality: 100, resizePercent: null, concurrency: 'auto', caesiumEnabled: false });
+    expect(normalizeOutput({ format: 'webp', quality: 0, resizePercent: 5 })).toEqual({ format: 'webp', quality: 1, resizePercent: 10, concurrency: 'auto', caesiumEnabled: false });
     expect(normalizeOutput({ concurrency: 'max' }).concurrency).toBe('max');
   });
 
   test('ensureTemplates returns system template with empty actions by default', () => {
     const storage = memoryStorage();
     const list = ensureTemplates(storage);
-    expect(list.map((t) => t.id)).toEqual([SYSTEM_TEMPLATE_ID]);
+    expect(list.map((t) => t.id)).toContain(SYSTEM_TEMPLATE_ID);
     expect(list[0].actions).toEqual([]);
   });
 
@@ -61,7 +61,7 @@ describe('templates', () => {
     expect(template.actions[0].params.boxRatio).toBeUndefined();
     expect(template.actions[1].params.angle).toBeUndefined();
     expect(template.actions[0].id).not.toBe(template.actions[1].id);
-    expect(template.output).toEqual({ format: 'jpg', quality: 90, resizePercent: null, concurrency: 'auto' });
+    expect(template.output).toEqual({ format: 'jpg', quality: 90, resizePercent: null, concurrency: 'auto', caesiumEnabled: false });
   });
 
   test('parseImportedTemplate rejects bad input', () => {

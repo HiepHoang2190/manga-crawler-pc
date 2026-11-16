@@ -45,7 +45,8 @@ describe('runPipeline', () => {
     expect(typeof res.savedPercent).toBe('number');
     expect(fs.readdirSync(path.join(outDir, 'ch1')).sort()).toEqual(['p1.webp', 'p2-a.webp', 'p2-b.webp']);
     expect((await sharp(path.join(outDir, 'ch1', 'p1.webp')).metadata()).width).toBe(520);
-    expect(progress.map((e) => e.current).sort()).toEqual([1, 2]);
+    expect(progress.filter((e) => e.status === 'done').map((e) => e.current).sort()).toEqual([1, 2]);
+    expect(progress.some((e) => e.status === 'processing')).toBe(true);
     expect(fs.existsSync(path.join(srcDir, 'ch1', 'p2.png'))).toBe(true);
   });
 
@@ -76,7 +77,16 @@ describe('runPipeline', () => {
 
   test('cancel stops taking new files', async () => {
     let calls = 0;
-    const res = await runPipeline({ files: files(), actions, concurrency: 1, output: { inPlace: false, outputDir: outDir }, onProgress: () => { calls += 1; }, isCancelled: () => calls >= 1 });
+    const res = await runPipeline({
+      files: files(),
+      actions,
+      concurrency: 1,
+      output: { inPlace: false, outputDir: outDir },
+      onProgress: (e) => {
+        if (e.status === 'done') calls += 1;
+      },
+      isCancelled: () => calls >= 1,
+    });
     expect(res.cancelled).toBe(true);
     expect(res.done).toBe(1);
   });
@@ -142,5 +152,27 @@ describe('runPipeline', () => {
     // Explicit integer string or number
     expect(resolveConcurrency('4', 10, 8)).toBe(4);
     expect(resolveConcurrency(2, 10, 8)).toBe(2);
+  });
+
+  test('pipelineRun emits processing progress event with absolutePath before processing each file', async () => {
+    const progress = [];
+    const testFiles = files();
+    const res = await runPipeline({
+      files: testFiles,
+      actions: [],
+      output: { inPlace: true },
+      onProgress: (e) => progress.push(e),
+    });
+    expect(res.ok).toBe(true);
+
+    const processingEvents = progress.filter((e) => e.status === 'processing');
+    expect(processingEvents.length).toBe(2);
+    expect(processingEvents[0].absolutePath).toBe(testFiles[0].absolutePath);
+    expect(processingEvents[1].absolutePath).toBe(testFiles[1].absolutePath);
+
+    const doneEvents = progress.filter((e) => e.status === 'done');
+    expect(doneEvents.length).toBe(2);
+    expect(doneEvents[0].absolutePath).toBeDefined();
+    expect(doneEvents[1].absolutePath).toBeDefined();
   });
 });

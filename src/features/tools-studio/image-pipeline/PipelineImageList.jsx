@@ -30,6 +30,8 @@ export default function PipelineImageList({
   onToggleSelect,
   onToggleAll,
   activePath,
+  activeProcessingPath = null,
+  completedPaths = null,
   onActivate,
   onOpenPreview,
   onRemove,
@@ -66,6 +68,15 @@ export default function PipelineImageList({
       activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
   }, [activePath]);
+
+  // Tự động cuộn mượt mà đến file đang được xử lý trong tiến trình nền
+  useEffect(() => {
+    if (!activeProcessingPath || !listRef.current) return;
+    const activeEl = listRef.current.querySelector(`[data-path="${CSS.escape(activeProcessingPath)}"]`);
+    if (activeEl) {
+      activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }, [activeProcessingPath]);
 
   // Điều hướng danh sách ảnh bằng phím mũi tên Lên / Xuống và mở xem trước bằng Enter
   useEffect(() => {
@@ -112,7 +123,14 @@ export default function PipelineImageList({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {processing ? (
-        <ProgressBar progress={runProgress} label={t('imagePipeline.processing', { current: runProgress?.current || 0, total: runProgress?.total || 0 })} />
+        <ProgressBar
+          progress={runProgress}
+          label={t('imagePipeline.processingDetail', {
+            current: runProgress?.current || 0,
+            total: runProgress?.total || 0,
+            file: runProgress?.file ? `· ${runProgress.file}` : '',
+          })}
+        />
       ) : (
         analyzeProgress && analyzeProgress.current < analyzeProgress.total && (
           <ProgressBar progress={analyzeProgress} label={t('imagePipeline.list.analyzing', { current: analyzeProgress.current, total: analyzeProgress.total })} />
@@ -205,15 +223,23 @@ export default function PipelineImageList({
               const s = getImageStatus(img, statusCtx);
               const isSelected = selected.has(img.absolutePath);
               const isActive = img.absolutePath === activePath;
+              const isCurrentProcessing = img.absolutePath === activeProcessingPath;
+              const isDone = completedPaths ? completedPaths.has(img.absolutePath) : false;
+              const isFailed = Boolean(statusCtx?.runErrors?.[img.absolutePath]);
               return (
                 <li
                   key={img.absolutePath}
                   data-active={isActive ? 'true' : undefined}
+                  data-processing={isCurrentProcessing ? 'true' : undefined}
                   data-path={img.absolutePath}
                   onClick={() => onActivate(img.absolutePath)}
                   onDoubleClick={() => onOpenPreview(img.absolutePath)}
                   className={`mx-1 flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm hover:bg-surface-container-high cursor-pointer transition-colors group ${
-                    isActive ? 'bg-primary/10' : ''
+                    isCurrentProcessing
+                      ? 'bg-primary/10 ring-1 ring-primary/40'
+                      : isActive
+                      ? 'bg-primary/10'
+                      : ''
                   }`}
                 >
                   <button
@@ -229,7 +255,26 @@ export default function PipelineImageList({
                       {isSelected ? 'check_box' : 'check_box_outline_blank'}
                     </span>
                   </button>
-                  <span className="material-symbols-outlined text-[18px] text-on-surface-variant/50 group-hover:text-primary shrink-0">image</span>
+                  {isCurrentProcessing ? (
+                    <span className="material-symbols-outlined text-[18px] text-primary animate-spin shrink-0">
+                      progress_activity
+                    </span>
+                  ) : isDone ? (
+                    <span className="material-symbols-outlined text-[18px] text-emerald-400 shrink-0">
+                      check_circle
+                    </span>
+                  ) : isFailed ? (
+                    <span
+                      className="material-symbols-outlined text-[18px] text-error shrink-0"
+                      data-tooltip={statusCtx?.runErrors?.[img.absolutePath]}
+                    >
+                      error
+                    </span>
+                  ) : (
+                    <span className="material-symbols-outlined text-[18px] text-on-surface-variant/50 group-hover:text-primary shrink-0">
+                      image
+                    </span>
+                  )}
                   <span className="min-w-0 flex-1 truncate font-medium text-on-surface" data-tooltip={img.relativePath}>
                     {img.relativePath}
                   </span>

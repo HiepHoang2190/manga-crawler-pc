@@ -142,6 +142,14 @@ async function runPipeline({
       if (index >= total) return;
       const file = files[index];
       const label = file.relativePath || path.basename(file.absolutePath);
+      onProgress({
+        phase: 'run',
+        current: completed,
+        total,
+        file: label,
+        absolutePath: file.absolutePath,
+        status: 'processing',
+      });
       try {
         const fileRes = await processFile(file, ctx, index);
         outputs.push(...fileRes.written);
@@ -156,6 +164,7 @@ async function runPipeline({
           current: completed,
           total,
           file: label,
+          absolutePath: file.absolutePath,
           status: 'done',
           originalBytes: fileRes.originalBytes,
           optimizedBytes: fileRes.optimizedBytes,
@@ -169,7 +178,7 @@ async function runPipeline({
         const message = String(err?.message || err);
         failed.push({ path: file.absolutePath, error: message });
         completed += 1;
-        onProgress({ phase: 'run', current: completed, total, file: label, status: 'failed', error: message });
+        onProgress({ phase: 'run', current: completed, total, file: label, absolutePath: file.absolutePath, status: 'failed', error: message });
       }
     }
   }

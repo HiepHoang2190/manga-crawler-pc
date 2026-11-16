@@ -7,6 +7,7 @@ import InteractiveUpscalePreviewModal from './InteractiveUpscalePreviewModal';
 import { ExtrasInstallModal } from '../../extras';
 import UpscaleCardItem from './UpscaleCardItem';
 import UpscaleListItem from './UpscaleListItem';
+import UpscaleCompletionModal from './UpscaleCompletionModal';
 
 const UPSCALE_MODEL_KEY = 'manga_upscale_model';
 const UPSCALE_SCALE_KEY = 'manga_upscale_scale';
@@ -180,6 +181,7 @@ export default function UpscaleTab({
   const [skippedPaths, setSkippedPaths] = useState(() => new Set());
   const [errorMap, setErrorMap] = useState(() => ({}));
   const [errorModalData, setErrorModalData] = useState(null);
+  const [completionModalData, setCompletionModalData] = useState(null);
   const [previewIndex, setPreviewIndex] = useState(null);
   const [recoverableSession, setRecoverableSession] = useState(null);
   const [copyDone, setCopyDone] = useState(false);
@@ -867,6 +869,7 @@ export default function UpscaleTab({
       }).catch(() => {});
 
       if (res?.ok) {
+        let failedList = [];
         if (res.results && Array.isArray(res.results)) {
           const newErrors = {};
           const newDones = new Set(completedPaths);
@@ -886,6 +889,10 @@ export default function UpscaleTab({
           if (Object.keys(newErrors).length > 0) {
             setErrorMap((prev) => ({ ...prev, ...newErrors }));
           }
+          failedList = Object.entries(newErrors).map(([inputPath, err]) => ({
+            path: inputPath,
+            error: typeof err === 'string' ? err : (err?.message || 'Error'),
+          }));
         }
 
         if (res.cancelled) {
@@ -898,20 +905,24 @@ export default function UpscaleTab({
             // Clean up session snapshot if fully completed without errors
             try { localStorage.removeItem(UPSCALE_LAST_SESSION_KEY); } catch {}
           }
-        }
 
-        if (api?.openPath && !res.cancelled) {
           const target = getUpscaleOutputFolder({
             sourceDir,
             sourceFiles,
             inPlace,
             outputDir,
+          }) || outputDir || sourceDir;
+
+          setCompletionModalData({
+            done: res.completed || 0,
+            total: (res.completed || 0) + (res.failed || 0),
+            failed: failedList,
+            targetDir: target,
           });
-          if (target) {
-            const openRes = await api.openPath(target);
-            if (openRes && !openRes.ok && !inPlace && outputDir && target !== outputDir) {
-              await api.openPath(outputDir);
-            }
+
+          // Nếu 100% thành công không có lỗi: uncheck toàn bộ ảnh để vô hiệu hóa nút "Bắt đầu", chống bấm nhầm chạy lại
+          if (failedList.length === 0 && images.length > 0) {
+            setUncheckedPaths(new Set(images.map((img) => img.absolutePath)));
           }
         }
       } else {
@@ -1046,9 +1057,49 @@ export default function UpscaleTab({
     }
   }, [previewItems]);
 
+  const handleModalClose = useCallback(() => {
+    setCompletionModalData(null);
+  }, []);
+
+  const handleModalOpenFolder = useCallback(async () => {
+    const target = completionModalData?.targetDir || targetOutputFolder;
+    if (!target || !api?.openPath) return;
+    const res = await api.openPath(target);
+    if (res && !res.ok && !inPlace && outputDir && target !== outputDir) {
+      await api.openPath(outputDir);
+    }
+  }, [completionModalData, targetOutputFolder, api, inPlace, outputDir]);
+
+  const handleModalClearAndReset = useCallback(() => {
+    setCompletionModalData(null);
+    handleClearSource();
+  }, []);
+
+  const handleModalKeepOnlyFailed = useCallback(() => {
+    if (!completionModalData?.failed?.length) {
+      setCompletionModalData(null);
+      return;
+    }
+    const failedSet = new Set(completionModalData.failed.map((f) => f.path));
+    setImages((prev) => prev.filter((img) => failedSet.has(img.absolutePath)));
+    setUncheckedPaths(new Set());
+    setCompletedPaths(new Set());
+    setSkippedPaths(new Set());
+    setErrorMap({});
+    setResultMsg(null);
+    setError(null);
+    setCompletionModalData(null);
+  }, [completionModalData]);
+
+  const handleModalForceClearAll = useCallback(() => {
+    setCompletionModalData(null);
+    handleClearSource();
+  }, []);
+
   // Has source?
   const hasSource = Boolean(sourceDir || (sourceFiles && sourceFiles.length > 0));
-  const startDisabled = processing || scanning || images.length === 0 || (!inPlace && (!outputDir || !outputDirValid));
+  const checkedImagesCount = images.filter((img) => !uncheckedPaths.has(img.absolutePath)).length;
+  const startDisabled = processing || scanning || images.length === 0 || checkedImagesCount === 0 || (!inPlace && (!outputDir || !outputDirValid));
 
   // ─── RENDER ─────────────────────────────────────────────────────────
   return (
@@ -1848,6 +1899,17 @@ export default function UpscaleTab({
             });
           }
         }}
+      />
+
+      {/* ─── COMPLETION MODAL ─── */}
+      <UpscaleCompletionModal
+        open={Boolean(completionModalData)}
+        data={completionModalData}
+        onClose={handleModalClose}
+        onOpenFolder={handleModalOpenFolder}
+        onClearAndReset={handleModalClearAndReset}
+        onKeepOnlyFailed={handleModalKeepOnlyFailed}
+        onForceClearAll={handleModalForceClearAll}
       />
 
       {/* Modal cảnh báo thư mục lưu không hợp lệ */}

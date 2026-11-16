@@ -15,6 +15,7 @@ import ActionStackPanel from './ActionStackPanel';
 import PipelineImageList from './PipelineImageList';
 import PipelinePreviewPanel from './PipelinePreviewPanel';
 import PipelinePreviewModal from './PipelinePreviewModal';
+import PipelineCompletionModal from './PipelineCompletionModal';
 import TemplateToolbar from './TemplateToolbar';
 import SaveTemplateDialog from './SaveTemplateDialog';
 import { NumberField } from './formControls';
@@ -80,6 +81,9 @@ export default function ImagePipelineTab({
   const [processing, setProcessing] = useState(false);
   const [runProgress, setRunProgress] = useState(null);
   const [runErrors, setRunErrors] = useState({});
+  const [completedPaths, setCompletedPaths] = useState(() => new Set());
+  const [activeProcessingPath, setActiveProcessingPath] = useState(null);
+  const [completionModalData, setCompletionModalData] = useState(null);
   const [status, setStatus] = useState(null);
   const [selected, setSelected] = useState(() => new Set());
   const [activePath, setActivePath] = useState(null);
@@ -177,8 +181,18 @@ export default function ImagePipelineTab({
   useEffect(() => {
     if (!api?.subscribePipelineProgress) return undefined;
     return api.subscribePipelineProgress((evt) => {
-      if (evt?.phase === 'run') setRunProgress(evt);
-      else if (evt?.phase === 'analyze') setAnalyzeProgress(evt);
+      if (evt?.phase === 'run') {
+        setRunProgress(evt);
+        if (evt.status === 'processing') {
+          setActiveProcessingPath(evt.absolutePath || null);
+        } else if (evt.status === 'done' && evt.absolutePath) {
+          setCompletedPaths((prev) => new Set(prev).add(evt.absolutePath));
+        } else if (evt.status === 'failed' && evt.absolutePath) {
+          setRunErrors((prev) => ({ ...prev, [evt.absolutePath]: evt.error }));
+        }
+      } else if (evt?.phase === 'analyze') {
+        setAnalyzeProgress(evt);
+      }
     });
   }, [api]);
 
@@ -459,6 +473,9 @@ export default function ImagePipelineTab({
     setProcessing(true);
     setStatus(null);
     setRunErrors({});
+    setCompletedPaths(new Set());
+    setActiveProcessingPath(null);
+    setCompletionModalData(null);
     setRunProgress({ phase: 'run', current: 0, total: selectedFiles.length });
     try {
       const res = await api.pipelineRun({
@@ -476,6 +493,22 @@ export default function ImagePipelineTab({
         const scanOk = await scan();
         if (!scanOk) return;
       }
+
+      // Tự động bỏ chọn các ảnh đã hoàn thành thành công để tránh bấm nhầm nút "Bắt đầu" chạy lại lần 2
+      const failedSet = new Set((res.failed || []).map((f) => f.path));
+      setSelected((prev) => {
+        if (res.cancelled) {
+          const next = new Set();
+          for (const p of prev) {
+            if (!completedPaths.has(p) || failedSet.has(p)) {
+              next.add(p);
+            }
+          }
+          return next;
+        }
+        return new Set(failedSet);
+      });
+
       setRunErrors(Object.fromEntries((res.failed || []).map((f) => [f.path, f.error])));
       let statusText = res.cancelled
         ? t('imagePipeline.status.cancelled', { done: res.done })
@@ -489,18 +522,65 @@ export default function ImagePipelineTab({
         type: res.failed?.length ? 'error' : 'success',
         text: statusText,
       });
-      if (!res.cancelled && api?.openPath) {
-        const target = targetDestination.inPlace
-          ? (sourceDir || (sourceFiles?.[0] ? sourceFiles[0].replace(/[^\\/]+$/, '') : ''))
-          : targetDestination.outputDir;
-        if (target) api.openPath(target);
+
+      const finalTarget = targetDestination.inPlace
+        ? (sourceDir || (sourceFiles?.[0] ? sourceFiles[0].replace(/[^\\/]+$/, '') : ''))
+        : targetDestination.outputDir;
+
+      if (!res.cancelled) {
+        setCompletionModalData({
+          done: res.done,
+          total: selectedFiles.length,
+          failed: res.failed || [],
+          savedBytes: res.savedBytes,
+          savedPercent: res.savedPercent,
+          targetDir: finalTarget,
+        });
       }
     } catch (err) {
       setStatus({ type: 'error', text: errorText(String(err?.message || err)) });
     } finally {
       setProcessing(false);
       setRunProgress(null);
+      setActiveProcessingPath(null);
     }
+  };
+
+  const handleClearAndReset = () => {
+    handleClearSource();
+    setImages([]);
+    setSelected(new Set());
+    setCompletedPaths(new Set());
+    setActiveProcessingPath(null);
+    setStatus(null);
+    setRunErrors({});
+    setCompletionModalData(null);
+  };
+
+  const handleKeepOnlyFailed = () => {
+    const failedItems = completionModalData?.failed || [];
+    const failedPaths = new Set(failedItems.map((f) => f.path));
+    setImages((list) => list.filter((img) => failedPaths.has(img.absolutePath)));
+    setSelected(new Set(failedPaths));
+    setView((v) => ({ ...v, filter: 'error' }));
+    setCompletedPaths(new Set());
+    setActiveProcessingPath(null);
+    setCompletionModalData(null);
+  };
+
+  const handleOpenOutputFolder = () => {
+    if (completionModalData?.targetDir && api?.openPath) {
+      api.openPath(completionModalData.targetDir);
+    }
+  };
+
+  const handleViewErrors = () => {
+    setView((v) => ({ ...v, filter: 'error' }));
+    setCompletionModalData(null);
+  };
+
+  const handleForceClearAll = () => {
+    handleClearAndReset();
   };
 
   const handleStop = async () => {
@@ -775,6 +855,8 @@ export default function ImagePipelineTab({
           onToggleSelect={toggleSelect}
           onToggleAll={toggleAll}
           activePath={activePath}
+          activeProcessingPath={activeProcessingPath}
+          completedPaths={completedPaths}
           onActivate={handleActivateImage}
           onOpenPreview={openModalFor}
           onRemove={removeImage}
@@ -787,7 +869,7 @@ export default function ImagePipelineTab({
           hasUnanalyzed={hasUnanalyzed}
           onAnalyzeAll={() => setAnalyzeAllRequested(true)}
           tabActive={isActive}
-          disabledKeyboardNav={modalIndex !== null || saveDialogOpen}
+          disabledKeyboardNav={modalIndex !== null || saveDialogOpen || Boolean(completionModalData)}
         />
       </div>
 
@@ -851,6 +933,18 @@ export default function ImagePipelineTab({
           setSaveDirErrorModal(null);
           await handleBrowseOutput();
         }}
+      />
+
+      {/* Modal tổng kết hoàn thành tiến trình */}
+      <PipelineCompletionModal
+        open={Boolean(completionModalData)}
+        data={completionModalData}
+        onClose={() => setCompletionModalData(null)}
+        onOpenFolder={handleOpenOutputFolder}
+        onClearAndReset={handleClearAndReset}
+        onKeepOnlyFailed={handleKeepOnlyFailed}
+        onViewErrors={handleViewErrors}
+        onForceClearAll={handleForceClearAll}
       />
     </div>
   );
