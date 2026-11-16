@@ -1,4 +1,4 @@
-const { getImageRefererForUrl, isMangadexCdnHost } = require('../../download/connector/connectorReferer');
+const { getImageRefererForUrl, isMangadexCdnHost, isXbatoImageCdnHost } = require('../../download/connector/connectorReferer');
 const { connectorDomainManager } = require('../../platform/connectors/domain/ConnectorDomainManager');
 
 describe('connectorReferer dynamic resolution', () => {
@@ -26,5 +26,15 @@ describe('connectorReferer dynamic resolution', () => {
 
     const referer = getImageRefererForUrl('https://uploads.mangadex.org/covers/a96676e5/f8f44329.jpg.512.jpg');
     expect(referer).toBe('https://mangadex.org/');
+  });
+
+  test('should identify xBato CDN hosts including snapvip and provide correct referer', () => {
+    expect(isXbatoImageCdnHost('cdnb.snapvip.xyz')).toBe(true);
+    expect(isXbatoImageCdnHost('cdna.snapvip.xyz')).toBe(true);
+    expect(isXbatoImageCdnHost('cdn2.merrypsycho.xyz')).toBe(true);
+    expect(isXbatoImageCdnHost('xbato.co.uk')).toBe(true);
+
+    const referer = getImageRefererForUrl('https://cdnb.snapvip.xyz/eleceed/423/0.webp');
+    expect(referer).toBe('https://xbato.co.uk/');
   });
 });

@@ -110,7 +110,11 @@ function isSuicaoDexImageCdnHost(hostname) {
 
 function isXbatoImageCdnHost(hostname) {
   const h = String(hostname).toLowerCase();
-  return h.includes('merrypsycho.xyz') || h.includes('xbato.co.uk');
+  return (
+    h.includes('snapvip.xyz') ||
+    h.includes('merrypsycho.xyz') ||
+    h.includes('xbato.co.uk')
+  );
 }
 
 function isKingOfShojoImageCdnHost(hostname) {

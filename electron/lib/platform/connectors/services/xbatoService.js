@@ -173,18 +173,18 @@ function parseXbatoMangaPage(html, pageUrl) {
   for (const sel of selectors) {
     const $img = $(sel).first();
     if ($img.length) {
-      // Try data-src first (lazy-loaded images)
+      // Try data-src / data-fallback first (lazy-loaded images)
       const dataSrc = String($img.attr('data-src') || '').trim();
+      const dataFallback = String($img.attr('data-fallback') || '').trim();
       const src = String($img.attr('src') || '').trim();
       
-      // Prefer data-src if it's a CDN URL
       let raw = '';
-      if (dataSrc && dataSrc.includes('cdn2.merrypsycho.xyz')) {
+      if (dataSrc && !dataSrc.startsWith('data:image/svg') && !dataSrc.includes('image-default')) {
         raw = dataSrc;
+      } else if (dataFallback && !dataFallback.startsWith('data:image/svg') && !dataFallback.includes('image-default')) {
+        raw = dataFallback;
       } else if (src && !src.startsWith('data:image/svg') && !src.includes('image-default')) {
         raw = src;
-      } else if (dataSrc && !dataSrc.startsWith('data:image/svg')) {
-        raw = dataSrc;
       }
       
       if (raw) {
@@ -316,17 +316,24 @@ class XbatoService extends HtmlConnectorService {
     }
     const mangaSlug = slugMatch[1];
 
-    // ── Strategy 1: Cookie-based fast path ──
+    // ── Strategy 1: Direct fetch via fetchHtml (fast path) ──
     const user_cookie = this._effectiveUserCookie();
     let fetched = null;
-    if (user_cookie) {
-      fetched = await fetchXbatoHtml(trimmed, { cookie: user_cookie, referer: trimmed });
+    try {
+      fetched = await fetchHtml(trimmed, {
+        ...(user_cookie ? { cookie: user_cookie } : {}),
+        referer: trimmed,
+      });
+      if (fetched && fetched.ok && isCloudflareBlockedHtml(fetched.html)) {
+        fetched = { ok: false, error: 'Cloudflare challenge blocked.' };
+      }
+    } catch {
+      fetched = null;
     }
 
     // ── Strategy 2: BrowserWindow fallback (Cloudflare bypass) ──
     if (!fetched || !fetched.ok) {
-      const cookie_error = fetched?.error || '';
-      logger.info('Cookie fetch failed (' + cookie_error + '), trying BrowserWindow...');
+      logger.info('Direct fetch failed, trying BrowserWindow for: ' + trimmed);
       fetched = await fetchXbatoHtmlViaBrowser(trimmed);
       if (!fetched.ok) {
         return { ok: false, error: fetched.error || 'Không tải được trang truyện.' };
@@ -347,11 +354,27 @@ class XbatoService extends HtmlConnectorService {
     const apiUrl = `${ORIGIN_BASE}/get-chapter-list?slug=${mangaSlug}`;
     let chapters = [];
     
-    // Try cookie-based API first, then BrowserWindow
+    // Try fast fetch first
     let apiResult = null;
-    if (user_cookie) {
-      apiResult = await fetchXbatoJson(apiUrl, { cookie: user_cookie, referer: trimmed });
+    try {
+      const apiFetched = await fetchHtml(apiUrl, {
+        ...(user_cookie ? { cookie: user_cookie } : {}),
+        referer: trimmed,
+        headers: {
+          Accept: 'application/json, text/plain, */*',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+      });
+      if (apiFetched && apiFetched.ok && apiFetched.html && !isCloudflareBlockedHtml(apiFetched.html)) {
+        const jsonText = String(apiFetched.html).trim();
+        if (jsonText.startsWith('{') || jsonText.startsWith('[')) {
+          apiResult = { ok: true, data: JSON.parse(jsonText) };
+        }
+      }
+    } catch {
+      apiResult = null;
     }
+
     if (!apiResult || !apiResult.ok) {
       // BrowserWindow renders JSON in <pre> — extract it
       const browserApiResult = await fetchXbatoHtmlViaBrowser(apiUrl);
@@ -410,22 +433,27 @@ class XbatoService extends HtmlConnectorService {
 
   /**
    * Override to handle lazy-loaded images with data-src and SVG placeholders.
-   * Strategy 1: cookie-based fetchHtml (fast). Strategy 2: BrowserWindow (CF bypass).
+   * Strategy 1: direct fetchHtml (fast). Strategy 2: BrowserWindow (CF bypass).
    */
   async fetchChapterImages(chapterUrl, referer) {
-    // ── Strategy 1: Cookie-based fast path ──
+    // ── Strategy 1: Direct fetch via fetchHtml (fast path) ──
     const user_cookie = this._effectiveUserCookie();
     let fetched = null;
-    if (user_cookie) {
-      fetched = await fetchXbatoHtml(chapterUrl, {
-        cookie: user_cookie,
+    try {
+      fetched = await fetchHtml(chapterUrl, {
+        ...(user_cookie ? { cookie: user_cookie } : {}),
         referer: referer || chapterUrl,
       });
+      if (fetched && fetched.ok && isCloudflareBlockedHtml(fetched.html)) {
+        fetched = { ok: false, error: 'Cloudflare challenge blocked.' };
+      }
+    } catch (err) {
+      fetched = { ok: false, error: String(err?.message || err) };
     }
 
     // ── Strategy 2: BrowserWindow fallback ──
     if (!fetched || !fetched.ok) {
-      logger.info('Chapter cookie fetch failed, trying BrowserWindow for: ' + chapterUrl);
+      logger.info('Chapter direct fetch failed, trying BrowserWindow for: ' + chapterUrl);
       fetched = await fetchXbatoHtmlViaBrowser(chapterUrl);
       if (!fetched.ok) {
         throw new Error(`Không tải được trang chương: ${fetched.error}`);
@@ -437,92 +465,147 @@ class XbatoService extends HtmlConnectorService {
 
   /**
    * Parse chapter images from rendered HTML.
-   * BrowserWindow renders lazy-loaded images (data-src → src), so all real URLs are available.
+   * Supports lazy-loaded images across multiple CDNs (snapvip, merrypsycho, etc.)
+   * and preserves correct page ordering.
    */
   _parseChapterImagesFromHtml(html, chapterUrl) {
     const $ = cheerio.load(html);
-    const images = [];
-    
-    // ── Collect all real CDN image URLs directly ──
-    // BrowserWindow resolves lazy-loading: both src and data-src may have real URLs
-    const cdnUrls = new Set();
-    $('img').each((i, el) => {
-      const $img = $(el);
-      for (const attr of ['src', 'data-src']) {
+    const { getFileExt, resolveUrl: resolveImageLink } = require('../../../download/connector/htmlConnectorUtils');
+
+    function extractImgCandidate($img) {
+      const attrs = ['data-src', 'data-fallback', 'src', 'data-original', 'data-cdn'];
+      for (const attr of attrs) {
         const val = String($img.attr(attr) || '').trim();
-        if (val && val.startsWith('https://cdn2.merrypsycho.xyz/') && val.match(/\/\d+\.webp$/)) {
-          cdnUrls.add(val);
+        if (
+          val &&
+          !val.startsWith('data:') &&
+          !val.includes('image-default') &&
+          !val.includes('/assets/banner/') &&
+          !val.includes('/assets/xbato/') &&
+          !val.includes('logo-batoto')
+        ) {
+          return val;
+        }
+      }
+      return '';
+    }
+
+    // ── Primary strategy: Structured images with numeric data-number ──
+    const numberedImages = [];
+    $('img[data-number]').each((_, el) => {
+      const $el = $(el);
+      const numStr = String($el.attr('data-number') || '').trim();
+      if (!/^\d+$/.test(numStr)) return; // Skip banners like data-number="notice"
+      const pageIndex = parseInt(numStr, 10);
+      const rawUrl = extractImgCandidate($el);
+      if (rawUrl) {
+        numberedImages.push({
+          pageIndex,
+          imageUrl: resolveImageLink(chapterUrl, rawUrl),
+        });
+      }
+    });
+
+    if (numberedImages.length > 0) {
+      numberedImages.sort((a, b) => a.pageIndex - b.pageIndex);
+      return numberedImages.map(({ imageUrl }) => ({
+        imageUrl,
+        ext: getFileExt(imageUrl) || 'webp',
+      }));
+    }
+
+    // ── Secondary strategy: Reader container images ──
+    const containerSelectors = [
+      '.chapter-images-container img',
+      '.chapter-v2-wrapper img',
+      '.pages img',
+      'div.page img',
+      'div.img img',
+      '.reader img',
+      '.chapter-content img',
+    ];
+    const containerImages = [];
+    const seenUrls = new Set();
+    $(containerSelectors.join(', ')).each((_, el) => {
+      const $el = $(el);
+      const numStr = String($el.attr('data-number') || '').trim();
+      if (numStr && !/^\d+$/.test(numStr)) return; // Skip notice banner
+      const rawUrl = extractImgCandidate($el);
+      if (rawUrl) {
+        const fullUrl = resolveImageLink(chapterUrl, rawUrl);
+        if (!seenUrls.has(fullUrl)) {
+          seenUrls.add(fullUrl);
+          const pageIndex = /^\d+$/.test(numStr) ? parseInt(numStr, 10) : containerImages.length;
+          containerImages.push({ pageIndex, imageUrl: fullUrl });
         }
       }
     });
 
-    if (cdnUrls.size > 0) {
-      // Sort by page number (0.webp, 1.webp, 2.webp...)
-      const sorted = Array.from(cdnUrls).sort((a, b) => {
-        const numA = parseInt(a.match(/(\d+)\.webp$/)?.[1] || '0', 10);
-        const numB = parseInt(b.match(/(\d+)\.webp$/)?.[1] || '0', 10);
-        return numA - numB;
-      });
-      for (const imageUrl of sorted) {
-        images.push({ imageUrl, ext: 'webp' });
-      }
-      return images;
+    if (containerImages.length > 0) {
+      containerImages.sort((a, b) => a.pageIndex - b.pageIndex);
+      return containerImages.map(({ imageUrl }) => ({
+        imageUrl,
+        ext: getFileExt(imageUrl) || 'webp',
+      }));
     }
 
-    // ── Fallback: pattern-based URL generation ──
+    // ── Tertiary strategy: Fallback pattern-based URL generation ──
+    // Detect base URL from any valid CDN image found in HTML
     let baseUrl = '';
-    $('img').each((i, el) => {
+    let ext = 'webp';
+    $('img').each((_, el) => {
       if (baseUrl) return;
-      const $img = $(el);
-      const src = String($img.attr('src') || '').trim();
-      if (src && src.startsWith('https://cdn2.merrypsycho.xyz/') && src.match(/\/\d+\.webp$/)) {
-        const lastSlash = src.lastIndexOf('/');
-        baseUrl = src.substring(0, lastSlash + 1);
+      const raw = extractImgCandidate($(el));
+      if (raw && /\/(\d+)\.(webp|jpg|jpeg|png)$/i.test(raw)) {
+        const lastSlash = raw.lastIndexOf('/');
+        baseUrl = raw.substring(0, lastSlash + 1);
+        const m = raw.match(/\.(\w+)$/);
+        if (m) ext = m[1].toLowerCase();
       }
     });
-    
+
+    // Fallback base URL construction if HTML has no real URLs (placeholder-only)
     if (!baseUrl) {
-      // Construct from chapter URL: /read/{manga-slug}/{chapter-slug}
       const urlParts = chapterUrl.split('/').filter(Boolean);
       if (urlParts.length >= 4) {
         const mangaSlug = urlParts[urlParts.length - 2];
         const chapterSlug = urlParts[urlParts.length - 1];
         const chapterMatch = chapterSlug.match(/chapter-(\d+(?:\.\d+)?)/);
         if (chapterMatch) {
-          baseUrl = `https://cdn2.merrypsycho.xyz/${mangaSlug}/${chapterMatch[1]}/`;
+          baseUrl = `https://cdnb.snapvip.xyz/${mangaSlug}/${chapterMatch[1]}/`;
         }
       }
     }
-    
+
     if (!baseUrl) {
       throw new Error('Không xác định được pattern URL ảnh.');
     }
-    
+
     // Count chapter images
     let pageCount = 0;
-    $('img').each((i, el) => {
+    $('img').each((_, el) => {
       const $img = $(el);
       const alt = String($img.attr('alt') || '').toLowerCase();
-      const src = String($img.attr('src') || '').trim();
-      if ((alt.includes('chapter') && alt.includes('image')) || 
-          src.startsWith('data:image/svg+xml') ||
-          (src.startsWith('https://cdn2.merrypsycho.xyz/') && src.match(/\/\d+\.webp$/))) {
+      const numStr = String($img.attr('data-number') || '').trim();
+      const raw = extractImgCandidate($img);
+      if (/^\d+$/.test(numStr) || (alt.includes('chapter') && alt.includes('image')) || raw) {
         pageCount++;
       }
     });
-    
+
     if (pageCount === 0) {
       pageCount = $('img[class*="lazy"], .reader img, .chapter-content img, main img').length;
     }
-    
+
     if (pageCount === 0) {
       throw new Error('Không xác định được số trang của chương.');
     }
-    
+
+    const images = [];
     for (let i = 0; i < pageCount; i++) {
-      images.push({ imageUrl: `${baseUrl}${i}.webp`, ext: 'webp' });
+      images.push({ imageUrl: `${baseUrl}${i}.${ext}`, ext });
     }
-    
+
     return images;
   }
 }
@@ -569,7 +652,7 @@ async function fetchSearchResults(query, options = {}) {
       // Cover URL from API or fallback to pattern
       let coverUrl = String(item.cover_url || '').trim();
       if (!coverUrl) {
-        coverUrl = `https://cdn2.merrypsycho.xyz/thumb/${slug}.webp`;
+        coverUrl = `https://cdna.snapvip.xyz/thumb/${slug}.webp`;
       }
       
       // Latest chapter info - API has chapter_latest as number
@@ -704,10 +787,12 @@ async function fetchLatestUpdates(options = {}) {
 module.exports = {
   DOMAIN,
   LABEL,
+  service,
   load,
   downloadChapter,
   fetchLatestUpdates,
   parseXbatoMangaPage,
+  parseChapterImagesFromHtml: (html, chapterUrl) => service._parseChapterImagesFromHtml(html, chapterUrl),
   fetchXbatoHtml,
   fetchXbatoHtmlViaBrowser,
   fetchXbatoJson,

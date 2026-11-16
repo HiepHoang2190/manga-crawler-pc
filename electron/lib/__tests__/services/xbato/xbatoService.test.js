@@ -50,6 +50,67 @@ describe('xbatoService', () => {
       expect(parsed.chapters).toHaveLength(2);
       expect(parsed.chapters[0].url).toContain('/read/runaway-in-the-present/chapter-1');
     });
+
+    it('parses cover with snapvip CDN correctly', () => {
+      const html = `
+        <html><body>
+          <h1>Eleceed</h1>
+          <div class="poster">
+            <img class="lazyload image-thumb" src="/assets/images/image-default-bbato.webp" data-src="https://cdnb.snapvip.xyz/thumb/eleceed.webp" data-fallback="https://cdnb.snapvip.xyz/thumb/eleceed.webp" alt="Eleceed" />
+          </div>
+          <a href="/read/eleceed/chapter-423">Chapter 423</a>
+        </body></html>`;
+
+      const parsed = xbatoService.parseXbatoMangaPage(
+        html,
+        'https://xbato.co.uk/manga/eleceed',
+      );
+
+      expect(parsed.title).toBe('Eleceed');
+      expect(parsed.coverUrl).toBe('https://cdnb.snapvip.xyz/thumb/eleceed.webp');
+      expect(parsed.chapters).toHaveLength(1);
+    });
+  });
+
+  describe('_parseChapterImagesFromHtml', () => {
+    it('extracts chapter images using snapvip CDN and data-number attributes', () => {
+      const html = `
+        <div class="chapter-images-container">
+          <div class="pages longstrip">
+            <div class="page fit-w">
+              <div class="img"><img data-number="notice" src="/assets/banner/short_720_v2.gif" /></div>
+            </div>
+            <div class="page fit-w">
+              <div class="img"><img data-number="0" class="fit-w image-thumb" src="https://cdnb.snapvip.xyz/eleceed/423/0.webp" data-fallback="https://cdnb.snapvip.xyz/eleceed/423/0.webp" alt="Read Eleceed chapter 423 image 0" /></div>
+            </div>
+            <div class="page fit-w">
+              <div class="img"><img data-number="1" class="fit-w image-thumb" src="https://cdnb.snapvip.xyz/eleceed/423/1.webp" data-fallback="https://cdnb.snapvip.xyz/eleceed/423/1.webp" alt="Read Eleceed chapter 423 image 1" /></div>
+            </div>
+            <div class="page fit-w">
+              <div class="img"><img data-number="2" class="fit-w lazyload image-thumb" src="data:image/svg+xml,placeholder" data-src="https://cdnb.snapvip.xyz/eleceed/423/2.webp" data-fallback="https://cdnb.snapvip.xyz/eleceed/423/2.webp" alt="Read Eleceed chapter 423 image 2" /></div>
+            </div>
+          </div>
+        </div>`;
+
+      const images = xbatoService.parseChapterImagesFromHtml(
+        html,
+        'https://xbato.co.uk/read/eleceed/chapter-423',
+      );
+
+      expect(images).toHaveLength(3);
+      expect(images[0]).toEqual({
+        imageUrl: 'https://cdnb.snapvip.xyz/eleceed/423/0.webp',
+        ext: 'webp',
+      });
+      expect(images[1]).toEqual({
+        imageUrl: 'https://cdnb.snapvip.xyz/eleceed/423/1.webp',
+        ext: 'webp',
+      });
+      expect(images[2]).toEqual({
+        imageUrl: 'https://cdnb.snapvip.xyz/eleceed/423/2.webp',
+        ext: 'webp',
+      });
+    });
   });
 
   describe('isCloudflareBlockedHtml', () => {
