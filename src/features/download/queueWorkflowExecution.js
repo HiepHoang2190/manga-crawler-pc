@@ -1,4 +1,5 @@
 import { loadSavedWorkflows } from '../workflow/utils/workflowStorage.mjs';
+import { DEFAULT_TEMPLATES } from '../workflow/templates/defaultTemplates.mjs';
 import { prepareQueueWorkflowGraph } from './queueWorkflowAdapter.js';
 
 export const DEFAULT_QUEUE_WORKFLOW_STORAGE_KEY = 'mangaCrawlerQueueDefaultWorkflowId';
@@ -93,7 +94,10 @@ export async function executeQueueGroupWorkflow({
 
   const workflows =
     typeof workflowsProvider === 'function' ? workflowsProvider() : workflowsProvider || [];
-  const workflow = workflows.find((w) => w && w.id === targetWfId);
+  let workflow = workflows.find((w) => w && w.id === targetWfId);
+  if (!workflow && Array.isArray(DEFAULT_TEMPLATES)) {
+    workflow = DEFAULT_TEMPLATES.find((t) => t && t.id === targetWfId);
+  }
 
   if (!workflow) {
     const errorMsg =

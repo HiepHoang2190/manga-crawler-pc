@@ -367,18 +367,18 @@ export function DownloadProvider({ children }) {
           }
         }
 
-        setQueue((prev) =>
-          prev.map((gg) =>
-            gg.id !== group.id
-              ? gg
-              : {
-                ...gg,
-                chapters: gg.chapters.map((c) =>
-                  c.id === chapter.id ? { ...c, status: 'downloading' } : c
-                ),
-              }
-          )
+        const downloadingQueue = (queueRef.current || []).map((gg) =>
+          gg.id !== group.id
+            ? gg
+            : {
+              ...gg,
+              chapters: gg.chapters.map((c) =>
+                c.id === chapter.id ? { ...c, status: 'downloading' } : c
+              ),
+            }
         );
+        queueRef.current = downloadingQueue;
+        setQueue(downloadingQueue);
 
         appendLog(
           t('app.log.queueChapterStart', {
@@ -456,42 +456,39 @@ export function DownloadProvider({ children }) {
           if (runId !== queueRunGenerationRef.current || queueAbortRef.current) {
             break;
           }
-          let latestGroup = null;
-          setQueue((prev) => {
-            const next = prev.map((gg) =>
-              gg.id !== group.id
-                ? gg
-                : {
-                  ...gg,
-                  chapters: gg.chapters.map((c) => {
-                    if (c.id !== chapter.id) return c;
-                    if (ok) {
-                      const { downloadError, ...rest } = c;
-                      return { ...rest, status: 'done' };
-                    }
-                    const errorMsg = res?.aborted ? t('queue.status.skipped') : (res?.error || t('app.log.downloadIncompleteShort'));
-                    const effectiveRetryMax = (res?.aborted || isFatalSaveDirError) ? 0 : autoRetryMax;
-                    const result = applyChapterResult(c, false, errorMsg, effectiveRetryMax);
-                    if (result.status === 'waiting') {
-                      appendLog(
-                        buildRetryLogMessage(
-                          t,
-                          group.mangaTitle,
-                          c.chapterTitle,
-                          result.retryCount,
-                          autoRetryMax
-                        ),
-                        'warn'
-                      );
-                    }
-                    return result;
-                  }),
-                }
-            );
-            queueRef.current = next;
-            latestGroup = next.find((g) => g.id === group.id);
-            return next;
-          });
+          const next = (queueRef.current || []).map((gg) =>
+            gg.id !== group.id
+              ? gg
+              : {
+                ...gg,
+                chapters: gg.chapters.map((c) => {
+                  if (c.id !== chapter.id) return c;
+                  if (ok) {
+                    const { downloadError, ...rest } = c;
+                    return { ...rest, status: 'done' };
+                  }
+                  const errorMsg = res?.aborted ? t('queue.status.skipped') : (res?.error || t('app.log.downloadIncompleteShort'));
+                  const effectiveRetryMax = (res?.aborted || isFatalSaveDirError) ? 0 : autoRetryMax;
+                  const result = applyChapterResult(c, false, errorMsg, effectiveRetryMax);
+                  if (result.status === 'waiting') {
+                    appendLog(
+                      buildRetryLogMessage(
+                        t,
+                        group.mangaTitle,
+                        c.chapterTitle,
+                        result.retryCount,
+                        autoRetryMax
+                      ),
+                      'warn'
+                    );
+                  }
+                  return result;
+                }),
+              }
+          );
+          queueRef.current = next;
+          setQueue(next);
+          const latestGroup = next.find((g) => g.id === group.id);
           appendDownloadHistoryEntry({
             id: `${Date.now()}-${chapter.id}`,
             at: new Date().toISOString(),
@@ -567,28 +564,36 @@ export function DownloadProvider({ children }) {
                   });
                 }
               } else if (shouldRunGroupWorkflow(latestGroup)) {
-                await executeQueueGroupWorkflow({
-                  group: latestGroup,
-                  savePath: savePath.trim(),
-                  defaultWorkflowId: defaultQueueWorkflowIdRef.current,
-                  electronAPI: window.electronAPI,
-                  onUpdateGroup: (gId, updates) => {
-                    setQueue((prev) => {
-                      const next = updateGroupWorkflowStateMutation(prev, gId, updates);
+                try {
+                  await executeQueueGroupWorkflow({
+                    group: latestGroup,
+                    savePath: savePath.trim(),
+                    defaultWorkflowId: defaultQueueWorkflowIdRef.current,
+                    electronAPI: window.electronAPI,
+                    onUpdateGroup: (gId, updates) => {
+                      const next = updateGroupWorkflowStateMutation(queueRef.current || [], gId, updates);
                       queueRef.current = next;
-                      return next;
-                    });
-                  },
-                  appendLog,
-                  t,
-                  isAborted: () => queueAbortRef.current || runId !== queueRunGenerationRef.current,
-                  onRunStarted: (rId) => {
-                    activeWorkflowRunIdRef.current = rId;
-                  },
-                  onRunEnded: () => {
-                    activeWorkflowRunIdRef.current = null;
-                  },
-                });
+                      setQueue(next);
+                    },
+                    appendLog,
+                    t,
+                    isAborted: () => queueAbortRef.current || runId !== queueRunGenerationRef.current,
+                    onRunStarted: (rId) => {
+                      activeWorkflowRunIdRef.current = rId;
+                    },
+                    onRunEnded: () => {
+                      activeWorkflowRunIdRef.current = null;
+                    },
+                  });
+                } catch (wfErr) {
+                  appendLog(
+                    t('queue.workflowFailedLog', {
+                      mangaTitle: latestGroup.mangaTitle,
+                      error: wfErr?.message || String(wfErr),
+                    }) || `Quy trình cho ${latestGroup.mangaTitle} thất bại: ${wfErr?.message || String(wfErr)}`,
+                    'warn'
+                  );
+                }
               }
             }
           }
@@ -597,46 +602,43 @@ export function DownloadProvider({ children }) {
             break;
           }
           const msg = String(e?.message || e);
-          setQueue((prev) => {
-            const next = prev.map((gg) =>
-              gg.id !== group.id
-                ? gg
-                : {
-                  ...gg,
-                  chapters: gg.chapters.map((c) => {
-                    if (c.id !== chapter.id) return c;
-                    const result = applyChapterResult(c, false, msg, autoRetryMax);
-                    if (result.status === 'waiting') {
-                      appendLog(
-                        buildRetryLogMessage(
-                          t,
-                          group.mangaTitle,
-                          c.chapterTitle,
-                          result.retryCount,
-                          autoRetryMax
-                        ),
-                        'warn'
-                      );
-                    }
-                    return result;
-                  }),
-                }
-            );
-            queueRef.current = next;
-            const updatedGrp = next.find((g) => g.id === group.id);
-            if (updatedGrp) {
-              const grpChapters = updatedGrp.chapters || [];
-              const noWaiting = !grpChapters.some((c) => c.status === 'waiting' || c.status === 'downloading');
-              if (noWaiting && grpChapters.some((c) => c.status === 'error' || Boolean(c.downloadError))) {
-                if (updatedGrp.workflowState === 'idle') {
-                  const marked = updateGroupWorkflowStateMutation(next, group.id, { workflowState: 'skipped' });
-                  queueRef.current = marked;
-                  return marked;
-                }
+          const next = (queueRef.current || []).map((gg) =>
+            gg.id !== group.id
+              ? gg
+              : {
+                ...gg,
+                chapters: gg.chapters.map((c) => {
+                  if (c.id !== chapter.id) return c;
+                  const result = applyChapterResult(c, false, msg, autoRetryMax);
+                  if (result.status === 'waiting') {
+                    appendLog(
+                      buildRetryLogMessage(
+                        t,
+                        group.mangaTitle,
+                        c.chapterTitle,
+                        result.retryCount,
+                        autoRetryMax
+                      ),
+                      'warn'
+                    );
+                  }
+                  return result;
+                }),
+              }
+          );
+          const updatedGrp = next.find((g) => g.id === group.id);
+          let finalNext = next;
+          if (updatedGrp) {
+            const grpChapters = updatedGrp.chapters || [];
+            const noWaiting = !grpChapters.some((c) => c.status === 'waiting' || c.status === 'downloading');
+            if (noWaiting && grpChapters.some((c) => c.status === 'error' || Boolean(c.downloadError))) {
+              if (updatedGrp.workflowState === 'idle') {
+                finalNext = updateGroupWorkflowStateMutation(next, group.id, { workflowState: 'skipped' });
               }
             }
-            return next;
-          });
+          }
+          queueRef.current = finalNext;
+          setQueue(finalNext);
           appendDownloadHistoryEntry({
             id: `${Date.now()}-${chapter.id}`,
             at: new Date().toISOString(),
@@ -808,11 +810,9 @@ export function DownloadProvider({ children }) {
         defaultWorkflowId: defaultQueueWorkflowIdRef.current,
         electronAPI: window.electronAPI,
         onUpdateGroup: (gId, updates) => {
-          setQueue((prev) => {
-            const next = updateGroupWorkflowStateMutation(prev, gId, updates);
-            queueRef.current = next;
-            return next;
-          });
+          const next = updateGroupWorkflowStateMutation(queueRef.current || [], gId, updates);
+          queueRef.current = next;
+          setQueue(next);
         },
         appendLog,
         t,

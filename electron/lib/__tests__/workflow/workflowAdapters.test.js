@@ -639,6 +639,23 @@ describe('Workflow Adapters & Execution', () => {
       .rejects.toThrow('Chưa kết nối thư mục đầu vào hoặc chưa chọn thư mục trong phần cài đặt của khối Lọc & Xoá Ảnh Trùng.');
   });
 
+  test('export_cbz uses data.folderPath when inputs.images_dir is missing (standalone mode)', async () => {
+    const localDir = path.join(tempDir, 'cbz_standalone');
+    fs.mkdirSync(localDir, { recursive: true });
+    fs.writeFileSync(path.join(localDir, '001.png'), 'png dummy');
+
+    const adapters = createAdapters({});
+    const node = {
+      data: {
+        folderPath: localDir,
+      },
+    };
+
+    const result = await adapters.export_cbz(node, {}, () => {});
+    expect(result.book_file).toBeDefined();
+    expect(fs.existsSync(result.book_file.path)).toBe(true);
+  });
+
   test('upload_google_drive (desktop_sync) handles same source and destination without error or deletion', async () => {
     const syncDir = path.join(tempDir, 'same_dir_sync');
     fs.mkdirSync(syncDir, { recursive: true });

@@ -469,5 +469,143 @@ describe('queueWorkflowExecution', () => {
       expect(result.success).toBe(true);
       expect(currentQueue[0].workflowState).toBe('completed');
     });
+
+    test('resolves and executes template from DEFAULT_TEMPLATES when not in saved workflows', async () => {
+      let runGraph = null;
+      let eventCallback = null;
+      const mockElectronAPI = {
+        resolveMangaDir: jest.fn().mockResolvedValue({ path: '/downloads/One Piece' }),
+        workflowRun: jest.fn().mockImplementation(async ({ runId, graph }) => {
+          runGraph = graph;
+          setTimeout(() => {
+            if (eventCallback) {
+              eventCallback({ runId, event: 'all_completed' });
+            }
+          }, 10);
+          return { ok: true, runId };
+        }),
+        onWorkflowEvent: jest.fn().mockImplementation((cb) => {
+          eventCallback = cb;
+          return () => {
+            eventCallback = null;
+          };
+        }),
+      };
+
+      const group = {
+        id: 'g_tpl',
+        mangaTitle: 'One Piece',
+        workflowId: 'template_cbz_google_drive',
+        workflowState: 'idle',
+        chapters: [{ id: 'c1', status: 'done' }],
+      };
+
+      const result = await executeQueueGroupWorkflow({
+        group,
+        savePath: '/downloads',
+        defaultWorkflowId: 'none',
+        electronAPI: mockElectronAPI,
+        workflowsProvider: () => [], // Empty saved workflows
+      });
+
+      expect(result.executed).toBe(true);
+      expect(result.success).toBe(true);
+      expect(runGraph).toBeDefined();
+      expect(runGraph.id).toBe('template_cbz_google_drive');
+    });
+
+    test('queue completion correctly identifies completed group and triggers workflow', async () => {
+      let runCalled = false;
+      let eventCb = null;
+      const mockElectronAPI = {
+        resolveMangaDir: jest.fn().mockResolvedValue({ path: '/downloads/One Piece' }),
+        workflowRun: jest.fn().mockImplementation(async ({ runId }) => {
+          runCalled = true;
+          setTimeout(() => {
+            if (eventCb) {
+              eventCb({ runId, event: 'all_completed' });
+            }
+          }, 10);
+          return { ok: true, runId };
+        }),
+        onWorkflowEvent: jest.fn().mockImplementation((cb) => {
+          eventCb = cb;
+          return () => {
+            eventCb = null;
+          };
+        }),
+      };
+
+      const group = {
+        id: 'g_comp',
+        mangaTitle: 'One Piece',
+        workflowId: 'wf_cbz_upload',
+        workflowState: 'idle',
+        chapters: [
+          { id: 'c1', status: 'done' },
+          { id: 'c2', status: 'done' },
+        ],
+      };
+
+      expect(shouldRunGroupWorkflow(group)).toBe(true);
+
+      const result = await executeQueueGroupWorkflow({
+        group,
+        savePath: '/downloads',
+        defaultWorkflowId: 'none',
+        electronAPI: mockElectronAPI,
+        workflowsProvider: () => [sampleWorkflow],
+      });
+
+      expect(result.executed).toBe(true);
+      expect(result.success).toBe(true);
+      expect(runCalled).toBe(true);
+    });
+
+    test('when workflow execution fails, it returns success: false without throwing, allowing subsequent queue items to proceed', async () => {
+      let eventCb = null;
+      const mockElectronAPI = {
+        resolveMangaDir: jest.fn().mockResolvedValue({ path: '/downloads/One Piece' }),
+        workflowRun: jest.fn().mockImplementation(async ({ runId }) => {
+          setTimeout(() => {
+            if (eventCb) {
+              eventCb({ runId, event: 'run_error', error: 'Disk full during export' });
+            }
+          }, 10);
+          return { ok: true, runId };
+        }),
+        onWorkflowEvent: jest.fn().mockImplementation((cb) => {
+          eventCb = cb;
+          return () => {
+            eventCb = null;
+          };
+        }),
+      };
+
+      let groupState = {
+        id: 'g_failed_wf',
+        mangaTitle: 'One Piece',
+        workflowId: 'wf_cbz_upload',
+        workflowState: 'idle',
+        chapters: [{ id: 'c1', status: 'done' }],
+      };
+
+      const result = await executeQueueGroupWorkflow({
+        group: groupState,
+        savePath: '/downloads',
+        defaultWorkflowId: 'none',
+        electronAPI: mockElectronAPI,
+        onUpdateGroup: (gId, updates) => {
+          groupState = { ...groupState, ...updates };
+        },
+        workflowsProvider: () => [sampleWorkflow],
+      });
+
+      expect(result.executed).toBe(true);
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/Disk full/);
+      expect(groupState.workflowState).toBe('failed');
+      expect(groupState.chapters[0].status).toBe('done');
+    });
   });
 });

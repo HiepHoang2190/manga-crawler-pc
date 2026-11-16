@@ -1234,7 +1234,7 @@ function createAdapters({ connectors = null, ipc_context = null } = {}) {
     },
 
     export_cbz: async (node, inputs, onProgress = () => {}, signal) => {
-      const imagesDir = inputs.images_dir;
+      const imagesDir = (inputs.images_dir || (node.data?.folderPath ? String(node.data.folderPath).trim() : '')).trim();
       if (!imagesDir || !fs.existsSync(imagesDir)) {
         throw new Error('Không tìm thấy thư mục ảnh để đóng gói CBZ');
       }
@@ -1385,7 +1385,7 @@ function createAdapters({ connectors = null, ipc_context = null } = {}) {
     },
 
     export_pdf: async (node, inputs, onProgress = () => {}, signal) => {
-      const imagesDir = inputs.images_dir;
+      const imagesDir = (inputs.images_dir || (node.data?.folderPath ? String(node.data.folderPath).trim() : '')).trim();
       if (!imagesDir || !fs.existsSync(imagesDir)) {
         throw new Error('Không tìm thấy thư mục ảnh để đóng gói PDF');
       }
@@ -1501,7 +1501,7 @@ function createAdapters({ connectors = null, ipc_context = null } = {}) {
     },
 
     export_epub: async (node, inputs, onProgress = () => {}, signal) => {
-      const imagesDir = inputs.images_dir;
+      const imagesDir = (inputs.images_dir || (node.data?.folderPath ? String(node.data.folderPath).trim() : '')).trim();
       if (!imagesDir || !fs.existsSync(imagesDir)) {
         throw new Error('Không tìm thấy thư mục ảnh để đóng gói EPUB');
       }
