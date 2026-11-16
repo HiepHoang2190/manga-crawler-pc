@@ -1452,6 +1452,10 @@ export const en = {
   'chapterList.expandAllVolumes': 'Expand all volumes',
   'chapterList.collapseAllVolumes': 'Collapse all volumes',
   'chapterList.selectVolumeAll': 'Select all in volume',
+  'chapterList.filterGroup': 'Scanlation Group',
+  'chapterList.allGroups': 'All scanlation groups',
+  'chapterList.noGroup': 'Unknown group',
+  'chapterList.dedupedSelectionNotice': 'Selected {count} chapters ({deduped} duplicate translations skipped)',
 
   'mangadex.noMangaLoaded': 'No manga loaded',
   'mangadex.coversHelp': 'Select a cover to change the displayed image',

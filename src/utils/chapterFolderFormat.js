@@ -60,7 +60,8 @@ export function normalizeChapterFolderFormat(input) {
   if (!Number.isFinite(pad)) pad = DEFAULT_CHAPTER_FOLDER_FORMAT.padDigits;
   const padDigits = Math.max(1, Math.min(Math.floor(pad), 5));
   const layout = m.layout === 'flat' ? 'flat' : 'subfolder';
-  return { mode, prefix, padDigits, layout };
+  const disambiguateGroup = Boolean(m.disambiguateGroup || m.includeGroupName);
+  return { mode, prefix, padDigits, layout, disambiguateGroup };
 }
 
 export function isFlatChapterLayout(formatOptions) {
@@ -108,7 +109,17 @@ export function formatChapterFolderName(title, formatOptions) {
     return formatChapterTitle(title);
   }
   const padded = padNumericChapterString(raw, opts.padDigits);
-  const label = opts.prefix ? `${opts.prefix} ${padded}` : padded;
+  let label = opts.prefix ? `${opts.prefix} ${padded}` : padded;
+
+  if (opts.disambiguateGroup) {
+    const groupMatch =
+      String(title || '').match(/\s*\{([^}]+)\}\s*$/) ||
+      String(title || '').match(/\s*\[([^\]]+)\]\s*$/);
+    if (groupMatch && groupMatch[1]?.trim()) {
+      label += ` [${groupMatch[1].trim()}]`;
+    }
+  }
+
   return formatFolderName(label, MAX_LENGTH_FOLDER_NAME);
 }
 

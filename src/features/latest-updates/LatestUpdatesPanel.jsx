@@ -7,6 +7,7 @@ import {
   ViewModeToggle,
 } from '../../shared';
 import { ChaptersDrawer } from '../reader';
+import { dedupeChaptersByNumber } from '../download';
 import { useI18n } from '../../context/I18nContext';
 import { latestListingItemChapterActionsEnabled } from './latestListingChapterActions.js';
 
@@ -1056,7 +1057,8 @@ export default function LatestUpdatesPanel({
   }, []);
 
   const selectDrawerChaptersAll = useCallback(() => {
-    setDrawerSelectedUrls(new Set(drawerChapters.map((ch) => String(ch?.url || '').trim()).filter(Boolean)));
+    const deduped = dedupeChaptersByNumber(drawerChapters);
+    setDrawerSelectedUrls(new Set(deduped.map((ch) => String(ch?.url || '').trim()).filter(Boolean)));
   }, [drawerChapters]);
 
   const unselectDrawerChaptersAll = useCallback(() => {

@@ -1453,6 +1453,10 @@ export const vi = {
   'chapterList.expandAllVolumes': 'Mở rộng tất cả tập',
   'chapterList.collapseAllVolumes': 'Thu gọn tất cả tập',
   'chapterList.selectVolumeAll': 'Chọn toàn bộ tập',
+  'chapterList.filterGroup': 'Nhóm dịch',
+  'chapterList.allGroups': 'Tất cả nhóm dịch',
+  'chapterList.noGroup': 'Không rõ nhóm dịch',
+  'chapterList.dedupedSelectionNotice': 'Đã chọn {count} chương ({deduped} bản trùng lặp đã bỏ qua)',
 
   'mangadex.noMangaLoaded': 'Chưa load truyện',
   'mangadex.coversHelp': 'Chọn ảnh bìa để thay đổi cover hiển thị',

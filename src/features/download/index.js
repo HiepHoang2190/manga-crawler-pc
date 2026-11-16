@@ -13,3 +13,8 @@ export { SiteCookieSection } from './components/SiteCookieSection.jsx';
 export { default as ChapterList } from './components/ChapterList.jsx';
 export { default as QueueCoverThumb } from './components/QueueCoverThumb.jsx';
 export { default as MangadexCoversList } from './components/MangadexCoversList.jsx';
+export {
+  extractScanlationGroups,
+  filterChaptersByGroup,
+  dedupeChaptersByNumber,
+} from './utils/chapterGroupUtils.js';

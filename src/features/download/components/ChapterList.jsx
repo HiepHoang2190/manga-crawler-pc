@@ -1,8 +1,14 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from '../../../context/I18nContext';
+import { SearchableSelect } from '../../../shared';
 import { compareChaptersForTitleSort, dedupeChaptersByUrl } from '../../../utils/chapterSort';
 import { hasVolumeData, groupChaptersByVolume } from '../utils/chapterVolumeGrouping.js';
 import { parseChapterTitleMetadata } from '../utils/chapterTitleParser.js';
+import {
+  extractScanlationGroups,
+  filterChaptersByGroup,
+  dedupeChaptersByNumber,
+} from '../utils/chapterGroupUtils.js';
 
 function StatusBadge({ variant, label }) {
   const styles = {
@@ -67,23 +73,47 @@ export default function ChapterList({
   const hasChapterSelection =
     selectedUrls instanceof Set ? selectedUrls.size > 0 : Boolean(selectedUrls?.size);
 
-  /** Bỏ trùng URL (lỗi API); giữ nguyên thứ tự lần xuất hiện đầu.
+  const scanlationGroups = useMemo(() => {
+    return extractScanlationGroups(chapters, {
+      allLabel: t('chapterList.allGroups'),
+      noGroupLabel: t('chapterList.noGroup'),
+    });
+  }, [chapters, t]);
+
+  const [selectedGroup, setSelectedGroup] = useState('all');
+
+  useEffect(() => {
+    setSelectedGroup('all');
+  }, [currentMangaUrl]);
+
+  const groupSelectOptions = useMemo(() => {
+    return scanlationGroups.map((g) => ({
+      value: g.id,
+      label: `${g.label} (${g.count})`,
+      materialIcon: g.id === 'all' ? 'groups' : 'group',
+    }));
+  }, [scanlationGroups]);
+
+  const hasGroupFilter = scanlationGroups.length > 2;
+
+  /** Bỏ trùng URL (lỗi API); lọc theo nhóm dịch nếu có chọn.
    * Không dedup nếu các chapter có cùng URL nhưng title khác nhau (multi-source như dtvebook). */
   const chaptersForList = useMemo(() => {
     if (!Array.isArray(chapters)) return chapters;
+    const filtered = filterChaptersByGroup(chapters, selectedGroup);
     // Nếu có entries trùng URL nhưng title khác → giữ tất cả (multi-source)
     const urlCounts = new Map();
-    for (const ch of chapters) {
+    for (const ch of filtered) {
       const u = String(ch?.url ?? '').trim();
       if (u) urlCounts.set(u, (urlCounts.get(u) || 0) + 1);
     }
-    const hasDuplicateUrlWithDiffTitle = chapters.some((ch) => {
+    const hasDuplicateUrlWithDiffTitle = filtered.some((ch) => {
       const u = String(ch?.url ?? '').trim();
       return urlCounts.get(u) > 1;
     });
-    if (hasDuplicateUrlWithDiffTitle) return chapters;
-    return dedupeChaptersByUrl(chapters);
-  }, [chapters]);
+    if (hasDuplicateUrlWithDiffTitle) return filtered;
+    return dedupeChaptersByUrl(filtered);
+  }, [chapters, selectedGroup]);
 
   /** Chỉ theo URL — đổi tiêu đề không reset sort; đổi truyện / fetch lại thì reset. */
   const chapterIdentityKey = useMemo(
@@ -189,12 +219,16 @@ export default function ChapterList({
   const toggleSelectVolume = (e, group) => {
     e.stopPropagation();
     if (typeof setSelectedUrls !== 'function') return;
-    const urlsInGroup = group.chapters.map((c) => c.url);
+    const targetChapters =
+      selectedGroup === 'all'
+        ? dedupeChaptersByNumber(group.chapters)
+        : group.chapters;
+    const urlsInGroup = targetChapters.map((c) => c.url);
     const allSelected = urlsInGroup.length > 0 && urlsInGroup.every((u) => selectedUrls?.has(u));
     setSelectedUrls((prev) => {
       const next = new Set(prev);
       if (allSelected) {
-        for (const u of urlsInGroup) next.delete(u);
+        for (const c of group.chapters) next.delete(c.url);
       } else {
         for (const u of urlsInGroup) next.add(u);
       }
@@ -202,8 +236,26 @@ export default function ChapterList({
     });
   };
 
+  const targetChaptersForSelectAll = useMemo(() => {
+    return selectedGroup === 'all'
+      ? dedupeChaptersByNumber(chaptersForList)
+      : chaptersForList;
+  }, [chaptersForList, selectedGroup]);
+
   const allInListSelected =
-    chaptersForList.length > 0 && chaptersForList.every((c) => selectedUrls.has(c.url));
+    targetChaptersForSelectAll.length > 0 &&
+    targetChaptersForSelectAll.every((c) => selectedUrls?.has(c.url));
+
+  const handleSelectAllInList = () => {
+    const urls = targetChaptersForSelectAll.map((c) => c.url);
+    if (typeof setSelectedUrls === 'function') {
+      setSelectedUrls(new Set(urls));
+      return;
+    }
+    if (typeof onSelectAll === 'function') {
+      onSelectAll(urls);
+    }
+  };
 
   const handleTitleHeaderClick = () => {
     setTitleSort((prev) => {
@@ -651,15 +703,15 @@ export default function ChapterList({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
-      {showChapterListHeader || hasVolumes ? (
-        <div className="mb-3 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
+      {showChapterListHeader || hasVolumes || hasGroupFilter ? (
+        <div className="mb-3 flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2 min-w-0 flex-wrap">
             {hasVolumes && !isPick ? (
               <input
                 type="checkbox"
                 data-testid="select-all-chapters-chk"
                 checked={allInListSelected}
-                onChange={() => (allInListSelected ? onUnselectAll() : onSelectAll())}
+                onChange={() => (allInListSelected ? onUnselectAll() : handleSelectAllInList())}
                 className="rounded border-none bg-surface-container-highest cursor-pointer shrink-0"
                 data-tooltip={allInListSelected ? t('chapterList.unselectAll') : t('chapterList.selectAll')}
                 aria-label={allInListSelected ? t('chapterList.unselectAll') : t('chapterList.selectAll')}
@@ -694,6 +746,18 @@ export default function ChapterList({
                   {titleSort == null ? 'swap_vert' : titleSort === 'asc' ? 'arrow_upward' : 'arrow_downward'}
                 </span>
               </button>
+            ) : null}
+
+            {hasGroupFilter ? (
+              <div className="w-52 min-w-[12rem]">
+                <SearchableSelect
+                  value={selectedGroup}
+                  onChange={setSelectedGroup}
+                  options={groupSelectOptions}
+                  placeholder={t('chapterList.filterGroup')}
+                  size="sm"
+                />
+              </div>
             ) : null}
           </div>
 
@@ -756,17 +820,22 @@ export default function ChapterList({
           ) : (
             volumeGroups.map((group) => {
               const isCollapsed = collapsedVolumeKeys.has(group.key);
+              const targetVolumeChapters =
+                selectedGroup === 'all'
+                  ? dedupeChaptersByNumber(group.chapters)
+                  : group.chapters;
+              const targetChapterUrls = targetVolumeChapters.map((c) => c.url);
               const groupChapterUrls = group.chapters.map((c) => c.url);
               const selectedCountInGroup =
                 !isPick && selectedUrls instanceof Set
-                  ? groupChapterUrls.filter((u) => selectedUrls.has(u)).length
+                  ? targetChapterUrls.filter((u) => selectedUrls.has(u)).length
                   : 0;
               const downloadedCountInGroup =
                 readChapterAllowedUrls instanceof Set
                   ? groupChapterUrls.filter((u) => readChapterAllowedUrls.has(u)).length
                   : 0;
               const allInGroupSelected =
-                groupChapterUrls.length > 0 && selectedCountInGroup === groupChapterUrls.length;
+                targetChapterUrls.length > 0 && selectedCountInGroup === targetChapterUrls.length;
               const isGroupIndeterminate =
                 selectedCountInGroup > 0 && !allInGroupSelected;
               const volumeTitle =
@@ -805,7 +874,7 @@ export default function ChapterList({
                         {volumeTitle}
                       </span>
                       <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-primary/10 text-primary shrink-0">
-                        {t('chapterList.volumeCount', { count: group.chapters.length })}
+                        {t('chapterList.volumeCount', { count: targetVolumeChapters.length })}
                       </span>
                     </div>
 
@@ -815,15 +884,15 @@ export default function ChapterList({
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                           {t('chapterList.volumeDownloadedCount', {
                             downloaded: downloadedCountInGroup,
-                            total: group.chapters.length,
-                          }) ?? `Đã tải ${downloadedCountInGroup}/${group.chapters.length}`}
+                            total: targetVolumeChapters.length,
+                          }) ?? `Đã tải ${downloadedCountInGroup}/${targetVolumeChapters.length}`}
                         </span>
                       ) : null}
                       {!isPick && selectedCountInGroup > 0 ? (
                         <span className="px-2 py-0.5 rounded-md text-xs font-semibold bg-primary text-on-primary shrink-0 shadow-xs">
                           {t('chapterList.volumeSelectedCount', {
                             selected: selectedCountInGroup,
-                            total: group.chapters.length,
+                            total: targetVolumeChapters.length,
                           })}
                         </span>
                       ) : null}
@@ -861,8 +930,10 @@ export default function ChapterList({
                       type="checkbox"
                       data-testid="select-all-chapters-chk"
                       checked={allInListSelected}
-                      onChange={() => (allInListSelected ? onUnselectAll() : onSelectAll())}
-                      className="rounded border-none bg-surface-container-highest"
+                      onChange={() => (allInListSelected ? onUnselectAll() : handleSelectAllInList())}
+                      className="rounded border-none bg-surface-container-highest cursor-pointer"
+                      data-tooltip={allInListSelected ? t('chapterList.unselectAll') : t('chapterList.selectAll')}
+                      aria-label={allInListSelected ? t('chapterList.unselectAll') : t('chapterList.selectAll')}
                     />
                   </th>
                 ) : null}

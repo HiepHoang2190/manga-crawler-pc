@@ -199,4 +199,25 @@ describe('mangaUtils - Windows path compatibility', () => {
       expect(isNavShortcutChapter(undefined)).toBe(false);
     });
   });
+
+  describe('formatChapterFolderName with group disambiguation', () => {
+    test('should append group tag when disambiguateGroup is true', () => {
+      expect(
+        formatChapterFolderName('Chapter 1 - Anh thích em {Dịch giả Miền Tây}', {
+          disambiguateGroup: true,
+        })
+      ).toBe('Chap 001 [Dịch giả Miền Tây]');
+      expect(
+        formatChapterFolderName('Chapter 1 - Anh thích em {Dịch vì đam mê}', {
+          disambiguateGroup: true,
+        })
+      ).toBe('Chap 001 [Dịch vì đam mê]');
+    });
+
+    test('should not append group tag when disambiguateGroup is false or omitted', () => {
+      expect(
+        formatChapterFolderName('Chapter 1 - Anh thích em {Dịch giả Miền Tây}')
+      ).toBe('Chap 001');
+    });
+  });
 });

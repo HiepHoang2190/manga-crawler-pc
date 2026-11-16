@@ -15,6 +15,7 @@ import {
   QueueRestoreModal,
   QUEUE_SNAPSHOT_KEY,
   snapshotStats,
+  dedupeChaptersByNumber,
 } from '../download';
 import { useReader } from '../reader';
 import {
@@ -536,7 +537,8 @@ export default function ShellLayout() {
         return { ok: false, error: t('app.log.needSavePathShort') };
       }
       const m = loadResult.manga;
-      const list = loadResult.chapters || [];
+      const rawList = loadResult.chapters || [];
+      const list = dedupeChaptersByNumber(rawList);
       if (!list.length) {
         appendLog(t('latestUpdates.noChaptersFetched'), 'warn');
         return { ok: false, error: t('latestUpdates.noChaptersFetched') };
@@ -573,9 +575,10 @@ export default function ShellLayout() {
         appendLog(t('app.log.needSavePathAndManga'), 'warn');
         return { ok: false };
       }
-      const list = (Array.isArray(chaptersList) ? chaptersList : []).filter((c) =>
+      const filtered = (Array.isArray(chaptersList) ? chaptersList : []).filter((c) =>
         urlsSet instanceof Set ? urlsSet.has(c.url) : false,
       );
+      const list = dedupeChaptersByNumber(filtered);
       if (!list.length) {
         appendLog(t('chapterList.addToQueueNeedSelection'), 'warn');
         return { ok: false };

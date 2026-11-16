@@ -5,7 +5,7 @@ import { isHomePrimaryTabBusy } from './homePrimaryTabBusy';
 import { useAuth } from '../../auth';
 import { useSettings } from '../settings';
 import { useConnectorList } from '../../platform/connectors';
-import { useDownload, QueuePanel, Sidebar } from '../download';
+import { useDownload, QueuePanel, Sidebar, dedupeChaptersByNumber } from '../download';
 import { useReader, ChaptersDrawer } from '../reader';
 import {
   useLibrary,
@@ -307,8 +307,13 @@ export default function HomeWorkspace({
     });
   };
 
-  const selectAll = () => {
-    setSelectedChapterUrls(new Set(chapters.map((c) => c.url)));
+  const selectAll = (urls) => {
+    if (Array.isArray(urls)) {
+      setSelectedChapterUrls(new Set(urls));
+    } else {
+      const deduped = dedupeChaptersByNumber(chapters);
+      setSelectedChapterUrls(new Set(deduped.map((c) => c.url)));
+    }
   };
 
   const unselectAll = () => {
@@ -320,7 +325,7 @@ export default function HomeWorkspace({
       appendLog(t('app.log.needSavePathAndManga'), 'warn');
       return;
     }
-    const list = chapters;
+    const list = dedupeChaptersByNumber(chapters);
     if (!list.length) {
       appendLog(t('app.log.fetchNoChapters', { title: manga.title || '' }), 'warn');
       return;
@@ -350,7 +355,8 @@ export default function HomeWorkspace({
       appendLog(t('app.log.needSavePathAndManga'), 'warn');
       return;
     }
-    const list = chapters.filter((c) => selectedUrls.has(c.url));
+    const filtered = chapters.filter((c) => selectedUrls.has(c.url));
+    const list = dedupeChaptersByNumber(filtered);
     if (!list.length) {
       appendLog(t('chapterList.addToQueueNeedSelection'), 'warn');
       return;
