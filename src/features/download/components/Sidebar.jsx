@@ -412,7 +412,7 @@ export default function Sidebar({
 
         {manga ? (
           <>
-            <div className="h-px bg-outline-variant/20 mx-4" />
+            <div className="h-px bg-outline-variant/20" />
             <div ref={mangaInfoRef}>
             <MangaInfo
               manga={manga}

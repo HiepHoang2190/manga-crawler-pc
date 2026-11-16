@@ -34,16 +34,10 @@ export default function MangaInfo({
   const coverUrl = manga?.coverUrl || '';
   const sourceLabel = manga?.sourceLabel?.trim();
   const author = manga?.author?.trim() || '';
-  const rating = manga?.rating;
   const genres = Array.isArray(manga?.genres)
     ? manga.genres
     : manga?.genres
       ? [manga.genres]
-      : [];
-  const altTitles = Array.isArray(manga?.altTitles)
-    ? manga.altTitles
-    : manga?.altTitles
-      ? [manga.altTitles]
       : [];
   const description = manga?.description?.trim() || '';
 
@@ -101,9 +95,9 @@ export default function MangaInfo({
     typeof onEnqueueAllToQueue === 'function';
 
   return (
-    <div className="px-2 py-4 sm:px-3" data-testid="manga-info-card">
+    <div className="w-full" data-testid="manga-info-card">
       <div
-        className={`relative overflow-hidden rounded-lg ${
+        className={`relative overflow-hidden rounded-2xl ${
           fetchSuccessRing
             ? 'motion-reduce:ring-2 motion-reduce:ring-primary motion-reduce:ring-offset-2 motion-reduce:ring-offset-background'
             : ''
@@ -111,17 +105,12 @@ export default function MangaInfo({
       >
         {fetchSuccessRing ? (
           <div
-            className="pointer-events-none absolute inset-0 z-0 overflow-hidden rounded-lg motion-reduce:hidden"
+            className="pointer-events-none absolute inset-0 z-0 overflow-hidden rounded-2xl motion-reduce:hidden"
             aria-hidden
           >
-            {/*
-              Conic-gradient xoay: không dùng stroke-dash nên không đứt tại góc (SVG dash hay lệch ở cung/bo).
-              Khe 2px (motion-safe:m-[2px] ở card) để lộ vòng sáng quanh mép.
-            */}
             <div
               className="absolute inset-[-55%] origin-center [backface-visibility:hidden] animate-[fetch-ring-spin_2.75s_linear_infinite]"
               style={{
-                /* Một vệt: transparent → primary → container (đỉnh) → transparent — trước có primary ở cả hai phía container nên như 2 vệt. */
                 background:
                   'conic-gradient(from 0deg, transparent 0deg 226deg, var(--color-primary) 252deg, var(--color-primary-container) 268deg, transparent 288deg)',
               }}
@@ -129,148 +118,166 @@ export default function MangaInfo({
           </div>
         ) : null}
         <div
-          className={`relative z-[1] flex gap-2 sm:gap-2.5 items-start rounded-lg border border-outline-variant/10 bg-surface-container-low py-2 pl-2 pr-2.5 sm:pl-1.5 sm:pr-3 ${
-            fetchSuccessRing ? 'motion-safe:m-[2px] motion-safe:rounded-[6px] motion-safe:border-transparent' : ''
+          className={`relative z-[1] rounded-2xl border border-outline-variant/15 bg-surface-container-low p-3.5 shadow-xs space-y-3 ${
+            fetchSuccessRing ? 'motion-safe:m-[2px] motion-safe:rounded-[14px] motion-safe:border-transparent' : ''
           }`}
         >
-          <div className="group relative flex aspect-[2/3] w-[5.75rem] shrink-0 items-center justify-center overflow-hidden rounded-md border border-outline-variant/20 bg-surface-container-highest sm:w-[6.75rem]">
-            {coverSrc ? (
-              <img src={coverSrc} alt="" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]" />
-            ) : (
-              <span className="material-symbols-outlined text-on-surface-variant/50">menu_book</span>
-            )}
-            {typeof onToggleFavorite === 'function' ? (
-              <button
-                type="button"
-                aria-pressed={isFavorite}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (guestFavoriteLocked && typeof onGuestFavoriteBlocked === 'function') {
-                    onGuestFavoriteBlocked();
-                    return;
-                  }
-                  onToggleFavorite();
-                }}
-                className={`absolute right-2 top-2 z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full shadow-md transition-all ${
-                  isFavorite
-                    ? 'bg-rose-500/80 text-white ring-1 ring-white/40 backdrop-blur-[2px] hover:bg-rose-500/90'
-                    : 'border border-white/25 bg-black/40 text-white/95 shadow-black/10 backdrop-blur-sm hover:bg-black/50'
-                }`}
-                data-tooltip={
-                  guestFavoriteLocked
-                    ? t('guestCredit.favoritePrompt')
-                    : isFavorite
-                      ? t('mangaInfo.favoriteRemove')
-                      : t('mangaInfo.favoriteAdd')
-                }
-              >
-                <span
-                  className="material-symbols-outlined block text-[17px] leading-none"
-                  style={
+          {/* Hàng trên: Ảnh bìa bên trái + Cột thông tin bên phải */}
+          <div className="flex gap-3.5 items-start">
+            {/* Ảnh bìa */}
+            <div className="group relative flex aspect-[2/3] w-28 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-outline-variant/20 bg-surface-container-highest shadow-md sm:w-32">
+              {coverSrc ? (
+                <img
+                  src={coverSrc}
+                  alt=""
+                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                />
+              ) : (
+                <span className="material-symbols-outlined text-on-surface-variant/50 text-[32px]">menu_book</span>
+              )}
+              {typeof onToggleFavorite === 'function' ? (
+                <button
+                  type="button"
+                  aria-pressed={isFavorite}
+                  aria-label={isFavorite ? t('mangaInfo.favoriteRemove') : t('mangaInfo.favoriteAdd')}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (guestFavoriteLocked && typeof onGuestFavoriteBlocked === 'function') {
+                      onGuestFavoriteBlocked();
+                      return;
+                    }
+                    onToggleFavorite();
+                  }}
+                  className={`absolute right-2 top-2 z-10 flex h-7 w-7 cursor-pointer items-center justify-center rounded-full shadow-md transition-all ${
                     isFavorite
-                      ? { fontVariationSettings: "'FILL' 1, 'wght' 300, 'GRAD' 0, 'opsz' 20" }
-                      : { fontVariationSettings: "'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 20" }
+                      ? 'bg-rose-500/85 text-white ring-1 ring-white/40 backdrop-blur-[2px] hover:bg-rose-500'
+                      : 'border border-white/25 bg-black/40 text-white/95 shadow-black/10 backdrop-blur-sm hover:bg-black/55'
+                  }`}
+                  data-tooltip={
+                    guestFavoriteLocked
+                      ? t('guestCredit.favoritePrompt')
+                      : isFavorite
+                        ? t('mangaInfo.favoriteRemove')
+                        : t('mangaInfo.favoriteAdd')
                   }
                 >
-                  {isFavorite ? 'favorite' : 'favorite_border'}
+                  <span
+                    className="material-symbols-outlined block text-[16px] leading-none"
+                    style={
+                      isFavorite
+                        ? { fontVariationSettings: "'FILL' 1, 'wght' 300, 'GRAD' 0, 'opsz' 20" }
+                        : { fontVariationSettings: "'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 20" }
+                    }
+                  >
+                    {isFavorite ? 'favorite' : 'favorite_border'}
+                  </span>
+                </button>
+              ) : null}
+            </div>
+
+            {/* Cột thông tin chi tiết */}
+            <div className="flex-1 min-w-0 space-y-1.5">
+              {title ? (
+                <h2 className="min-w-0 text-sm sm:text-base font-bold leading-snug text-on-surface line-clamp-2 tracking-tight">
+                  {title}
+                </h2>
+              ) : null}
+
+              {/* Badges: Nguồn & Số chương */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                {sourceLabel ? (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-lg bg-surface-container-highest px-2 py-0.5 text-xs font-medium text-on-surface-variant shrink-0"
+                    data-tooltip={`${t('mangaInfo.source')} ${sourceLabel}`}
+                  >
+                    <span className="material-symbols-outlined text-[14px] text-primary">public</span>
+                    <span className="truncate max-w-[120px]">{sourceLabel}</span>
+                  </span>
+                ) : null}
+                <span
+                  className="inline-flex items-center gap-1 rounded-lg bg-primary/10 text-primary px-2 py-0.5 text-xs font-semibold tabular-nums shrink-0"
+                  data-tooltip={`${t('mangaInfo.chapterCount')} ${chapterCount}`}
+                >
+                  <span className="material-symbols-outlined text-[14px]">auto_stories</span>
+                  <span>{chapterCount} {t('mangaInfo.chapterSuffix', 'chương')}</span>
                 </span>
-              </button>
-            ) : null}
-          </div>
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-1.5 sm:gap-2">
-            {title ? (
-              <h2 className="min-w-0 truncate text-base font-bold leading-tight text-on-surface">{title}</h2>
-            ) : null}
-            <div className="space-y-1 rounded-md bg-surface-container-highest/40 px-2 py-1.5">
-              {sourceLabel ? (
-                <div className="flex items-center gap-2 text-[11px] leading-snug">
-                  <span className="shrink-0 font-medium text-on-surface-variant">{t('mangaInfo.source')}</span>
-                  <span className="min-w-0 truncate text-on-surface">{sourceLabel}</span>
-                </div>
-              ) : null}
-              <div className="flex items-center gap-2 text-[11px] leading-snug">
-                <span className="shrink-0 font-medium text-on-surface-variant">{t('mangaInfo.chapterCount')}</span>
-                <span className="tabular-nums text-on-surface">{chapterCount}</span>
               </div>
+
+              {/* Tác giả */}
               {author ? (
-                <div className="flex items-center gap-2 text-[11px] leading-snug">
-                  <span className="shrink-0 font-medium text-on-surface-variant">{t('mangaInfo.author')}</span>
-                  <span className="min-w-0 truncate text-on-surface">{author}</span>
+                <div className="flex items-center gap-1.5 text-xs text-on-surface-variant min-w-0">
+                  <span className="material-symbols-outlined text-[15px] shrink-0 text-on-surface-variant/70">person</span>
+                  <span className="truncate">{author}</span>
                 </div>
               ) : null}
-              {rating != null ? (
-                <div className="flex items-center gap-2 text-[11px] leading-snug">
-                  <span className="shrink-0 font-medium text-on-surface-variant">{t('mangaInfo.rating')}</span>
-                  <span className="inline-flex items-center gap-1 font-semibold text-amber-400">
-                    <span
-                      className="material-symbols-outlined text-[13px] leading-none text-amber-400"
-                      style={{ fontVariationSettings: "'FILL' 1" }}
-                    >
-                      star
-                    </span>
-                    <span>{typeof rating === 'number' ? rating.toFixed(2) : rating}</span>
-                    <span className="text-[10px] text-on-surface-variant font-normal">/ 10</span>
-                  </span>
-                </div>
-              ) : null}
+
+              {/* Thể loại dạng pills gọn gàng (tối đa 3 thể loại) */}
               {genres.length > 0 ? (
-                <div className="flex items-start gap-2 text-[11px] leading-snug">
-                  <span className="shrink-0 font-medium text-on-surface-variant">{t('mangaInfo.genres')}</span>
-                  <span className="min-w-0 text-on-surface line-clamp-2">
-                    {genres.join(', ')}
-                  </span>
+                <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                  {genres.slice(0, 3).map((g) => (
+                    <span
+                      key={g}
+                      className="rounded-md bg-surface-container-highest/70 px-2 py-0.5 text-[11px] font-medium text-on-surface-variant"
+                    >
+                      {g}
+                    </span>
+                  ))}
+                  {genres.length > 3 ? (
+                    <span
+                      className="rounded-md bg-surface-container-highest/70 px-1.5 py-0.5 text-[11px] font-medium text-on-surface-variant/70 cursor-default"
+                      data-tooltip={genres.slice(3).join(', ')}
+                    >
+                      +{genres.length - 3}
+                    </span>
+                  ) : null}
                 </div>
               ) : null}
-              {altTitles.length > 0 ? (
-                <div className="flex items-start gap-2 text-[11px] leading-snug">
-                  <span className="shrink-0 font-medium text-on-surface-variant">{t('mangaInfo.altTitles')}</span>
-                  <span className="min-w-0 text-on-surface-variant/80 line-clamp-2 text-[10.5px]">
-                    {altTitles.slice(0, 3).join(' • ')}
-                  </span>
-                </div>
-              ) : null}
+
+              {/* Mô tả ngắn gọn line-clamp-2 */}
               {description ? (
-                <p className="text-[11px] leading-relaxed text-on-surface-variant/90 line-clamp-5 pt-0.5">
+                <p className="text-xs leading-relaxed text-on-surface-variant/85 line-clamp-2 pt-0.5">
                   {description}
                 </p>
               ) : null}
             </div>
-            {show_chapter_action_row ? (
-              <div className="flex flex-col gap-2">
-                {typeof onOpenChaptersPanel === 'function' ? (
-                  <button
-                    type="button"
-                    data-testid="open-drawer-btn"
-                    onClick={() => onOpenChaptersPanel()}
-                    data-tooltip={t('chapterList.openDrawer')}
-                    aria-label={t('chapterList.openDrawerShort')}
-                    className="inline-flex min-h-[2.25rem] w-full items-center justify-center gap-1.5 rounded-md border border-primary/35 bg-primary/12 px-2 py-1.5 text-center text-xs font-semibold leading-tight text-primary shadow-sm hover:bg-primary/18 cursor-pointer"
-                  >
-                    <span className="material-symbols-outlined shrink-0 select-none text-[17px] leading-none [line-height:1]">
-                      format_list_bulleted
-                    </span>
-                    <span className="min-w-0 truncate">{t('chapterList.openDrawerShort')}</span>
-                  </button>
-                ) : null}
-                {typeof onEnqueueAllToQueue === 'function' ? (
-                  <button
-                    type="button"
-                    data-testid="enqueue-all-btn"
-                    disabled={!canEnqueueAll}
-                    onClick={() => onEnqueueAllToQueue()}
-                    data-tooltip={enqueue_disabled_title ?? t('mangaInfo.enqueueAllTitle')}
-                    aria-label={t('mangaInfo.enqueueAllShort')}
-                    className="inline-flex min-h-[2.25rem] w-full items-center justify-center gap-1.5 rounded-md border border-primary/25 bg-primary px-2 py-1.5 text-center text-xs font-semibold leading-tight text-on-primary shadow-sm hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer"
-                  >
-                    <span className="material-symbols-outlined shrink-0 select-none text-[17px] leading-none [line-height:1]">
-                      playlist_add
-                    </span>
-                    <span className="min-w-0 truncate">{t('mangaInfo.enqueueAllShort')}</span>
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
           </div>
+
+          {/* Hàng dưới: Cụm nút hành động 2 cột trải rộng toàn bộ card */}
+          {show_chapter_action_row ? (
+            <div className="grid grid-cols-2 gap-2 pt-2.5 border-t border-outline-variant/15">
+              {typeof onOpenChaptersPanel === 'function' ? (
+                <button
+                  type="button"
+                  data-testid="open-drawer-btn"
+                  onClick={() => onOpenChaptersPanel()}
+                  data-tooltip={t('chapterList.openDrawer')}
+                  aria-label={t('chapterList.openDrawerShort')}
+                  className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-[0.98] px-3 text-center text-xs font-semibold text-white shadow-xs cursor-pointer transition-all"
+                >
+                  <span className="material-symbols-outlined shrink-0 select-none text-[18px] leading-none text-white">
+                    format_list_bulleted
+                  </span>
+                  <span className="truncate">{t('chapterList.openDrawerShort')}</span>
+                </button>
+              ) : null}
+              {typeof onEnqueueAllToQueue === 'function' ? (
+                <button
+                  type="button"
+                  data-testid="enqueue-all-btn"
+                  disabled={!canEnqueueAll}
+                  onClick={() => onEnqueueAllToQueue()}
+                  data-tooltip={enqueue_disabled_title ?? t('mangaInfo.enqueueAllTitle')}
+                  aria-label={t('mangaInfo.enqueueAllShort')}
+                  className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-primary px-3 text-center text-xs font-semibold text-on-primary shadow-xs hover:opacity-95 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer transition-all"
+                >
+                  <span className="material-symbols-outlined shrink-0 select-none text-[18px] leading-none">
+                    playlist_add
+                  </span>
+                  <span className="truncate">{t('mangaInfo.enqueueAllShort')}</span>
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
