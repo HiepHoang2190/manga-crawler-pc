@@ -342,12 +342,10 @@ export default function DuplicateFinderTab({
         }
       );
 
-      // Auto-select duplicate copies for deletion (leaving originals unselected)
+      // Mặc định chọn tất cả ảnh trùng lặp sau khi quét
       const autoSelected = new Set();
       for (const img of duplicateImages) {
-        if (!img.isOriginal) {
-          autoSelected.add(img.fullPath);
-        }
+        autoSelected.add(img.fullPath);
       }
       setSelectedForDelete(autoSelected);
     } catch (e) {
@@ -613,13 +611,13 @@ export default function DuplicateFinderTab({
   const toggleGroupSelection = useCallback((group) => {
     setSelectedForDelete((prev) => {
       const next = new Set(prev);
-      if (group.allItemsChecked || group.allCopiesChecked) {
+      if (group.allItemsChecked) {
         for (const item of group.items) {
           next.delete(item.fullPath);
         }
       } else {
-        for (const copy of group.copies) {
-          next.add(copy.fullPath);
+        for (const item of group.items) {
+          next.add(item.fullPath);
         }
       }
       return next;
