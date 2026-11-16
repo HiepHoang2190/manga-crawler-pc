@@ -4324,6 +4324,8 @@ export const vi = {
   'workflow.templates.builtin.template_crawl_cbz_cleanup.desc': 'Tự động tải chapter mới, nén thành tệp CBZ và chuyển toàn bộ thư mục ảnh tải thô vào Thùng rác để giải phóng dung lượng ổ cứng.',
   'workflow.templates.builtin.template_crawl_cbz_gdrive.name': 'Tải truyện ➔ Đóng gói CBZ ➔ Tải lên Google Drive',
   'workflow.templates.builtin.template_crawl_cbz_gdrive.desc': 'Tự động tải chapter mới, nén thành tệp truyện CBZ và tự động đồng bộ / tải lên Google Drive.',
+  'workflow.templates.builtin.template_cbz_basic.name': 'Đóng gói CBZ cơ bản',
+  'workflow.templates.builtin.template_cbz_basic.desc': 'Tự động quét thư mục truyện trên máy, lọc ảnh trùng/rác, chuẩn hoá tên chapter và nén thành tệp truyện CBZ.',
   'workflow.templates.builtin.template_local_clean_cbz.name': 'Thư mục trên máy ➔ Lọc ảnh trùng ➔ Đóng gói CBZ',
   'workflow.templates.builtin.template_local_clean_cbz.desc': 'Xử lý truyện có sẵn trên máy: Quét dọn ảnh trùng/rác và tự động nén thành file CBZ.',
   'workflow.templates.builtin.template_cbz_google_drive.name': 'Đóng gói CBZ ➔ Tải lên Google Drive',

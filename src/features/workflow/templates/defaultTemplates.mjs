@@ -3,6 +3,84 @@
  */
 export const DEFAULT_TEMPLATES = [
   {
+    id: 'template_cbz_basic',
+    name: 'Đóng gói CBZ cơ bản',
+    description: 'Tự động quét thư mục truyện trên máy, lọc ảnh trùng/rác, chuẩn hoá tên chapter và nén thành tệp truyện CBZ.',
+    nodes: [
+      {
+        id: 'node_trigger',
+        type: 'folder_trigger',
+        x: 60,
+        y: 100,
+        data: { folderPath: '' },
+      },
+      {
+        id: 'node_cleaner',
+        type: 'duplicate_cleaner',
+        x: 360,
+        y: 260,
+        data: {
+          minDuplicateCount: 2,
+          similarityThreshold: 92,
+          action: 'trash',
+          recursive: true,
+          folderPath: '',
+          continueOnError: true,
+        },
+      },
+      {
+        id: 'node_rename',
+        type: 'rename_folder',
+        x: 660,
+        y: 100,
+        data: {
+          mode: 'autoNormalize',
+          find: '',
+          replace: '',
+          pattern: '{manga} - Chap {chap_padded}',
+          paddingLength: 3,
+          removeSpecialChars: true,
+          continueOnError: true,
+        },
+      },
+      {
+        id: 'node_cbz',
+        type: 'export_cbz',
+        x: 960,
+        y: 260,
+        data: {
+          packMode: 'singleVolume',
+          maxMbPerFile: 200,
+          rotateDoublePage: false,
+          trashSourceAfterExport: true,
+        },
+      },
+    ],
+    edges: [
+      {
+        id: 'edge_1',
+        source: 'node_trigger',
+        sourceHandle: 'images_dir',
+        target: 'node_cleaner',
+        targetHandle: 'images_dir',
+      },
+      {
+        id: 'edge_2',
+        source: 'node_cleaner',
+        sourceHandle: 'images_dir',
+        target: 'node_rename',
+        targetHandle: 'images_dir',
+      },
+      {
+        id: 'edge_3',
+        source: 'node_rename',
+        sourceHandle: 'images_dir',
+        target: 'node_cbz',
+        targetHandle: 'images_dir',
+      },
+    ],
+  },
+  {
     id: 'template_cbz_google_drive',
     name: 'Đóng gói CBZ ➔ Tải lên Google Drive',
     description: 'Tự động quét thư mục truyện trên máy, chuẩn hoá tên, lọc ảnh trùng/rác, nén thành tệp truyện CBZ và tự động đồng bộ lên Google Drive.',

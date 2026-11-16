@@ -4346,6 +4346,8 @@ export const en = {
   'workflow.templates.builtin.template_crawl_cbz_cleanup.desc': 'Auto-download new chapters, package into CBZ, and safely move raw image folders to Recycle Bin to free up disk space.',
   'workflow.templates.builtin.template_crawl_cbz_gdrive.name': 'Download Manga ➔ Package CBZ ➔ Upload to Google Drive',
   'workflow.templates.builtin.template_crawl_cbz_gdrive.desc': 'Auto-download new chapters, package into CBZ, and automatically sync or upload to Google Drive.',
+  'workflow.templates.builtin.template_cbz_basic.name': 'Basic CBZ Packaging',
+  'workflow.templates.builtin.template_cbz_basic.desc': 'Automatically scan local manga folder, filter duplicate/junk images, normalize chapter names, and package into CBZ archive.',
   'workflow.templates.builtin.template_local_clean_cbz.name': 'Local Folder ➔ Filter Duplicate Images ➔ Export CBZ',
   'workflow.templates.builtin.template_local_clean_cbz.desc': 'Process existing manga on disk: Clean duplicate/junk images and package into CBZ.',
   'workflow.templates.builtin.template_cbz_google_drive.name': 'Package CBZ ➔ Upload to Google Drive',

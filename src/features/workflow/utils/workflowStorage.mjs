@@ -2,6 +2,8 @@ import { DEFAULT_TEMPLATES } from '../templates/defaultTemplates.mjs';
 
 const WORKFLOWS_STORAGE_KEY = 'mangaCrawlerWorkflows';
 const ACTIVE_WORKFLOW_ID_KEY = 'mangaCrawlerActiveWorkflowId';
+const DEFAULT_TEMPLATES_VERSION_KEY = 'mangaCrawlerDefaultTemplatesVersion';
+const CURRENT_TEMPLATES_VERSION = 2;
 
 export function loadSavedWorkflows() {
   try {
@@ -41,6 +43,29 @@ export function getOrInitWorkflows() {
     });
 
     try {
+      const storedVersion = parseInt(localStorage.getItem(DEFAULT_TEMPLATES_VERSION_KEY) || '1', 10);
+      if (storedVersion < CURRENT_TEMPLATES_VERSION) {
+        const hasBasic = migrated.some((w) => w.id === 'template_cbz_basic' || w.name === 'Đóng gói CBZ cơ bản');
+        if (!hasBasic) {
+          const basicTpl = DEFAULT_TEMPLATES.find((t) => t.id === 'template_cbz_basic');
+          if (basicTpl) {
+            migrated.unshift({
+              id: basicTpl.id,
+              name: basicTpl.name,
+              description: basicTpl.description || '',
+              nodes: basicTpl.nodes || [],
+              edges: basicTpl.edges || [],
+              createdAt: Date.now(),
+              updatedAt: Date.now(),
+            });
+            hasMigrated = true;
+          }
+        }
+        localStorage.setItem(DEFAULT_TEMPLATES_VERSION_KEY, String(CURRENT_TEMPLATES_VERSION));
+      }
+    } catch {}
+
+    try {
       const rawStored = JSON.parse(localStorage.getItem(WORKFLOWS_STORAGE_KEY) || '[]');
       if (rawStored.length !== migrated.length || hasMigrated) {
         localStorage.setItem(WORKFLOWS_STORAGE_KEY, JSON.stringify(migrated));
@@ -77,6 +102,7 @@ export function getOrInitWorkflows() {
       ];
   try {
     localStorage.setItem(WORKFLOWS_STORAGE_KEY, JSON.stringify(seeded));
+    localStorage.setItem(DEFAULT_TEMPLATES_VERSION_KEY, String(CURRENT_TEMPLATES_VERSION));
     if (seeded[0]?.id) {
       localStorage.setItem(ACTIVE_WORKFLOW_ID_KEY, seeded[0].id);
     }

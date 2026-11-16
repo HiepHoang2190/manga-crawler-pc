@@ -49,6 +49,19 @@ describe('workflowTemplates & storage', () => {
     expect(tpl.edges).toHaveLength(4);
   });
 
+  test('contains template_cbz_basic in DEFAULT_TEMPLATES with valid pipeline', () => {
+    const tpl = DEFAULT_TEMPLATES.find((t) => t.id === 'template_cbz_basic');
+    expect(tpl).toBeDefined();
+    expect(tpl.name).toBe('Đóng gói CBZ cơ bản');
+    expect(tpl.nodes.map((n) => n.type)).toEqual([
+      'folder_trigger',
+      'duplicate_cleaner',
+      'rename_folder',
+      'export_cbz',
+    ]);
+    expect(tpl.edges).toHaveLength(3);
+  });
+
   test('exportWorkflowJson serializes cleanly', () => {
     const wf = { id: 'test_wf', name: 'Test Workflow', nodes: [{ id: 'n1', type: 'manga_crawler', x: 0, y: 0 }], edges: [] };
     const jsonStr = exportWorkflowJson(wf);
@@ -87,8 +100,18 @@ describe('workflowTemplates & storage', () => {
   test('getOrInitWorkflows seeds an initial workflow when empty', () => {
     const seeded = getOrInitWorkflows();
     expect(seeded.length).toBeGreaterThanOrEqual(1);
-    expect(seeded[0].id).toBeDefined();
+    expect(seeded[0].id).toBe('template_cbz_basic');
     expect(getActiveWorkflowId()).toBe(seeded[0].id);
+  });
+
+  test('getOrInitWorkflows migrates existing storage missing template_cbz_basic', () => {
+    // Simulate user with only template_cbz_google_drive
+    globalThis.localStorage.setItem('mangaCrawlerWorkflows', JSON.stringify([
+      { id: 'template_cbz_google_drive', name: 'Đóng gói CBZ ➔ Tải lên Google Drive', nodes: [], edges: [] }
+    ]));
+    const migrated = getOrInitWorkflows();
+    expect(migrated.some((w) => w.id === 'template_cbz_basic')).toBe(true);
+    expect(migrated[0].id).toBe('template_cbz_basic');
   });
 
   test('createWorkflow, duplicateWorkflow, renameWorkflow, deleteWorkflow flow', () => {

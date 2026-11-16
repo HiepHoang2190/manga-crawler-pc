@@ -137,6 +137,10 @@ export const BACKUP_SECTIONS = {
       'cbz_export_generate_toc_v1',
       'pdf_export_generate_toc_v1',
       'mangaLatestUpdatesMultiSearchSelectedSites_v1',
+      'mangaCrawlerWorkflows',
+      'mangaCrawlerActiveWorkflowId',
+      'mangaCrawlerQueueDefaultWorkflowId',
+      'mangaCrawlerDefaultTemplatesVersion',
     ],
   },
   offlineLibrary: {
