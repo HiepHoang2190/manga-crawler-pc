@@ -69,6 +69,7 @@ const CHANNEL_MAP = {
     'manga:abortDownload',
     'app:listConnectors',
     'app:testConnector',
+    'app:cancelTestConnector',
     'app:detectSiteFromUrl',
     'manga:load',
     'manga:fetchLatestUpdates',

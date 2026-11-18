@@ -39,8 +39,13 @@ const api = {
     ipcRenderer.invoke('shell:openChapterFolder', { baseSaveDir, mangaTitle, chapterTitle }),
   listConnectors: () => ipcRenderer.invoke('app:listConnectors'),
   testConnector: (siteId, activeDomain) => ipcRenderer.invoke('app:testConnector', { siteId, activeDomain }),
+  cancelTestConnector: (siteId) =>
+    ipcRenderer.invoke('app:cancelTestConnector', siteId ? { siteId } : {}),
   onTestConnectorProgress: (callback) => {
-    ipcRenderer.on('app:testConnectorProgress', (_event, data) => callback(data));
+    if (typeof callback !== 'function') return () => {};
+    const listener = (_event, data) => callback(data);
+    ipcRenderer.on('app:testConnectorProgress', listener);
+    return () => ipcRenderer.removeListener('app:testConnectorProgress', listener);
   },
   detectSiteFromUrl: (url) => ipcRenderer.invoke('app:detectSiteFromUrl', url),
   loadManga: (site, url, opts) =>

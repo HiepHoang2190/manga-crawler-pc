@@ -2793,6 +2793,7 @@ export const vi = {
   'siteChecker.testing': 'Đang kiểm tra...',
   'siteChecker.cancel': 'Dừng',
   'siteChecker.status.notTested': 'Chưa kiểm tra',
+  'siteChecker.status.queued': 'Chờ kiểm tra...',
   'siteChecker.status.testing': 'Đang kiểm tra...',
   'siteChecker.status.success': 'Hoạt động tốt',
   'siteChecker.status.failed': 'Bị lỗi',

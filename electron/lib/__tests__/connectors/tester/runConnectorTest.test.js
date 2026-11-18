@@ -315,17 +315,17 @@ describe('runConnectorTest', () => {
     });
     chapvn_connector.load.mockResolvedValue({
       ok: true,
-      manga: { title: 'ChapVn Test Manga', mangaUrl: 'https://chap.vn/forums/128/', coverUrl: '' },
-      chapters: [{ url: 'https://chap.vn/forums/128/ch1', title: 'Chapter 1' }],
+      manga: { title: 'ChapVn Test Manga', mangaUrl: 'https://chapvn.com/forums/128/', coverUrl: '' },
+      chapters: [{ url: 'https://chapvn.com/forums/128/ch1', title: 'Chapter 1' }],
     });
     chapvn_connector.downloadChapter.mockResolvedValue({ ok: true });
 
     const actual_result = await runConnectorTest('chapvn');
     expect(chapvn_connector.load).toHaveBeenCalledWith(
-      'https://chap.vn/forums/128/',
+      'https://chapvn.com/forums/128/',
       expect.any(Object),
     );
-    expect(actual_result.testDetails.mangaUrl).toBe('https://chap.vn/forums/128/');
+    expect(actual_result.testDetails.mangaUrl).toBe('https://chapvn.com/forums/128/');
   });
 
   it('skips download when catalog skipSteps includes download', async () => {
@@ -388,5 +388,52 @@ describe('runConnectorTest', () => {
     expect(actual_result.ok).toBe(true);
     expect(actual_result.steps.chapters.ok).toBe(true);
     expect(actual_result.testDetails.mangaTitle).toBe('Discovered Manga');
+  });
+
+  describe('abortSignal support', () => {
+    it('should abort immediately if abortSignal is already aborted', async () => {
+      const controller = new AbortController();
+      controller.abort();
+      const actual_result = await runConnectorTest('moetruyen', undefined, undefined, controller.signal);
+      expect(actual_result.ok).toBe(false);
+      expect(actual_result.aborted).toBe(true);
+      expect(moetruyen_connector.load).not.toHaveBeenCalled();
+    });
+
+    it('should abort when abortSignal triggers during async operations', async () => {
+      const controller = new AbortController();
+      moetruyen_connector.fetchLatestUpdates.mockImplementation(() => {
+        return new Promise((resolve) => {
+          setTimeout(() => {
+            resolve({ ok: true, items: [{ mangaUrl: 'https://moetruyen.net/manga/test' }] });
+          }, 100);
+        });
+      });
+
+      const testPromise = runConnectorTest('moetruyen', undefined, undefined, controller.signal);
+      // Abort after 10ms
+      setTimeout(() => controller.abort(), 10);
+
+      const actual_result = await testPromise;
+      expect(actual_result.ok).toBe(false);
+      expect(actual_result.aborted).toBe(true);
+    });
+
+    it('should suppress onProgress notifications once aborted', async () => {
+      const controller = new AbortController();
+      const progressCalls = [];
+      const onProgress = (step, status, duration) => {
+        progressCalls.push({ step, status, duration });
+      };
+
+      moetruyen_connector.fetchLatestUpdates.mockImplementation(async () => {
+        controller.abort();
+        return { ok: true, items: [{ mangaUrl: 'https://moetruyen.net/manga/test' }] };
+      });
+
+      const actual_result = await runConnectorTest('moetruyen', undefined, onProgress, controller.signal);
+      expect(actual_result.aborted).toBe(true);
+      expect(progressCalls.length).toBe(0);
+    });
   });
 });

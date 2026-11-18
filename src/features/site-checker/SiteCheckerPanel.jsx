@@ -37,6 +37,8 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
   const [extractBusy, setExtractBusy] = useState({});
   const [messageDialog, setMessageDialog] = useState(null);
   const [copiedUrl, setCopiedUrl] = useState(null);
+  const api = typeof window !== 'undefined' ? window.electronAPI : null;
+
   // Initialize testResults directly from localStorage so state is immediately available on mount
   const [testResults, setTestResults] = useState(() => {
     if (typeof window === 'undefined') return {};
@@ -50,6 +52,7 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
             cleaned[k] = {
               ...v,
               checking: false,
+              queued: false,
               status: v.status === 'testing' ? 'not-tested' : v.status,
             };
           }
@@ -65,10 +68,50 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
   const [testAbortRef, setTestAbortRef] = useState(null);
   const [testBatch, setTestBatch] = useState(null);
 
+  // Subscribe to real-time step progress during connector tests
+  useEffect(() => {
+    if (!api?.onTestConnectorProgress) return;
+    const unsub = api.onTestConnectorProgress((data) => {
+      if (!data || !data.siteId || !data.step) return;
+      setTestResults((prev) => {
+        const current = prev[data.siteId];
+        // Ignore stale progress events if item is no longer checking or queued
+        if (!current || (!current.checking && !current.queued)) return prev;
+        return {
+          ...prev,
+          [data.siteId]: {
+            ...current,
+            checking: true,
+            queued: false,
+            steps: {
+              ...(current.steps || {}),
+              [data.step]: {
+                ok: data.status === 'success',
+                durationMs: data.durationMs,
+              },
+            },
+          },
+        };
+      });
+    });
+    return () => {
+      if (typeof unsub === 'function') unsub();
+    };
+  }, [api]);
+
+  // Abort running connector tests on unmount to prevent lingering background processes
+  useEffect(() => {
+    return () => {
+      if (api?.cancelTestConnector) {
+        api.cancelTestConnector().catch(() => {});
+      }
+    };
+  }, [api]);
+
   // Compute busy state across batch tests, single tests, and domain extractions
   const isBusy = Boolean(
     testRunning ||
-    Object.values(testResults).some((r) => r?.checking) ||
+    Object.values(testResults).some((r) => r?.checking || r?.queued) ||
     Object.values(extractBusy).some(Boolean)
   );
 
@@ -107,7 +150,7 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
     const targetIdSet = new Set(targetIds);
     setTestBatch({ total: targets.length, targetIds });
 
-    // Reset counters and clean up stale connector entries
+    // Mark targets as queued and clean up stale connector entries
     setTestResults((prev) => {
       const validIds = new Set(connectors.map((c) => c.id));
       const next = {};
@@ -117,11 +160,14 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
           next[id] = val;
         }
       });
-      // Reset all targets being scanned in this batch so counters start fresh from 0
+      // Mark targets in this batch as queued so user sees them immediately in the list
       targets.forEach((c) => {
+        const prevStatus = prev[c.id]?.status;
         next[c.id] = {
-          status: 'not-tested',
-          checking: true,
+          status: targets.length === connectors.length ? 'not-tested' : (prevStatus || 'not-tested'),
+          checking: false,
+          queued: true,
+          testedAt: null,
           steps: {},
         };
       });
@@ -141,19 +187,22 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
 
         setTestResults((prev) => ({
           ...prev,
-          [c.id]: { ...prev[c.id], checking: true, steps: {} },
+          [c.id]: { ...prev[c.id], checking: true, queued: false, steps: {} },
         }));
 
         try {
           const activeDomain = localStorage.getItem(`crawler:active-domain:${c.id}`) || '';
           const res = await window.electronAPI.testConnector(c.id, activeDomain);
           if (abortObj.aborted) break;
+          if (res?.aborted) continue;
 
           if (res?.ok) {
             setTestResults((prev) => ({
               ...prev,
               [c.id]: {
                 status: 'success',
+                checking: false,
+                queued: false,
                 rtt: res.durationMs,
                 steps: res.steps,
                 testDetails: res.testDetails,
@@ -165,6 +214,8 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
               ...prev,
               [c.id]: {
                 status: 'failed',
+                checking: false,
+                queued: false,
                 error: res?.error,
                 rtt: res?.durationMs,
                 steps: res?.steps,
@@ -177,7 +228,13 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
           if (abortObj.aborted) break;
           setTestResults((prev) => ({
             ...prev,
-            [c.id]: { status: 'failed', error: err.message || String(err), testedAt: Date.now() },
+            [c.id]: {
+              status: 'failed',
+              checking: false,
+              queued: false,
+              error: err.message || String(err),
+              testedAt: Date.now(),
+            },
           }));
         }
       }
@@ -191,22 +248,52 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
     setTestBatch(null);
   };
 
-  const cancelTestAll = () => {
+  const cancelTestAll = async () => {
     if (testAbortRef) {
       testAbortRef.aborted = true;
-      setTestRunning(false);
-      setTestAbortRef(null);
-      setTestBatch(null);
-      setTestResults((prev) => {
-        const next = { ...prev };
-        Object.keys(next).forEach((id) => {
-          if (next[id]?.checking) {
-            next[id] = { ...next[id], checking: false };
-          }
-        });
-        return next;
-      });
     }
+    setTestRunning(false);
+    setTestAbortRef(null);
+    setTestBatch(null);
+
+    if (api?.cancelTestConnector) {
+      try {
+        await api.cancelTestConnector();
+      } catch (e) {
+        console.warn('cancelTestConnector failed:', e);
+      }
+    }
+
+    setTestResults((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((id) => {
+        if (next[id]?.checking || next[id]?.queued) {
+          next[id] = { ...next[id], checking: false, queued: false };
+        }
+      });
+      return next;
+    });
+  };
+
+  const cancelSingleTest = async (siteId) => {
+    if (api?.cancelTestConnector) {
+      try {
+        await api.cancelTestConnector(siteId);
+      } catch (e) {
+        console.warn('cancelTestConnector failed:', e);
+      }
+    }
+    setTestResults((prev) => {
+      if (!prev[siteId]) return prev;
+      return {
+        ...prev,
+        [siteId]: {
+          ...prev[siteId],
+          checking: false,
+          queued: false,
+        },
+      };
+    });
   };
 
   const startSingleTest = async (siteId) => {
@@ -214,17 +301,33 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
 
     setTestResults((prev) => ({
       ...prev,
-      [siteId]: { ...prev[siteId], checking: true, steps: {} },
+      [siteId]: { ...prev[siteId], checking: true, queued: false, steps: {} },
     }));
 
     try {
       const activeDomain = localStorage.getItem(`crawler:active-domain:${siteId}`) || '';
       const res = await window.electronAPI.testConnector(siteId, activeDomain);
+      if (res?.aborted) {
+        setTestResults((prev) => {
+          if (!prev[siteId]) return prev;
+          return {
+            ...prev,
+            [siteId]: {
+              ...prev[siteId],
+              checking: false,
+              queued: false,
+            },
+          };
+        });
+        return;
+      }
       if (res?.ok) {
         setTestResults((prev) => ({
           ...prev,
           [siteId]: {
             status: 'success',
+            checking: false,
+            queued: false,
             rtt: res.durationMs,
             steps: res.steps,
             testDetails: res.testDetails,
@@ -236,6 +339,8 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
           ...prev,
           [siteId]: {
             status: 'failed',
+            checking: false,
+            queued: false,
             error: res?.error,
             rtt: res?.durationMs,
             steps: res?.steps,
@@ -245,16 +350,24 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
         }));
       }
     } catch (err) {
-      setTestResults((prev) => ({
-        ...prev,
-        [siteId]: { status: 'failed', error: err.message || String(err), testedAt: Date.now() },
-      }));
+      setTestResults((prev) => {
+        if (!prev[siteId]?.checking) return prev;
+        return {
+          ...prev,
+          [siteId]: {
+            status: 'failed',
+            checking: false,
+            queued: false,
+            error: err.message || String(err),
+            testedAt: Date.now(),
+          },
+        };
+      });
     }
   };
 
   const results = testResults;
   const running = testRunning;
-  const api = typeof window !== 'undefined' ? window.electronAPI : null;
 
   const handleCopyUrl = useCallback(async (url) => {
     if (!url) return;
@@ -309,7 +422,7 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
     if (!testBatch) return 0;
     return testBatch.targetIds.filter((id) => {
       const r = results[id];
-      return r && !r.checking && (r.status === 'success' || r.status === 'failed');
+      return r && !r.checking && !r.queued && r.testedAt && (r.status === 'success' || r.status === 'failed');
     }).length;
   }, [testBatch, results]);
 
@@ -367,6 +480,12 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
   };
 
   // Filters logic
+  // Set of connector IDs currently being re-tested in the active batch
+  const batchTargetIdSet = useMemo(
+    () => (testBatch ? new Set(testBatch.targetIds) : new Set()),
+    [testBatch]
+  );
+
   const filteredConnectors = useMemo(() => {
     return connectors.filter((c) => {
       const labelMatch = String(c.label || '').toLowerCase().includes(searchTerm.toLowerCase());
@@ -375,13 +494,16 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
       if (!matchesSearch) return false;
 
       const res = results[c.id];
-      if (statusFilter === 'working') return res?.status === 'success';
-      if (statusFilter === 'broken') return res?.status === 'failed';
+      // If this connector is actively being re-tested in the current batch, always keep it
+      // visible regardless of its current status so progress can be monitored in real time
+      const isInActiveBatch = batchTargetIdSet.has(c.id);
+      if (statusFilter === 'working') return res?.status === 'success' || isInActiveBatch;
+      if (statusFilter === 'broken') return res?.status === 'failed' || isInActiveBatch;
       if (statusFilter === 'vpn') return c.requiresVpn || c.suggestsVpn;
       if (statusFilter === 'cookie') return c.requiresCookie;
       return true;
     });
-  }, [connectors, results, searchTerm, statusFilter]);
+  }, [connectors, results, searchTerm, statusFilter, batchTargetIdSet]);
 
   const filterOptions = [
     { id: 'all', label: t('siteChecker.filter.all'), count: stats.total },
@@ -593,12 +715,15 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
               <div className="space-y-1 max-h-60 overflow-y-auto custom-scrollbar pr-1">
                 {filteredConnectors.map((c) => {
                   const res = results[c.id];
-                  const isSuccess = res?.status === 'success';
-                  const isFailed = res?.status === 'failed';
-                  const isChecking = res?.checking === true;
+                  const isChecking = res?.checking === true || res?.status === 'testing';
+                  const isQueued = res?.queued === true && !isChecking;
+                  const isSuccess = res?.status === 'success' && !isChecking && !isQueued;
+                  const isFailed = res?.status === 'failed' && !isChecking && !isQueued;
 
                   const statusDot = isChecking
                     ? 'bg-primary animate-ping'
+                    : isQueued
+                    ? 'bg-outline-variant animate-pulse'
                     : isSuccess
                     ? 'bg-emerald-500'
                     : isFailed
@@ -690,8 +815,9 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
                 const res = results[c.id] || { status: 'not-tested' };
                 const displayDomain = localStorage.getItem(`crawler:active-domain:${c.id}`) || c.domain;
                 const isChecking = res.checking === true || res.status === 'testing';
-                const isSuccess = res.status === 'success' && !isChecking;
-                const isFailed = res.status === 'failed' && !isChecking;
+                const isQueued = res.queued === true && !isChecking;
+                const isSuccess = res.status === 'success' && !isChecking && !isQueued;
+                const isFailed = res.status === 'failed' && !isChecking && !isQueued;
 
                 return (
                   <div
@@ -734,7 +860,7 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
                           <button
                             type="button"
                             onClick={() => handleAutoExtractCookie(c.id, displayDomain)}
-                            disabled={running || isChecking || extractBusy[c.id]}
+                            disabled={running || isChecking || isQueued || extractBusy[c.id]}
                             className="w-8 h-8 rounded-lg inline-flex items-center justify-center bg-surface-container-high text-on-surface hover:bg-surface-bright border border-outline-variant/20 transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
                             data-tooltip={t('sidebar.cookie.extractTooltip', 'Trích xuất Cookie tự động')}
                             aria-label={t('sidebar.cookie.extractTooltip', 'Trích xuất Cookie tự động')}
@@ -749,22 +875,32 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
                           </button>
                         )}
 
-                        <button
-                          type="button"
-                          onClick={() => startSingleTest(c.id)}
-                          disabled={running || isChecking}
-                          className="w-8 h-8 rounded-lg inline-flex items-center justify-center bg-surface-container-high text-on-surface hover:bg-surface-bright border border-outline-variant/20 transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
-                          data-tooltip={t('siteChecker.runSingleTest')}
-                          aria-label={t('siteChecker.runSingleTest')}
-                        >
-                          <span
-                            className={`material-symbols-outlined text-[16px] ${
-                              isChecking ? 'animate-spin' : ''
-                            }`}
+                        {isChecking ? (
+                          <button
+                            type="button"
+                            onClick={() => cancelSingleTest(c.id)}
+                            className="w-8 h-8 rounded-lg inline-flex items-center justify-center bg-error/15 text-error hover:bg-error/25 border border-error/30 transition-all active:scale-95 cursor-pointer"
+                            data-tooltip={t('siteChecker.cancel')}
+                            aria-label={t('siteChecker.cancel')}
                           >
-                            refresh
-                          </span>
-                        </button>
+                            <span className="material-symbols-outlined text-[16px]">
+                              stop
+                            </span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => startSingleTest(c.id)}
+                            disabled={running || isQueued}
+                            className="w-8 h-8 rounded-lg inline-flex items-center justify-center bg-surface-container-high text-on-surface hover:bg-surface-bright border border-outline-variant/20 transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
+                            data-tooltip={t('siteChecker.runSingleTest')}
+                            aria-label={t('siteChecker.runSingleTest')}
+                          >
+                            <span className="material-symbols-outlined text-[16px]">
+                              refresh
+                            </span>
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -846,7 +982,14 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
                         </span>
                       )}
 
-                      {res.status === 'not-tested' && (
+                      {isQueued && (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-surface-container-high text-on-surface-variant/80 border border-outline-variant/20">
+                          <span className="w-1.5 h-1.5 rounded-full bg-outline-variant animate-pulse" />
+                          <span>{t('siteChecker.status.queued')}</span>
+                        </span>
+                      )}
+
+                      {res.status === 'not-tested' && !isChecking && !isQueued && (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-surface-container-high text-on-surface-variant/70 border border-outline-variant/15">
                           {t('siteChecker.status.notTested')}
                         </span>

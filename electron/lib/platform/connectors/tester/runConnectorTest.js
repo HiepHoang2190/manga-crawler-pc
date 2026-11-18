@@ -68,12 +68,17 @@ function pickTestChapter(chapters, chapterPicker) {
  * @param {string} siteId
  * @param {string} [activeDomain]
  * @param {(step: string, status: 'success'|'failed', durationMs: number) => void} [onProgress]
- * @returns {Promise<{ok: boolean, durationMs: number, error?: string, steps: object}>}
+ * @param {AbortSignal} [abortSignal]
+ * @returns {Promise<{ok: boolean, durationMs: number, error?: string, steps: object, aborted?: boolean}>}
  */
-async function runConnectorTest(siteId, activeDomain, onProgress) {
+async function runConnectorTest(siteId, activeDomain, onProgress, abortSignal) {
   const c = getConnector(siteId);
   if (!c) {
     return { ok: false, error: `Connector "${siteId}" không tồn tại.`, steps: {} };
+  }
+
+  if (abortSignal?.aborted) {
+    return { ok: false, aborted: true, durationMs: 0, steps: {} };
   }
 
   const cookie = c.requiresCookie ? cookieManager.getEffectiveCookie(c.id) : '';
@@ -83,11 +88,40 @@ async function runConnectorTest(siteId, activeDomain, onProgress) {
   const catalog_entry = getCatalogEntry(siteId) || {};
   const timeout_ms = { ...DEFAULT_TIMEOUTS, ...(catalog_entry.timeouts || {}) };
 
+  const emitProgress = (step, status, duration) => {
+    if (!abortSignal?.aborted && typeof onProgress === 'function') {
+      onProgress(step, status, duration);
+    }
+  };
+
   function withTimeout(promise, ms, label) {
-    return Promise.race([
-      promise,
-      new Promise((_, reject) => setTimeout(() => reject(new Error(`Timeout ${ms / 1000}s (${label})`)), ms)),
-    ]);
+    if (abortSignal && abortSignal.aborted) {
+      return Promise.reject(new Error('Aborted'));
+    }
+
+    let timer = null;
+    let abortListener = null;
+
+    const timeoutPromise = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`Timeout ${ms / 1000}s (${label})`)), ms);
+    });
+
+    const promises = [promise, timeoutPromise];
+
+    if (abortSignal) {
+      const abortPromise = new Promise((_, reject) => {
+        abortListener = () => reject(new Error('Aborted'));
+        abortSignal.addEventListener('abort', abortListener, { once: true });
+      });
+      promises.push(abortPromise);
+    }
+
+    return Promise.race(promises).finally(() => {
+      if (timer) clearTimeout(timer);
+      if (abortSignal && abortListener) {
+        abortSignal.removeEventListener('abort', abortListener);
+      }
+    });
   }
 
   function enhanceError(errMsg) {
@@ -110,12 +144,18 @@ async function runConnectorTest(siteId, activeDomain, onProgress) {
   //    and skip the 3-step deep test entirely.
   // ════════════════════════════════════════════════════════════════════
   if (typeof c.testConnection === 'function') {
+    if (abortSignal?.aborted) {
+      return { ok: false, aborted: true, durationMs: Date.now() - totalStart, steps };
+    }
     try {
       const res = await withTimeout(c.testConnection(activeDomain), timeout_ms.custom, 'testConnection');
+      if (abortSignal?.aborted) {
+        return { ok: false, aborted: true, durationMs: Date.now() - totalStart, steps };
+      }
       const durationMs = Date.now() - totalStart;
       if (res && res.ok) {
         logger.info(`[TestConnector:${siteId}] Kiểm tra tuỳ chỉnh (testConnection) thành công (${durationMs}ms)`);
-        if (onProgress) onProgress('custom', 'success', durationMs);
+        emitProgress('custom', 'success', durationMs);
         return { ok: true, durationMs, steps: { custom: { ok: true, durationMs } }, testDetails: {} };
       }
       const err = enhanceError(res?.error || 'Không kiểm tra được kết nối.');
@@ -124,9 +164,12 @@ async function runConnectorTest(siteId, activeDomain, onProgress) {
         domain: activeDomain || c.domain,
         error: res?.error || 'Không kiểm tra được kết nối.',
       });
-      if (onProgress) onProgress('custom', 'failed', durationMs);
+      emitProgress('custom', 'failed', durationMs);
       return { ok: false, error: err, durationMs, steps: { custom: { ok: false, error: err, durationMs } }, testDetails: {} };
     } catch (err) {
+      if (abortSignal?.aborted || err?.message === 'Aborted') {
+        return { ok: false, aborted: true, durationMs: Date.now() - totalStart, steps };
+      }
       const durationMs = Date.now() - totalStart;
       const errMsg = enhanceError(err.message || String(err));
       logger.error(`[TestConnector:${siteId}] Bước [Custom/testConnection] thất bại ngoại lệ: ${errMsg}`, {
@@ -135,7 +178,7 @@ async function runConnectorTest(siteId, activeDomain, onProgress) {
         error: errMsg,
         stack: err?.stack || '',
       });
-      if (onProgress) onProgress('custom', 'failed', durationMs);
+      emitProgress('custom', 'failed', durationMs);
       return { ok: false, error: errMsg, durationMs, steps: { custom: { ok: false, error: errMsg, durationMs } }, testDetails: {} };
     }
   }
@@ -145,6 +188,9 @@ async function runConnectorTest(siteId, activeDomain, onProgress) {
   // ════════════════════════════════════════════════════════════════════
   let listingItems = [];
   {
+    if (abortSignal?.aborted) {
+      return { ok: false, aborted: true, durationMs: Date.now() - totalStart, steps };
+    }
     const stepStart = Date.now();
     let stepOk = false;
     let stepError = '';
@@ -153,6 +199,9 @@ async function runConnectorTest(siteId, activeDomain, onProgress) {
       if (typeof c.fetchLatestUpdates === 'function') {
         const options = { page: 1, cookie };
         const res = await withTimeout(c.fetchLatestUpdates(options), timeout_ms.listing, 'listing');
+        if (abortSignal?.aborted) {
+          return { ok: false, aborted: true, durationMs: Date.now() - totalStart, steps };
+        }
         if (res && res.ok === true) {
           stepOk = true;
           if (Array.isArray(res.items)) listingItems = res.items;
@@ -161,6 +210,9 @@ async function runConnectorTest(siteId, activeDomain, onProgress) {
         }
       }
     } catch (err) {
+      if (abortSignal?.aborted || err?.message === 'Aborted') {
+        return { ok: false, aborted: true, durationMs: Date.now() - totalStart, steps };
+      }
       stepError = err.message || String(err);
       if (err.stack) {
         logger.error(`[TestConnector:${siteId}] Lỗi ngoại lệ khi tải danh sách: ${err.message}`, {
@@ -171,7 +223,7 @@ async function runConnectorTest(siteId, activeDomain, onProgress) {
       }
     }
 
-    if (!stepOk) {
+    if (!stepOk && !abortSignal?.aborted) {
       try {
         const domain = activeDomain || c.domain || (c.plugin?.metadata?.baseUrl);
         if (domain) {
@@ -180,6 +232,9 @@ async function runConnectorTest(siteId, activeDomain, onProgress) {
             timeout_ms.homepage,
             'homepage',
           );
+          if (abortSignal?.aborted) {
+            return { ok: false, aborted: true, durationMs: Date.now() - totalStart, steps };
+          }
           if (res.ok) {
             stepOk = true;
             stepError = '';
@@ -193,9 +248,16 @@ async function runConnectorTest(siteId, activeDomain, onProgress) {
           stepError = stepError || 'Không xác định được tên miền.';
         }
       } catch (err) {
+        if (abortSignal?.aborted || err?.message === 'Aborted') {
+          return { ok: false, aborted: true, durationMs: Date.now() - totalStart, steps };
+        }
         const msg = err.message || String(err);
         stepError = stepError ? `${stepError} (Fallback: ${msg})` : msg;
       }
+    }
+
+    if (abortSignal?.aborted) {
+      return { ok: false, aborted: true, durationMs: Date.now() - totalStart, steps };
     }
 
     steps.listing = {
@@ -205,16 +267,20 @@ async function runConnectorTest(siteId, activeDomain, onProgress) {
     };
 
     if (stepOk) {
-      if (onProgress) onProgress('listing', 'success', steps.listing.durationMs);
+      emitProgress('listing', 'success', steps.listing.durationMs);
       logger.info(`[TestConnector:${siteId}] ① Kết nối thành công (${listingItems.length} truyện trong danh sách)`);
     } else {
-      if (onProgress) onProgress('listing', 'failed', steps.listing.durationMs);
+      emitProgress('listing', 'failed', steps.listing.durationMs);
       logger.error(`[TestConnector:${siteId}] Bước [① Kết nối/Listing] thất bại: ${stepError}`, {
         siteId,
         domain: activeDomain || c.domain,
         error: stepError,
       });
     }
+  }
+
+  if (abortSignal?.aborted) {
+    return { ok: false, aborted: true, durationMs: Date.now() - totalStart, steps };
   }
 
   const defaultTestUrl = resolveTestUrl(siteId, activeDomain || c.domain) || c.testMangaUrl || '';
@@ -252,6 +318,9 @@ async function runConnectorTest(siteId, activeDomain, onProgress) {
   let mangaTitle = '';
   let coverUrl = '';
   {
+    if (abortSignal?.aborted) {
+      return { ok: false, aborted: true, durationMs: Date.now() - totalStart, steps };
+    }
     const stepStart = Date.now();
     let stepOk = false;
     let stepError = '';
@@ -271,8 +340,10 @@ async function runConnectorTest(siteId, activeDomain, onProgress) {
       let primaryError = '';
       let attemptIndex = 0;
       for (const url of candidateUrls.slice(0, 3)) {
+        if (abortSignal?.aborted) break;
         try {
           const loadRes = await withTimeout(c.load(url, { cookie }), timeout_ms.chapters, 'chapters');
+          if (abortSignal?.aborted) break;
           if (loadRes && loadRes.ok === true) {
             chapters = Array.isArray(loadRes.chapters) ? loadRes.chapters : [];
             chapterCount = chapters.length;
@@ -290,6 +361,7 @@ async function runConnectorTest(siteId, activeDomain, onProgress) {
             if (attemptIndex === 0) primaryError = loadRes?.error || 'Không tải được trang truyện.';
           }
         } catch (err) {
+          if (abortSignal?.aborted || err?.message === 'Aborted') break;
           if (attemptIndex === 0) primaryError = err.message || String(err);
           if (err.stack) {
             logger.error(`[TestConnector:${siteId}] Lỗi ngoại lệ c.load(${url}): ${err.message}`, {
@@ -301,6 +373,9 @@ async function runConnectorTest(siteId, activeDomain, onProgress) {
           }
         }
         attemptIndex++;
+      }
+      if (abortSignal?.aborted) {
+        return { ok: false, aborted: true, durationMs: Date.now() - totalStart, steps };
       }
       if (!stepOk) {
         stepError = primaryError || 'Không tải được chương truyện nào.';
@@ -319,22 +394,26 @@ async function runConnectorTest(siteId, activeDomain, onProgress) {
     };
 
     if (stepOk) {
-      if (onProgress) onProgress('chapters', 'success', steps.chapters.durationMs);
+      emitProgress('chapters', 'success', steps.chapters.durationMs);
       if (isFallbackListing && !steps.listing.ok) {
         steps.listing.ok = true;
         delete steps.listing.error;
-        if (onProgress) onProgress('listing', 'success', steps.listing.durationMs);
+        emitProgress('listing', 'success', steps.listing.durationMs);
         logger.info(`[TestConnector:${siteId}] ① (Fallback) Bỏ qua lỗi timeout/kết nối trang chủ vì phân tích truyện thành công`);
       }
       logger.info(`[TestConnector:${siteId}] ② Phân tích truyện "${mangaTitle}" thành công (${chapterCount} chương) — ${mangaUrl || candidateUrl}`);
     } else {
-      if (onProgress) onProgress('chapters', 'failed', steps.chapters.durationMs);
+      emitProgress('chapters', 'failed', steps.chapters.durationMs);
       logger.error(`[TestConnector:${siteId}] Bước [② Chương/Chapters] thất bại: ${stepError}`, {
         siteId,
         mangaUrl: candidateUrl,
         error: stepError,
       });
     }
+  }
+
+  if (abortSignal?.aborted) {
+    return { ok: false, aborted: true, durationMs: Date.now() - totalStart, steps };
   }
 
   if (!steps.chapters.ok) {
@@ -360,6 +439,9 @@ async function runConnectorTest(siteId, activeDomain, onProgress) {
   // ════════════════════════════════════════════════════════════════════
   let testChapter = null;
   {
+    if (abortSignal?.aborted) {
+      return { ok: false, aborted: true, durationMs: Date.now() - totalStart, steps };
+    }
     const stepStart = Date.now();
     let stepOk = false;
     let stepError = '';
@@ -391,7 +473,7 @@ async function runConnectorTest(siteId, activeDomain, onProgress) {
               downloadedOneImage = true;
             }
           },
-          shouldAbort: () => downloadedOneImage,
+          shouldAbort: () => downloadedOneImage || Boolean(abortSignal?.aborted),
         };
 
         const dlRes = await withTimeout(
@@ -399,6 +481,10 @@ async function runConnectorTest(siteId, activeDomain, onProgress) {
           timeout_ms.download,
           'download',
         );
+
+        if (abortSignal?.aborted) {
+          return { ok: false, aborted: true, durationMs: Date.now() - totalStart, steps };
+        }
 
         if (dlRes && (dlRes.ok === true || dlRes.aborted === true)) {
           const mangaDirPath = path.join(tmpDir, mangaTitle || 'Test');
@@ -435,6 +521,9 @@ async function runConnectorTest(siteId, activeDomain, onProgress) {
         }
       }
     } catch (err) {
+      if (abortSignal?.aborted || err?.message === 'Aborted') {
+        return { ok: false, aborted: true, durationMs: Date.now() - totalStart, steps };
+      }
       stepError = err.message || String(err);
       if (err.stack) {
         logger.error(`[TestConnector:${siteId}] Lỗi ngoại lệ khi tải ảnh chương "${testChapter?.title}": ${err.message}`, {
@@ -450,6 +539,10 @@ async function runConnectorTest(siteId, activeDomain, onProgress) {
       } catch { /* ignore cleanup errors */ }
     }
 
+    if (abortSignal?.aborted) {
+      return { ok: false, aborted: true, durationMs: Date.now() - totalStart, steps };
+    }
+
     steps.download = {
       ok: stepOk,
       durationMs: Date.now() - stepStart,
@@ -462,14 +555,14 @@ async function runConnectorTest(siteId, activeDomain, onProgress) {
     };
 
     if (stepOk) {
-      if (onProgress) onProgress('download', 'success', steps.download.durationMs);
+      emitProgress('download', 'success', steps.download.durationMs);
       if (Array.isArray(catalog_entry.skipSteps) && catalog_entry.skipSteps.includes('download')) {
         logger.info(`[TestConnector:${siteId}] ③ Bỏ qua bước tải ảnh chương "${testChapter?.title}" (DTV Ebook tải nguyên bộ qua Drive/Mediafire) — ${testChapter?.url}`);
       } else {
         logger.info(`[TestConnector:${siteId}] ③ Tải thử ảnh chương "${testChapter?.title}" thành công (${fileSize} bytes) — ${testChapter?.url}`);
       }
     } else {
-      if (onProgress) onProgress('download', 'failed', steps.download.durationMs);
+      emitProgress('download', 'failed', steps.download.durationMs);
       logger.error(`[TestConnector:${siteId}] Bước [③ Tải ảnh/Download] thất bại: ${stepError}`, {
         siteId,
         mangaTitle,
@@ -479,6 +572,10 @@ async function runConnectorTest(siteId, activeDomain, onProgress) {
         error: stepError,
       });
     }
+  }
+
+  if (abortSignal?.aborted) {
+    return { ok: false, aborted: true, durationMs: Date.now() - totalStart, steps };
   }
 
   const durationMs = Date.now() - totalStart;

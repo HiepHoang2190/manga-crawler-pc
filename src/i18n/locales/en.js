@@ -2815,6 +2815,7 @@ export const en = {
   'siteChecker.testing': 'Testing...',
   'siteChecker.cancel': 'Cancel',
   'siteChecker.status.notTested': 'Not Tested',
+  'siteChecker.status.queued': 'Queued...',
   'siteChecker.status.testing': 'Testing...',
   'siteChecker.status.success': 'Working',
   'siteChecker.status.failed': 'Failed',

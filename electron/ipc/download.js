@@ -7,11 +7,55 @@ function registerDownloadIpc(ipc_context) {
     ipc_context.setAbortRequested(true);
   });
 
+  const activeConnectorTestControllers = new Map();
+
   ipcMain.handle('app:listConnectors', () => connectors.listConnectors());
-  ipcMain.handle('app:testConnector', async (event, { siteId, activeDomain }) => {
-    return connectors.testConnector(siteId, activeDomain, (step, status, durationMs) => {
-      event.sender.send('app:testConnectorProgress', { siteId, step, status, durationMs });
-    });
+  ipcMain.handle('app:testConnector', async (event, payload = {}) => {
+    const { siteId, activeDomain } = payload || {};
+    if (!siteId) return { ok: false, error: 'siteId required', steps: {} };
+    const controller = new AbortController();
+    activeConnectorTestControllers.set(siteId, controller);
+    try {
+      return await connectors.testConnector(
+        siteId,
+        activeDomain,
+        (step, status, durationMs) => {
+          if (!controller.signal.aborted) {
+            event.sender.send('app:testConnectorProgress', { siteId, step, status, durationMs });
+          }
+        },
+        controller.signal,
+      );
+    } finally {
+      if (activeConnectorTestControllers.get(siteId) === controller) {
+        activeConnectorTestControllers.delete(siteId);
+      }
+    }
+  });
+
+  ipcMain.handle('app:cancelTestConnector', async (_event, payload) => {
+    const targetSiteId = payload && payload.siteId;
+    if (targetSiteId) {
+      const controller = activeConnectorTestControllers.get(targetSiteId);
+      if (controller) {
+        try {
+          controller.abort();
+        } catch {
+          /* ignore */
+        }
+        activeConnectorTestControllers.delete(targetSiteId);
+      }
+    } else {
+      for (const [, controller] of activeConnectorTestControllers) {
+        try {
+          controller.abort();
+        } catch {
+          /* ignore */
+        }
+      }
+      activeConnectorTestControllers.clear();
+    }
+    return { ok: true };
   });
 
   ipcMain.handle('app:detectSiteFromUrl', (_event, url) => {

@@ -484,8 +484,8 @@ function unregisterJsPlugin(_pluginId) {
   // Intentionally empty: disposal runs in JsPluginManager.disablePlugin / deletePlugin.
 }
 
-async function testConnector(siteId, activeDomain, onProgress) {
-  return runConnectorTest(siteId, activeDomain, onProgress);
+async function testConnector(siteId, activeDomain, onProgress, abortSignal) {
+  return runConnectorTest(siteId, activeDomain, onProgress, abortSignal);
 }
 
 module.exports = {
