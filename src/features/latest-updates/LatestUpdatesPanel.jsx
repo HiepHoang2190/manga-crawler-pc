@@ -415,8 +415,32 @@ export default function LatestUpdatesPanel({
   const [pluginConsoleOpen, setPluginConsoleOpen] = useState(false);
   const [pluginConsoleCopyNotice, setPluginConsoleCopyNotice] = useState(false);
   const selectedSiteIdRef = useRef('');
+  const searchInputRef = useRef(null);
   /** Rows where loadManga returned zero chapters — disable list + queue actions. */
   const [noChapterRowKeys, setNoChapterRowKeys] = useState(() => new Set());
+
+  const focusSearchInput = useCallback(() => {
+    if (!showLeftSidebar) {
+      toggleLeftSidebar();
+    }
+    setTimeout(() => {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    }, 60);
+  }, [showLeftSidebar, toggleLeftSidebar]);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'f' && (e.ctrlKey || e.metaKey)) {
+        const targetTag = e.target?.tagName?.toLowerCase();
+        if (targetTag === 'input' || targetTag === 'textarea') return;
+        e.preventDefault();
+        focusSearchInput();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [focusSearchInput]);
 
   const markRowNoChapters = useCallback((siteId, item) => {
     const row_key = `${siteId}::${item.mangaUrl}`;
@@ -1241,63 +1265,7 @@ export default function LatestUpdatesPanel({
         showLeftSidebar={showLeftSidebar}
         onToggleLeftSidebar={toggleLeftSidebar}
         leftSidebarTooltip={showLeftSidebar ? t('sidebar.hidePanel') : t('sidebar.showPanel')}
-        leftSlot={
-          <div className="flex items-center gap-2 min-w-0">
-            {subtabsSlot}
-            {hasLatestUpdatesSearch ? (
-              <div className="flex items-center gap-1.5 min-w-0">
-                <div className="relative flex items-center min-w-[14rem] max-w-sm">
-                  <span
-                    className={`material-symbols-outlined absolute left-2.5 text-[17px] pointer-events-none transition-colors ${
-                      isSearchLoading
-                        ? 'text-primary animate-spin'
-                        : 'text-on-surface-variant/60'
-                    }`}
-                  >
-                    {isSearchLoading ? 'progress_activity' : 'search'}
-                  </span>
-                  <input
-                    type="text"
-                    value={searchDraft}
-                    onChange={(e) => setSearchDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        if (searchAllSources && selectedMultiSearchSiteIds.length === 0) return;
-                        handleApplyLatestSearch();
-                      }
-                    }}
-                    placeholder={latestSearchFieldLabels.placeholder}
-                    aria-label={latestSearchFieldLabels.ariaLabel}
-                    className="h-8 w-full rounded-lg bg-surface-container-high/60 pl-8 pr-7 text-xs text-on-surface outline-none border border-outline-variant/25 focus:border-primary/50 focus:ring-1 focus:ring-primary/30"
-                    autoComplete="off"
-                  />
-                  {searchDraft && !isSearchLoading ? (
-                    <button
-                      type="button"
-                      onClick={handleClearLatestSearch}
-                      className="absolute right-2 text-on-surface-variant/60 hover:text-on-surface cursor-pointer"
-                    >
-                      <span className="material-symbols-outlined text-[15px]">close</span>
-                    </button>
-                  ) : null}
-                </div>
-                <button
-                  type="button"
-                  disabled={busyList || (searchAllSources && selectedMultiSearchSiteIds.length === 0)}
-                  onClick={handleApplyLatestSearch}
-                  aria-label={isSearchLoading ? t('latestUpdates.searching') : t('latestUpdates.searchSubmit')}
-                  className="h-8 px-2.5 rounded-lg bg-primary text-on-primary text-xs font-semibold hover:opacity-90 disabled:opacity-40 disabled:pointer-events-none cursor-pointer flex items-center gap-1.5 shrink-0 select-none transition-all"
-                >
-                  <span className={`material-symbols-outlined text-[15px] leading-none ${isSearchLoading ? 'animate-spin' : ''}`}>
-                    {isSearchLoading ? 'progress_activity' : 'search'}
-                  </span>
-                  <span>{isSearchLoading ? t('latestUpdates.searching') : t('latestUpdates.searchSubmit')}</span>
-                </button>
-              </div>
-            ) : null}
-          </div>
-        }
+        leftSlot={subtabsSlot}
         rightSlot={
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1 text-xs text-on-surface-variant">
@@ -1479,6 +1447,77 @@ export default function LatestUpdatesPanel({
             {searchScopeControl && (
               <div className="pt-1">
                 {searchScopeControl}
+              </div>
+            )}
+
+            {hasLatestUpdatesSearch && (
+              <div
+                className="space-y-2 pt-1 border-t border-outline-variant/15"
+                role="search"
+                aria-label={t('latestUpdates.searchTitle')}
+              >
+                <div className="flex items-center justify-between gap-1">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant shrink-0">
+                    {t('latestUpdates.searchTitle')}
+                  </label>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-surface-container-highest text-on-surface-variant font-medium truncate max-w-[130px]">
+                    {searchAllSources
+                      ? t('latestUpdates.searchScopeActiveBadgeAll')
+                      : selectedDescriptor?.label || selectedSiteId}
+                  </span>
+                </div>
+
+                <div className="relative flex items-center w-full">
+                  <span
+                    className={`material-symbols-outlined absolute left-2.5 text-[17px] pointer-events-none transition-colors ${
+                      isSearchLoading
+                        ? 'text-primary animate-spin'
+                        : 'text-on-surface-variant/60'
+                    }`}
+                  >
+                    {isSearchLoading ? 'progress_activity' : 'search'}
+                  </span>
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    value={searchDraft}
+                    onChange={(e) => setSearchDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (searchAllSources && selectedMultiSearchSiteIds.length === 0) return;
+                        handleApplyLatestSearch();
+                      }
+                    }}
+                    placeholder={latestSearchFieldLabels.placeholder}
+                    aria-label={latestSearchFieldLabels.ariaLabel}
+                    className="h-8.5 w-full rounded-xl bg-surface-container-high/60 pl-8 pr-7 text-xs text-on-surface outline-none border border-outline-variant/25 focus:border-primary/50 focus:ring-1 focus:ring-primary/30"
+                    autoComplete="off"
+                  />
+                  {searchDraft && !isSearchLoading ? (
+                    <button
+                      type="button"
+                      onClick={handleClearLatestSearch}
+                      aria-label={t('latestUpdates.searchClear')}
+                      className="absolute right-2 text-on-surface-variant/60 hover:text-on-surface cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[15px]">close</span>
+                    </button>
+                  ) : null}
+                </div>
+
+                <button
+                  type="button"
+                  disabled={busyList || (searchAllSources && selectedMultiSearchSiteIds.length === 0)}
+                  onClick={handleApplyLatestSearch}
+                  aria-label={isSearchLoading ? t('latestUpdates.searching') : t('latestUpdates.searchSubmit')}
+                  className="h-8 w-full rounded-lg bg-primary text-on-primary text-xs font-semibold hover:opacity-90 disabled:opacity-40 disabled:pointer-events-none cursor-pointer flex items-center justify-center gap-1.5 select-none transition-all"
+                >
+                  <span className={`material-symbols-outlined text-[15px] leading-none ${isSearchLoading ? 'animate-spin' : ''}`}>
+                    {isSearchLoading ? 'progress_activity' : 'search'}
+                  </span>
+                  <span>{isSearchLoading ? t('latestUpdates.searching') : t('latestUpdates.searchSubmit')}</span>
+                </button>
               </div>
             )}
 

@@ -858,6 +858,10 @@ export const en = {
   'latestUpdates.noChaptersFetched': 'No chapters returned to queue.',
   'latestUpdates.chapterActionsDisabledTitle':
     'This title has no chapters — cannot open the list or add to the queue.',
+  'latestUpdates.searchTitle': 'Search Manga',
+  'latestUpdates.searchToggleTooltip': 'Open search (Ctrl+F)',
+  'latestUpdates.searchScopeActiveBadgeAll': 'All sources',
+  'latestUpdates.searchResetToFeed': 'Back to latest feed',
   'latestUpdates.searchPlaceholderAll': 'Search across all supported sources…',
   'latestUpdates.searchAriaAll': 'Search manga across all supported sources',
   'latestUpdates.searchScopeLabel': 'Search scope',

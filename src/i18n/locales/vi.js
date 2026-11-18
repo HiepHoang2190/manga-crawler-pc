@@ -859,6 +859,10 @@ export const vi = {
   'latestUpdates.noChaptersFetched': 'Truyện không có chương nào để thêm.',
   'latestUpdates.chapterActionsDisabledTitle':
     'Truyện không có chương — không thể mở danh sách hoặc thêm vào hàng đợi.',
+  'latestUpdates.searchTitle': 'Tìm kiếm truyện',
+  'latestUpdates.searchToggleTooltip': 'Mở tìm kiếm (Ctrl+F)',
+  'latestUpdates.searchScopeActiveBadgeAll': 'Tất cả nguồn',
+  'latestUpdates.searchResetToFeed': 'Quay lại danh sách mới',
   'latestUpdates.searchPlaceholderAll': 'Tìm trên tất cả nguồn hỗ trợ…',
   'latestUpdates.searchAriaAll': 'Tìm truyện trên tất cả nguồn hỗ trợ',
   'latestUpdates.searchScopeLabel': 'Phạm vi tìm',
