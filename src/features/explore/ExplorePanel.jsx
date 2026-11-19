@@ -172,6 +172,14 @@ export default function ExplorePanel({
           savePath={savePath}
           mangaLoadOpts={mangaLoadOpts}
           subtabsSlot={subtabsSlot}
+          queue={queue}
+          favorites={favorites}
+          onToggleFavorite={onToggleFavorite}
+          prepareDrawerMangaForRead={prepareDrawerMangaForRead}
+          onOpenReaderForDrawerChapter={onOpenReaderForDrawerChapter}
+          onReadChapterOnlineForDrawerChapter={onReadChapterOnlineForDrawerChapter}
+          onAddQueuedFromLatest={onAddQueuedFromLatest}
+          onDownloadMangadexCovers={onDownloadMangadexCovers}
         />
       </div>
     </div>

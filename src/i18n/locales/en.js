@@ -958,6 +958,8 @@ export const en = {
   'bulkScan.needElectron': 'Run the desktop (Electron) app to load this list.',
   'bulkScan.checkAll': 'Check all',
   'bulkScan.uncheckAll': 'Uncheck all',
+  'bulkScan.selectItem': 'Select',
+  'bulkScan.unselectItem': 'Deselect',
   'bulkScan.enqueueSelected': 'Add selected to queue',
   'bulkScan.enqueueBusy': 'Adding…',
   'bulkScan.enqueueProgress': 'Queueing {current}/{total}: {title}',

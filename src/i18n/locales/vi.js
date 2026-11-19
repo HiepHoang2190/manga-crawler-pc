@@ -959,6 +959,8 @@ export const vi = {
   'bulkScan.needElectron': 'Chạy bản desktop (Electron) để tải danh sách này.',
   'bulkScan.checkAll': 'Chọn tất cả',
   'bulkScan.uncheckAll': 'Bỏ chọn tất cả',
+  'bulkScan.selectItem': 'Chọn',
+  'bulkScan.unselectItem': 'Bỏ chọn',
   'bulkScan.enqueueSelected': 'Thêm đã chọn vào queue',
   'bulkScan.enqueueBusy': 'Đang thêm…',
   'bulkScan.enqueueProgress': 'Đang xếp {current}/{total}: {title}',

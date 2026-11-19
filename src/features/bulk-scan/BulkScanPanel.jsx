@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from '../../context/I18nContext';
 import { ResizeSplitter, SearchableSelect, StudioLayout, useStudioLayout, ViewModeToggle } from '../../shared';
+import { ChaptersDrawer } from '../reader';
+import { dedupeChaptersByNumber } from '../download';
 import {
   buildSessionAfterScan,
   filterBulkScanItems,
@@ -45,10 +47,18 @@ function formatScannedWhen(scannedAt) {
 
 export default function BulkScanPanel({
   connectors = [],
-  onEnqueueLoadedManga,
+  onEnqueueLoadedManga = null,
   savePath = '',
   mangaLoadOpts = {},
   subtabsSlot = null,
+  queue = [],
+  favorites = [],
+  onToggleFavorite = null,
+  prepareDrawerMangaForRead = null,
+  onOpenReaderForDrawerChapter = null,
+  onReadChapterOnlineForDrawerChapter = null,
+  onAddQueuedFromLatest = null,
+  onDownloadMangadexCovers = null,
 }) {
   const { t } = useI18n();
   const {
@@ -99,6 +109,228 @@ export default function BulkScanPanel({
   const selectedSiteIdRef = useRef('');
   /** Absolute index in `visibleItems` — shift+click range select (ChapterList pattern). */
   const lastClickedIndexRef = useRef(null);
+
+  const [chapterDrawerOpen, setChapterDrawerOpen] = useState(false);
+  const [drawerManga, setDrawerManga] = useState(null);
+  const [drawerChapters, setDrawerChapters] = useState([]);
+  const [drawerSelectedUrls, setDrawerSelectedUrls] = useState(() => new Set());
+  const [drawerReadChapterAllowedUrls, setDrawerReadChapterAllowedUrls] = useState(null);
+  const [inlineBusyKey, setInlineBusyKey] = useState('');
+  const [enqueueKey, setEnqueueKey] = useState('');
+
+  const activeConnector = useMemo(
+    () => connectors.find((c) => c && c.id === selectedSiteId) || null,
+    [connectors, selectedSiteId],
+  );
+
+  const isMangaFavorite = useCallback(
+    (manga) => {
+      if (!manga || !Array.isArray(favorites)) return false;
+      const url = String(manga.mangaUrl || manga.url || '').trim();
+      const mid = String(manga.id || manga.mangaId || '').trim();
+      const sId = String(manga.siteId || selectedSiteId || '').trim();
+      const compositeId = `${sId}::${url}`;
+      return favorites.some((f) => {
+        if (!f) return false;
+        if (f.id && (f.id === compositeId || (mid && f.id === mid))) return true;
+        if (url && (f.url === url || f.mangaUrl === url)) return true;
+        if (sId && f.siteId === sId && f.title && manga.title && f.title === manga.title) return true;
+        return false;
+      });
+    },
+    [favorites, selectedSiteId],
+  );
+
+  const handleToggleFavorite = useCallback(
+    (item) => {
+      if (typeof onToggleFavorite !== 'function' || !item) return;
+      const mid = String(item.id || item.mangaId || `${selectedSiteId}::${item.mangaUrl}`);
+      const data = {
+        id: mid,
+        title: item.title,
+        url: item.mangaUrl,
+        mangaUrl: item.mangaUrl,
+        coverUrl: item.coverUrl,
+        siteId: selectedSiteId,
+        latestChapterLabel: item.latestChapterLabel,
+      };
+      onToggleFavorite(data, selectedSiteId);
+    },
+    [onToggleFavorite, selectedSiteId],
+  );
+
+  const drawer_chapters_urls_key = useMemo(
+    () => drawerChapters.map((c) => String(c?.url || '')).join('|'),
+    [drawerChapters],
+  );
+
+  useEffect(() => {
+    if (!chapterDrawerOpen || !drawerManga?.title || !drawer_chapters_urls_key.trim()) {
+      setDrawerReadChapterAllowedUrls(null);
+      return undefined;
+    }
+    const base = String(savePath || '').trim();
+    const manga_title = String(drawerManga.title || '').trim();
+    const api = typeof window !== 'undefined' ? window.electronAPI : null;
+    if (!base || !api?.filterChaptersWithLocalImages) {
+      setDrawerReadChapterAllowedUrls(new Set());
+      return undefined;
+    }
+    let cancelled = false;
+    setDrawerReadChapterAllowedUrls(null);
+    (async () => {
+      try {
+        const r = await api.filterChaptersWithLocalImages(base, manga_title, drawerChapters);
+        if (cancelled) return;
+        if (r?.ok && Array.isArray(r.chapters)) {
+          setDrawerReadChapterAllowedUrls(new Set(r.chapters.map((c) => String(c.url || ''))));
+        } else {
+          setDrawerReadChapterAllowedUrls(new Set());
+        }
+      } catch {
+        if (!cancelled) setDrawerReadChapterAllowedUrls(new Set());
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [chapterDrawerOpen, drawerManga?.title, drawer_chapters_urls_key, drawerChapters, savePath]);
+
+  const toggleDrawerChapter = useCallback((url) => {
+    const normalized = String(url || '').trim();
+    if (!normalized) return;
+    setDrawerSelectedUrls((prev) => {
+      const next = new Set(prev);
+      if (next.has(normalized)) next.delete(normalized);
+      else next.add(normalized);
+      return next;
+    });
+  }, []);
+
+  const selectDrawerChaptersAll = useCallback(() => {
+    const deduped = dedupeChaptersByNumber(drawerChapters);
+    setDrawerSelectedUrls(new Set(deduped.map((ch) => String(ch?.url || '').trim()).filter(Boolean)));
+  }, [drawerChapters]);
+
+  const unselectDrawerChaptersAll = useCallback(() => {
+    setDrawerSelectedUrls(new Set());
+  }, []);
+
+  const closeChapterDrawer = useCallback(() => {
+    setChapterDrawerOpen(false);
+    setDrawerManga(null);
+    setDrawerChapters([]);
+    setDrawerReadChapterAllowedUrls(null);
+    setDrawerSelectedUrls(new Set());
+  }, []);
+
+  const handleDrawerCoverChange = useCallback((cover) => {
+    if (!cover) return;
+    setDrawerManga((prev) =>
+      prev
+        ? {
+            ...prev,
+            coverUrl: cover.url512,
+            selectedCover: cover,
+          }
+        : prev,
+    );
+  }, []);
+
+  const handleDrawerAddCoversToQueue = useCallback(
+    (covers) => {
+      const manga_title = String(drawerManga?.title || '').trim();
+      if (!manga_title || typeof onDownloadMangadexCovers !== 'function') return;
+      void onDownloadMangadexCovers(manga_title, covers);
+    },
+    [drawerManga?.title, onDownloadMangadexCovers],
+  );
+
+  const handleDrawerAddToQueue = useCallback(() => {
+    if (!drawerManga) return;
+    if (typeof onAddQueuedFromLatest === 'function') {
+      const result = onAddQueuedFromLatest(drawerManga, drawerChapters, drawerSelectedUrls);
+      if (result && result.ok === false) return;
+      closeChapterDrawer();
+    } else if (typeof onEnqueueLoadedManga === 'function') {
+      const chosenChapters = drawerChapters.filter((c) => drawerSelectedUrls.has(c.url));
+      onEnqueueLoadedManga({
+        ok: true,
+        manga: drawerManga,
+        chapters: chosenChapters.length ? chosenChapters : drawerChapters,
+      });
+      closeChapterDrawer();
+    }
+  }, [drawerManga, drawerChapters, drawerSelectedUrls, onAddQueuedFromLatest, onEnqueueLoadedManga, closeChapterDrawer]);
+
+  const handleOpenChapterList = useCallback(
+    async (item) => {
+      const api = window.electronAPI;
+      if (!api?.loadManga) {
+        setFetchError(t('latestUpdates.needElectron') || 'Electron required');
+        return;
+      }
+      setInlineBusyKey(item.mangaUrl);
+      setFetchError('');
+      try {
+        const res = await api.loadManga(selectedSiteId, item.mangaUrl, mangaLoadOpts || {});
+        if (!res?.ok || !res.manga?.title) {
+          setFetchError(res?.error || t('latestUpdates.enqueueLoadIncomplete') || 'Load incomplete');
+          return;
+        }
+        const chapterList = Array.isArray(res.chapters) ? res.chapters : [];
+        if (!chapterList.length) {
+          setFetchError(t('latestUpdates.noChaptersFetched') || 'No chapters fetched');
+          return;
+        }
+        setDrawerManga({
+          ...res.manga,
+          siteId: selectedSiteId,
+        });
+        setDrawerChapters(chapterList);
+        setDrawerSelectedUrls(new Set());
+        setChapterDrawerOpen(true);
+      } catch (e) {
+        setFetchError(String(e?.message || e || t('latestUpdates.fetchFailed')));
+      } finally {
+        setInlineBusyKey('');
+      }
+    },
+    [selectedSiteId, mangaLoadOpts, t],
+  );
+
+  const handleEnqueueSingle = useCallback(
+    async (item) => {
+      const api = window.electronAPI;
+      if (!api?.loadManga || typeof onEnqueueLoadedManga !== 'function') {
+        setFetchError(t('bulkScan.needElectron'));
+        return;
+      }
+      if (!String(savePath || '').trim()) {
+        setFetchError(t('app.log.needSavePathShort'));
+        return;
+      }
+      setEnqueueKey(item.mangaUrl);
+      setFetchError('');
+      try {
+        const loadResult = await api.loadManga(selectedSiteId, item.mangaUrl, mangaLoadOpts || {});
+        const chapterList = Array.isArray(loadResult?.chapters) ? loadResult.chapters : [];
+        if (!loadResult?.ok || !chapterList.length) {
+          setFetchError(loadResult?.error || t('latestUpdates.noChaptersFetched') || 'No chapters fetched');
+          return;
+        }
+        const ent = await Promise.resolve(onEnqueueLoadedManga(loadResult));
+        if (ent && ent.ok === false) {
+          setFetchError(ent?.error || t('latestUpdates.enqueueFailed') || 'Enqueue failed');
+        }
+      } catch (e) {
+        setFetchError(String(e?.message || e || t('latestUpdates.enqueueFailed') || 'Enqueue failed'));
+      } finally {
+        setEnqueueKey('');
+      }
+    },
+    [selectedSiteId, mangaLoadOpts, onEnqueueLoadedManga, savePath, t],
+  );
 
   const hydrateSite = useCallback(async (siteId) => {
     const id = String(siteId || '').trim();
@@ -633,6 +865,10 @@ export default function BulkScanPanel({
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
                     {pageItems.map((item, index) => {
                       const checked = selected.has(item.mangaUrl);
+                      const isFavorite = isMangaFavorite(item);
+                      const openBusy = inlineBusyKey === item.mangaUrl;
+                      const enqBusy = enqueueKey === item.mangaUrl;
+                      const inlineBusy = Boolean(inlineBusyKey || enqueueKey);
                       return (
                         <div
                           key={item.mangaUrl}
@@ -641,8 +877,8 @@ export default function BulkScanPanel({
                           tabIndex={0}
                           className={`group relative flex cursor-pointer select-none flex-col overflow-hidden rounded-xl border transition-all ${
                             checked
-                              ? 'border-primary/50 bg-primary/5 ring-2 ring-primary/25'
-                              : 'border-outline-variant/20 hover:border-primary/35 hover:shadow-md'
+                              ? 'border-primary/50 bg-primary/5 ring-2 ring-primary/25 shadow-xs'
+                              : 'border-outline-variant/20 bg-surface-container-high/35 hover:border-outline-variant/40 hover:bg-surface-container-high/55 hover:shadow-md'
                           } ${controlsBusy ? 'pointer-events-none opacity-60' : ''}`}
                           onClick={(e) => applyRowSelection(e, item, index)}
                           onKeyDown={(e) => {
@@ -652,29 +888,17 @@ export default function BulkScanPanel({
                             }
                           }}
                         >
-                          <div className="absolute left-2 top-2 z-10">
-                            <input
-                              type="checkbox"
-                              data-testid="bulk-scan-checkbox"
-                              className="size-4 accent-primary"
-                              checked={checked}
-                              disabled={controlsBusy}
-                              onClick={(e) => e.stopPropagation()}
-                              onChange={(e) => {
-                                e.stopPropagation();
-                                applyRowSelection(e, item, index);
-                              }}
-                            />
-                          </div>
-                          <div className="relative aspect-[2/3] bg-surface-container-highest flex items-center justify-center overflow-hidden">
-                            <span className="material-symbols-outlined text-[28px] text-on-surface-variant/40 leading-none select-none">
-                              menu_book
-                            </span>
+                          {/* Standard Aspect Ratio Cover [3/4.2] */}
+                          <div className="relative aspect-[3/4.2] bg-surface-container-highest flex items-center justify-center overflow-hidden">
+                            <div className="flex flex-col items-center justify-center gap-1 text-on-surface-variant/40 p-2 text-center pointer-events-none select-none">
+                              <span className="material-symbols-outlined text-[32px] leading-none">menu_book</span>
+                              <span className="text-[10px] font-medium leading-tight line-clamp-1">{t('latestUpdates.noCover')}</span>
+                            </div>
                             {item.coverUrl ? (
                               <img
                                 src={item.coverUrl}
                                 alt=""
-                                className="pointer-events-none absolute inset-0 size-full object-cover"
+                                className="pointer-events-none absolute inset-0 size-full object-cover group-hover:scale-105 transition-transform duration-300"
                                 loading="lazy"
                                 decoding="async"
                                 referrerPolicy="no-referrer"
@@ -683,16 +907,145 @@ export default function BulkScanPanel({
                                 }}
                               />
                             ) : null}
-                          </div>
-                          <div className="space-y-0.5 p-2">
-                            <div className="line-clamp-2 text-xs font-medium text-on-surface sm:text-sm">
-                              {item.title}
+
+                            {/* Top-Left: Modern Checkbox + Source Badge */}
+                            <div
+                              className="absolute left-2 top-2 z-[2] flex items-center gap-1.5 max-w-[calc(100%-3rem)]"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <input
+                                type="checkbox"
+                                data-testid="bulk-scan-checkbox"
+                                className="sr-only"
+                                checked={checked}
+                                disabled={controlsBusy}
+                                onChange={(e) => applyRowSelection(e, item, index)}
+                              />
+                              <button
+                                type="button"
+                                data-testid="bulk-scan-card-checkbox"
+                                onClick={(e) => applyRowSelection(e, item, index)}
+                                disabled={controlsBusy}
+                                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border transition-all cursor-pointer shadow-md backdrop-blur-sm ${
+                                  checked
+                                    ? 'border-primary bg-primary text-on-primary ring-1 ring-white/30'
+                                    : 'border-white/30 bg-black/50 text-white/90 hover:bg-black/70 hover:text-white'
+                                }`}
+                                aria-label={checked ? t('bulkScan.unselectItem') : t('bulkScan.selectItem')}
+                                data-tooltip={checked ? t('bulkScan.unselectItem') : t('bulkScan.selectItem')}
+                              >
+                                <span className="material-symbols-outlined text-[16px] leading-none font-bold">
+                                  {checked ? 'check' : ''}
+                                </span>
+                              </button>
+                              <span className="pointer-events-none truncate rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white flex items-center gap-1 backdrop-blur-sm shadow-md">
+                                {activeConnector?.icon ? (
+                                  <img src={activeConnector.icon} alt="" className="w-3 h-3 rounded shrink-0" />
+                                ) : null}
+                                <span className="truncate">{activeConnector?.label || selectedSiteId}</span>
+                              </span>
                             </div>
-                            {item.latestChapterLabel ? (
-                              <div className="truncate text-[10px] text-on-surface-variant sm:text-xs">
-                                {item.latestChapterLabel}
-                              </div>
+
+                            {/* Top-Right: Bookmark Heart */}
+                            {typeof onToggleFavorite === 'function' ? (
+                              <button
+                                type="button"
+                                aria-pressed={isFavorite}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleFavorite(item);
+                                }}
+                                className={`absolute right-2 top-2 z-[2] flex h-7 w-7 cursor-pointer items-center justify-center rounded-full shadow-md transition-all ${
+                                  isFavorite
+                                    ? 'bg-rose-500/80 text-white ring-1 ring-white/40 backdrop-blur-[2px] hover:bg-rose-500/90'
+                                    : 'border border-white/25 bg-black/40 text-white/95 shadow-black/10 backdrop-blur-sm hover:bg-black/50'
+                                }`}
+                                data-tooltip={
+                                  isFavorite
+                                    ? t('mangaInfo.favoriteRemove')
+                                    : t('mangaInfo.favoriteAdd')
+                                }
+                                aria-label={
+                                  isFavorite
+                                    ? t('mangaInfo.favoriteRemove')
+                                    : t('mangaInfo.favoriteAdd')
+                                }
+                              >
+                                <span
+                                  className="material-symbols-outlined block text-[15px] leading-none"
+                                  style={
+                                    isFavorite
+                                      ? { fontVariationSettings: "'FILL' 1, 'wght' 300, 'GRAD' 0, 'opsz' 20" }
+                                      : { fontVariationSettings: "'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 20" }
+                                  }
+                                >
+                                  {isFavorite ? 'favorite' : 'favorite_border'}
+                                </span>
+                              </button>
                             ) : null}
+                          </div>
+
+                          {/* Card Body */}
+                          <div className="flex min-h-0 flex-1 flex-col gap-1 p-3">
+                            <p
+                              className="line-clamp-2 text-sm font-semibold leading-snug text-on-surface group-hover:text-primary transition-colors cursor-pointer"
+                              data-tooltip={item.title}
+                            >
+                              {item.title}
+                            </p>
+                            {item.latestChapterLabel ? (
+                              <p className="text-xs text-on-surface-variant truncate">
+                                {item.latestChapterLabel}
+                              </p>
+                            ) : null}
+
+                            <div
+                              className="mt-auto flex w-full items-center gap-1.5 pt-1"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button
+                                type="button"
+                                disabled={openBusy || inlineBusy}
+                                onClick={() => handleOpenChapterList(item)}
+                                className="flex-1 min-w-0 h-8 rounded-lg bg-primary text-on-primary hover:opacity-90 text-xs font-semibold transition-all flex items-center justify-center gap-1.5 disabled:pointer-events-none disabled:opacity-45 cursor-pointer shadow-2xs"
+                              >
+                                {openBusy ? (
+                                  <span className="inline-flex items-center justify-center gap-1">
+                                    <span className="material-symbols-outlined animate-spin text-[14px] leading-none">
+                                      progress_activity
+                                    </span>
+                                    <span className="truncate">{t('latestUpdates.loading')}</span>
+                                  </span>
+                                ) : (
+                                  <>
+                                    <span className="material-symbols-outlined text-[15px] leading-none shrink-0">
+                                      format_list_bulleted
+                                    </span>
+                                    <span className="truncate whitespace-nowrap">
+                                      {t('latestUpdates.openChapterList')}
+                                    </span>
+                                  </>
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={enqBusy || inlineBusy}
+                                data-tooltip={t('latestUpdates.addToQueue')}
+                                aria-label={t('latestUpdates.addToQueue')}
+                                onClick={() => handleEnqueueSingle(item)}
+                                className="h-8 w-8 shrink-0 rounded-lg bg-primary text-on-primary hover:opacity-90 transition-all flex items-center justify-center disabled:pointer-events-none disabled:opacity-45 cursor-pointer shadow-2xs"
+                              >
+                                {enqBusy ? (
+                                  <span className="material-symbols-outlined animate-spin text-[15px] leading-none">
+                                    progress_activity
+                                  </span>
+                                ) : (
+                                  <span className="material-symbols-outlined text-[17px] leading-none">
+                                    playlist_add
+                                  </span>
+                                )}
+                              </button>
+                            </div>
                           </div>
                         </div>
                       );
@@ -702,6 +1055,10 @@ export default function BulkScanPanel({
                   <ul className="flex flex-col gap-2">
                     {pageItems.map((item, index) => {
                       const checked = selected.has(item.mangaUrl);
+                      const isFavorite = isMangaFavorite(item);
+                      const openBusy = inlineBusyKey === item.mangaUrl;
+                      const enqBusy = enqueueKey === item.mangaUrl;
+                      const inlineBusy = Boolean(inlineBusyKey || enqueueKey);
                       const host = item.mangaUrl ? connectorHost(item.mangaUrl) : '';
                       return (
                         <li
@@ -751,9 +1108,9 @@ export default function BulkScanPanel({
                                 >
                                   {item.title}
                                 </h4>
-                                {host ? (
+                                {activeConnector?.label || host ? (
                                   <span className="text-[10px] font-semibold uppercase tracking-wide text-primary bg-primary/10 px-2 py-0.5 rounded shrink-0">
-                                    {host}
+                                    {activeConnector?.label || host}
                                   </span>
                                 ) : null}
                               </div>
@@ -774,7 +1131,84 @@ export default function BulkScanPanel({
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+                          {/* Action buttons matching unified list standard */}
+                          <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              disabled={openBusy || inlineBusy}
+                              onClick={() => handleOpenChapterList(item)}
+                              className="h-8 px-3 rounded-lg text-xs font-semibold bg-primary text-on-primary hover:opacity-90 flex items-center justify-center gap-1.5 transition-all active:scale-95 disabled:pointer-events-none disabled:opacity-45 cursor-pointer shadow-2xs whitespace-nowrap"
+                            >
+                              {openBusy ? (
+                                <span className="inline-flex items-center justify-center gap-1.5">
+                                  <span className="material-symbols-outlined animate-spin text-[14px] leading-none">
+                                    progress_activity
+                                  </span>
+                                  <span>{t('latestUpdates.loading')}</span>
+                                </span>
+                              ) : (
+                                <>
+                                  <span className="material-symbols-outlined text-[15px] leading-none shrink-0">
+                                    format_list_bulleted
+                                  </span>
+                                  <span className="whitespace-nowrap">{t('latestUpdates.openChapterList')}</span>
+                                </>
+                              )}
+                            </button>
+
+                            <button
+                              type="button"
+                              disabled={enqBusy || inlineBusy}
+                              data-tooltip={t('latestUpdates.addToQueue')}
+                              aria-label={t('latestUpdates.addToQueue')}
+                              onClick={() => handleEnqueueSingle(item)}
+                              className="h-8 w-8 shrink-0 rounded-lg bg-primary text-on-primary hover:opacity-90 transition-all flex items-center justify-center disabled:pointer-events-none disabled:opacity-45 cursor-pointer shadow-2xs"
+                            >
+                              {enqBusy ? (
+                                <span className="material-symbols-outlined animate-spin text-[15px] leading-none">
+                                  progress_activity
+                                </span>
+                              ) : (
+                                <span className="material-symbols-outlined text-[17px] leading-none">
+                                  playlist_add
+                                </span>
+                              )}
+                            </button>
+
+                            {typeof onToggleFavorite === 'function' ? (
+                              <button
+                                type="button"
+                                aria-pressed={isFavorite}
+                                onClick={() => handleToggleFavorite(item)}
+                                className={`h-8 w-8 shrink-0 rounded-lg border transition-all flex items-center justify-center cursor-pointer shadow-2xs ${
+                                  isFavorite
+                                    ? 'border-rose-500/30 bg-rose-500/15 text-rose-500 hover:bg-rose-500/25'
+                                    : 'border-outline-variant/20 bg-surface-container-highest hover:bg-surface-bright text-on-surface-variant hover:text-rose-500'
+                                }`}
+                                data-tooltip={
+                                  isFavorite
+                                    ? t('mangaInfo.favoriteRemove')
+                                    : t('mangaInfo.favoriteAdd')
+                                }
+                                aria-label={
+                                  isFavorite
+                                    ? t('mangaInfo.favoriteRemove')
+                                    : t('mangaInfo.favoriteAdd')
+                                }
+                              >
+                                <span
+                                  className="material-symbols-outlined block text-[15px] leading-none"
+                                  style={
+                                    isFavorite
+                                      ? { fontVariationSettings: "'FILL' 1, 'wght' 300, 'GRAD' 0, 'opsz' 20" }
+                                      : { fontVariationSettings: "'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 20" }
+                                  }
+                                >
+                                  {isFavorite ? 'favorite' : 'favorite_border'}
+                                </span>
+                              </button>
+                            ) : null}
+
                             <button
                               type="button"
                               disabled={controlsBusy}
@@ -784,7 +1218,7 @@ export default function BulkScanPanel({
                                   ? 'border-primary bg-primary text-on-primary'
                                   : 'border-outline-variant/20 bg-surface-container-highest text-on-surface-variant hover:border-outline-variant/40 hover:bg-surface-bright'
                               }`}
-                              data-tooltip={checked ? t('bulkScan.deselectItem') || 'Bỏ chọn' : t('bulkScan.selectItem') || 'Chọn'}
+                              data-tooltip={checked ? t('bulkScan.unselectItem') : t('bulkScan.selectItem')}
                               aria-label={checked ? 'Deselect' : 'Select'}
                             >
                               <span className="material-symbols-outlined text-[17px] leading-none">
@@ -893,6 +1327,51 @@ export default function BulkScanPanel({
           )}
         </StudioLayout.Content>
       </StudioLayout.Body>
+
+      <ChaptersDrawer
+        open={chapterDrawerOpen}
+        onClose={closeChapterDrawer}
+        drawerHeading={drawerManga?.title || null}
+        coverUrl={drawerManga?.coverUrl || ''}
+        description={drawerManga?.description || ''}
+        chapters={drawerChapters}
+        queue={queue}
+        currentMangaUrl={String(drawerManga?.mangaUrl || '').trim()}
+        selectedUrls={drawerSelectedUrls}
+        setSelectedUrls={setDrawerSelectedUrls}
+        onToggleChapter={toggleDrawerChapter}
+        onSelectAll={selectDrawerChaptersAll}
+        onUnselectAll={unselectDrawerChaptersAll}
+        onAddSelectedToQueue={handleDrawerAddToQueue}
+        onReadChapter={
+          typeof prepareDrawerMangaForRead === 'function' &&
+          typeof onOpenReaderForDrawerChapter === 'function'
+            ? (ch) => {
+                if (!drawerManga) return;
+                prepareDrawerMangaForRead(drawerManga, drawerChapters);
+                onOpenReaderForDrawerChapter(ch);
+                closeChapterDrawer();
+              }
+            : undefined
+        }
+        onReadChapterOnline={
+          typeof prepareDrawerMangaForRead === 'function' &&
+          typeof onReadChapterOnlineForDrawerChapter === 'function' &&
+          !drawerManga?.offlineOnly
+            ? (ch) => {
+                if (!drawerManga) return;
+                prepareDrawerMangaForRead(drawerManga, drawerChapters);
+                onReadChapterOnlineForDrawerChapter(ch);
+                closeChapterDrawer();
+              }
+            : undefined
+        }
+        readOnlineEnabled={Boolean(String(savePath || '').trim())}
+        readChapterAllowedUrls={drawerReadChapterAllowedUrls}
+        manga={drawerManga}
+        onCoverChange={handleDrawerCoverChange}
+        onAddCoversToQueue={handleDrawerAddCoversToQueue}
+      />
     </StudioLayout>
   );
 }
