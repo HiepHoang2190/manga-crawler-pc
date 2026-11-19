@@ -87,6 +87,7 @@ export const BACKUP_SECTIONS = {
       'explore_followed_left_width_v1',
       'explore_followed_left_open_v1',
       'followed_manga_view_mode_v1',
+      'chapter_sort_order_v1',
     ],
   },
   appSettings: {

@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { useI18n } from '../../../context/I18nContext';
 import { SearchableSelect } from '../../../shared';
 import { compareChaptersForTitleSort, dedupeChaptersByUrl } from '../../../utils/chapterSort';
+import { loadChapterSortOrder, saveChapterSortOrder } from '../../../utils/panelUiPrefs.js';
 import { hasVolumeData, groupChaptersByVolume } from '../utils/chapterVolumeGrouping.js';
 import { parseChapterTitleMetadata } from '../utils/chapterTitleParser.js';
 import {
@@ -61,8 +62,8 @@ export default function ChapterList({
 }) {
   const { t } = useI18n();
   const isPick = mode === 'pick';
-  /** null = giữ thứ tự từ API / nguồn; asc|desc = sort theo tiêu đề */
-  const [titleSort, setTitleSort] = useState(null);
+  /** 'desc' = mới nhất lên đầu (mặc định); 'asc' = cũ nhất lên đầu */
+  const [titleSort, setTitleSort] = useState(() => loadChapterSortOrder());
   const lastClickedIndexRef = useRef(null);
   const dragAnchorRef = useRef(null);
   const dragActiveRef = useRef(false);
@@ -122,7 +123,6 @@ export default function ChapterList({
   );
 
   const sortedChapters = useMemo(() => {
-    if (titleSort == null) return [...chaptersForList];
     const indexed = chaptersForList.map((ch, i) => ({ ch, i }));
     indexed.sort((a, b) => {
       const cmp = compareChaptersForTitleSort(a.ch, b.ch, a.i, b.i);
@@ -269,9 +269,9 @@ export default function ChapterList({
 
   const handleTitleHeaderClick = () => {
     setTitleSort((prev) => {
-      if (prev == null) return 'asc';
-      if (prev === 'asc') return 'desc';
-      return null;
+      const next = prev === 'desc' ? 'asc' : 'desc';
+      saveChapterSortOrder(next);
+      return next;
     });
   };
 
@@ -743,17 +743,11 @@ export default function ChapterList({
                 type="button"
                 onClick={handleTitleHeaderClick}
                 className="inline-flex cursor-pointer select-none items-center gap-1 text-xs text-on-surface-variant hover:text-primary transition-colors ml-1"
-                data-tooltip={
-                  titleSort == null
-                    ? t('chapterList.titleSortSource')
-                    : titleSort === 'asc'
-                      ? t('chapterList.titleSortAsc')
-                      : t('chapterList.titleSortDesc')
-                }
+                data-tooltip={titleSort === 'asc' ? t('chapterList.titleSortAsc') : t('chapterList.titleSortDesc')}
                 aria-label={t('chapterList.column.title')}
               >
                 <span className="material-symbols-outlined text-[16px] leading-none text-primary">
-                  {titleSort == null ? 'swap_vert' : titleSort === 'asc' ? 'arrow_upward' : 'arrow_downward'}
+                  {titleSort === 'asc' ? 'arrow_upward' : 'arrow_downward'}
                 </span>
               </button>
             ) : null}
@@ -952,17 +946,11 @@ export default function ChapterList({
                     type="button"
                     onClick={handleTitleHeaderClick}
                     className="inline-flex cursor-pointer select-none items-center gap-1 hover:text-primary"
-                    data-tooltip={
-                      titleSort == null
-                        ? t('chapterList.titleSortSource')
-                        : titleSort === 'asc'
-                          ? t('chapterList.titleSortAsc')
-                          : t('chapterList.titleSortDesc')
-                    }
+                    data-tooltip={titleSort === 'asc' ? t('chapterList.titleSortAsc') : t('chapterList.titleSortDesc')}
                   >
                     {t('chapterList.column.title')}
                     <span className="material-symbols-outlined text-[16px] leading-none text-primary">
-                      {titleSort == null ? 'swap_vert' : titleSort === 'asc' ? 'arrow_upward' : 'arrow_downward'}
+                      {titleSort === 'asc' ? 'arrow_upward' : 'arrow_downward'}
                     </span>
                   </button>
                 </th>

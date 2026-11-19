@@ -1455,8 +1455,8 @@ export const vi = {
 
   'chapterList.title': 'Chương có sẵn',
   'chapterList.titleSortSource': 'Thứ tự từ nguồn — bấm để sort A→Z',
-  'chapterList.titleSortAsc': 'A→Z — bấm để Z→A',
-  'chapterList.titleSortDesc': 'Z→A — bấm để về thứ tự nguồn',
+  'chapterList.titleSortAsc': 'Cũ nhất trước — bấm để đổi sang mới nhất',
+  'chapterList.titleSortDesc': 'Mới nhất trước — bấm để đổi sang cũ nhất',
   'chapterList.selectAll': 'Chọn tất cả',
   'chapterList.unselectAll': 'Bỏ chọn',
   'chapterList.hint1': 'Bấm dòng để tick/bỏ tick. Giữ ',

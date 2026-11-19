@@ -206,3 +206,32 @@ export function savePanelUi(partial) {
     /* quota */
   }
 }
+
+export const CHAPTER_SORT_STORAGE_KEY = 'chapter_sort_order_v1';
+
+/**
+ * Lấy thứ tự sắp xếp danh sách chương (mặc định 'desc' - Mới nhất lên đầu).
+ * @returns {'desc' | 'asc'}
+ */
+export function loadChapterSortOrder() {
+  try {
+    const val = localStorage.getItem(CHAPTER_SORT_STORAGE_KEY);
+    return val === 'asc' ? 'asc' : 'desc';
+  } catch {
+    return 'desc';
+  }
+}
+
+/**
+ * Lưu thứ tự sắp xếp danh sách chương.
+ * @param {'desc' | 'asc'} direction
+ */
+export function saveChapterSortOrder(direction) {
+  try {
+    const valid = direction === 'asc' ? 'asc' : 'desc';
+    localStorage.setItem(CHAPTER_SORT_STORAGE_KEY, valid);
+  } catch {
+    /* quota */
+  }
+}
+

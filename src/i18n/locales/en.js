@@ -1454,8 +1454,8 @@ export const en = {
 
   'chapterList.title': 'Available Chapters',
   'chapterList.titleSortSource': 'Source order — click to sort A→Z',
-  'chapterList.titleSortAsc': 'A→Z — click for Z→A',
-  'chapterList.titleSortDesc': 'Z→A — click to restore source order',
+  'chapterList.titleSortAsc': 'Oldest first — click to sort newest first',
+  'chapterList.titleSortDesc': 'Newest first — click to sort oldest first',
   'chapterList.selectAll': 'Select All',
   'chapterList.unselectAll': 'Unselect All',
   'chapterList.hint1': 'Click a row to toggle selection. Hold ',
