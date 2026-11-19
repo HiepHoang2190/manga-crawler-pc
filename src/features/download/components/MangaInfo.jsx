@@ -257,7 +257,7 @@ export default function MangaInfo({
                   <span className="material-symbols-outlined shrink-0 select-none text-[18px] leading-none text-white">
                     format_list_bulleted
                   </span>
-                  <span className="truncate">{t('chapterList.openDrawerShort')}</span>
+                  <span className="truncate whitespace-nowrap">{t('chapterList.openDrawerShort')}</span>
                 </button>
               ) : null}
               {typeof onEnqueueAllToQueue === 'function' ? (

@@ -15,7 +15,7 @@ function StatusBadge({ variant, label }) {
     pending: 'bg-surface-container-highest text-on-surface-variant',
     queued: 'bg-secondary-container text-on-secondary-container',
     inProgress: 'bg-primary-container text-on-primary-container font-bold',
-    completed: 'bg-green-900/40 text-green-300',
+    completed: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-medium',
   };
 
   return (
@@ -135,20 +135,30 @@ export default function ChapterList({
   const statusByChapterUrl = useMemo(() => {
     const map = new Map();
     const mu = String(currentMangaUrl || '').trim();
-    if (!mu) return map;
-    const g = queue.find((x) => x.mangaUrl === mu);
-    if (!g) return map;
+    if (!mu || !Array.isArray(queue)) return map;
+    const g = queue.find((x) => String(x.mangaUrl || '').trim() === mu);
+    if (!g?.chapters) return map;
     for (const ch of g.chapters) {
-      map.set(ch.chapterUrl, ch.status);
+      const u = String(ch.chapterUrl || '').trim();
+      if (u) {
+        map.set(u, ch.status);
+      }
+      if (ch.chapterUrl) {
+        map.set(ch.chapterUrl, ch.status);
+      }
     }
     return map;
   }, [queue, currentMangaUrl]);
 
   const rowStatusKey = (ch) => {
     if (chapterStatusKeyOverride) return chapterStatusKeyOverride;
-    const st = statusByChapterUrl.get(ch.url);
+    const url_string = String(ch?.url ?? '').trim();
+    const has_local_file =
+      readChapterAllowedUrls instanceof Set &&
+      (readChapterAllowedUrls.has(url_string) || (ch?.url && readChapterAllowedUrls.has(ch.url)));
+    const st = statusByChapterUrl.get(url_string) || (ch?.url && statusByChapterUrl.get(ch.url));
     if (st === 'downloading') return 'inProgress';
-    if (st === 'done') return 'completed';
+    if (has_local_file || st === 'done') return 'completed';
     if (st === 'waiting') return 'queued';
     return 'pending';
   };

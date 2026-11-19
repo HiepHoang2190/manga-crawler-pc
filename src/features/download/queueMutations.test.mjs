@@ -7,6 +7,7 @@ import {
   mergeHistoryRowsIntoQueue,
   countNewHistoryChapters,
   listQueuedChapterUrlsAhead,
+  unpauseQueueGroupsWithWaiting,
   setGroupWorkflow,
   setAllGroupsWorkflow,
   updateGroupWorkflowState,
@@ -287,6 +288,65 @@ describe('workflow mutations', () => {
       });
       expect(next[0].workflowState).toBe('completed');
       expect(next[0].workflowProgress).toEqual({ percent: 100, message: 'Done' });
+    });
+  });
+
+  describe('unpauseQueueGroupsWithWaiting', () => {
+    test('unpauses all paused groups with waiting chapters when groupIds is null', () => {
+      const queue = [
+        {
+          id: 'g1',
+          paused: true,
+          chapters: [{ id: 'c1', status: 'waiting' }],
+        },
+        {
+          id: 'g2',
+          paused: true,
+          chapters: [{ id: 'c2', status: 'done' }],
+        },
+        {
+          id: 'g3',
+          paused: false,
+          chapters: [{ id: 'c3', status: 'waiting' }],
+        },
+      ];
+
+      const next = unpauseQueueGroupsWithWaiting(queue);
+      expect(next[0].paused).toBe(false);
+      expect(next[1].paused).toBe(true); // no waiting chapters, stays paused
+      expect(next[2].paused).toBe(false);
+    });
+
+    test('unpauses only targeted groupIds with waiting chapters', () => {
+      const queue = [
+        {
+          id: 'g1',
+          paused: true,
+          chapters: [{ id: 'c1', status: 'waiting' }],
+        },
+        {
+          id: 'g2',
+          paused: true,
+          chapters: [{ id: 'c2', status: 'waiting' }],
+        },
+      ];
+
+      const next = unpauseQueueGroupsWithWaiting(queue, ['g1']);
+      expect(next[0].paused).toBe(false);
+      expect(next[1].paused).toBe(true);
+    });
+
+    test('returns exact same queue reference when no group needs unpausing', () => {
+      const queue = [
+        {
+          id: 'g1',
+          paused: false,
+          chapters: [{ id: 'c1', status: 'waiting' }],
+        },
+      ];
+
+      const next = unpauseQueueGroupsWithWaiting(queue);
+      expect(next).toBe(queue);
     });
   });
 });

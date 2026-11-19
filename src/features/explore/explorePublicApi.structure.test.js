@@ -18,6 +18,7 @@ test('src/features/explore/ExplorePanel.jsx exists and defines ExplorePanel comp
   expect(src).toMatch(/export\s+default\s+function\s+ExplorePanel/);
   expect(src).toMatch(/activeSubtab/);
   expect(src).toMatch(/LatestUpdatesPanel/);
+  expect(src).toMatch(/FollowedMangaPanel/);
   expect(src).toMatch(/BulkScanPanel/);
 });
 

@@ -72,7 +72,6 @@ export function ReaderPageBottomNav({
             <button
               type="button"
               onClick={handleJumpToPage}
-              data-tooltip={t('reader.jumpPage')}
               aria-label={t('reader.jumpPage')}
               className="h-7 cursor-pointer rounded-lg bg-primary/20 px-2.5 text-xs font-semibold text-primary whitespace-nowrap transition-all hover:bg-primary hover:text-on-primary active:scale-95"
             >

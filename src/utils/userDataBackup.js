@@ -29,6 +29,7 @@ export const BACKUP_SECTIONS = {
       'mangaFavoriteBellDismissedRemoteById',
       'mangaFavoriteBellPanelRemovedRemoteById',
       'mangaFavoriteLastNotifiedRemoteById',
+      'crawler:followed-manga-sync-v1',
     ],
   },
   history: {
@@ -83,6 +84,9 @@ export const BACKUP_SECTIONS = {
       'explore_left_width_v1',
       'explore_left_open_v1',
       'explore_subtab_v1',
+      'explore_followed_left_width_v1',
+      'explore_followed_left_open_v1',
+      'followed_manga_view_mode_v1',
     ],
   },
   appSettings: {

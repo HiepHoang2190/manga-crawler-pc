@@ -537,7 +537,6 @@ export default function QueuePanel({
   const hasWaiting = queue.some(
     (g) =>
       selectedIds.has(g.id) &&
-      !g.paused &&
       g.chapters.some((c) => c.status === 'waiting')
   );
   const hasClearable = queue.some(

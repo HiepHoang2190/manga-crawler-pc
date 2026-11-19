@@ -198,7 +198,7 @@ export function TranslateGeneralSettingsSection({
             type="button"
             onClick={onOpenResetModal}
             className="cursor-pointer rounded-xl border border-error/30 bg-error/5 hover:bg-error/15 px-3 py-1.5 text-xs font-medium text-error transition-colors"
-            data-tooltip={t('translate.settings.resetBtn')}
+            aria-label={t('translate.settings.resetBtn')}
           >
             {t('translate.settings.resetBtn')}
           </button>

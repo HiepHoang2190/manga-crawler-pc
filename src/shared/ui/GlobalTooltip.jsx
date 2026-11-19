@@ -38,13 +38,26 @@ export default function GlobalTooltip() {
 
       const text = target.getAttribute('data-tooltip');
       if (text && text.trim()) {
+        const trimmed = text.trim();
+
+        // Safeguard: Triệt tiêu tooltip nếu nội dung tooltip trùng lặp hoàn toàn với text nhãn hiển thị của button/phần tử
+        if (target.tagName === 'BUTTON' || target.tagName === 'A' || target.getAttribute('role') === 'button') {
+          const clone = target.cloneNode(true);
+          const nonTextElements = clone.querySelectorAll('.material-symbols-outlined, svg, img');
+          nonTextElements.forEach((el) => el.remove());
+          const visibleText = (clone.textContent || '').replace(/\s+/g, ' ').trim();
+          if (visibleText && visibleText.toLowerCase() === trimmed.toLowerCase()) {
+            return;
+          }
+        }
+
         if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
         if (timerRef.current) clearTimeout(timerRef.current);
 
         timerRef.current = setTimeout(() => {
           setTooltip({
             visible: true,
-            text: text.trim(),
+            text: trimmed,
             target,
           });
         }, 40);

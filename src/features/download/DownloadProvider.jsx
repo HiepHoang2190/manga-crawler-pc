@@ -24,6 +24,7 @@ import {
   clearCompletedQueueGroups,
   clearCompletedChaptersInGroup as clearCompletedChaptersInGroupState,
   pauseQueueGroups,
+  unpauseQueueGroupsWithWaiting,
   toggleGroupDownloadOrder as toggleGroupDownloadOrderState,
   retryFailedChapters as retryFailedChaptersState,
   reorderQueueGroups,
@@ -248,10 +249,14 @@ export function DownloadProvider({ children }) {
     });
   }, []);
 
-  const processQueue = useCallback(async () => {
+  const processQueue = useCallback(async (options = {}) => {
     if (queueProcessingRef.current) {
       return;
     }
+    const isEvent = Boolean(options && (options.nativeEvent || options._reactName));
+    const opts = isEvent || typeof options !== 'object' || options === null ? {} : options;
+    const shouldUnpauseAll = Boolean(opts.unpauseAll);
+
     const api = window.electronAPI;
     if (!api?.downloadChapter) {
       appendLog(t('app.log.electronDownload'), 'warn');
@@ -280,24 +285,52 @@ export function DownloadProvider({ children }) {
       }
     }
 
+    if (shouldUnpauseAll) {
+      const nextQueue = unpauseQueueGroupsWithWaiting(queueRef.current);
+      if (nextQueue !== queueRef.current) {
+        queueRef.current = nextQueue;
+        setQueue(nextQueue);
+      }
+    }
+
     let selected = queueSelectedIdsRef.current;
-    if (!selected.size) {
-      const waitingGroupIds = queueRef.current
-        .filter((g) => !g.paused && g.chapters.some((c) => c.status === 'waiting'))
+    if (!selected.size || shouldUnpauseAll) {
+      let waitingGroupIds = queueRef.current
+        .filter((g) => (!g.paused || shouldUnpauseAll) && g.chapters.some((c) => c.status === 'waiting'))
         .map((g) => g.id);
+      if (waitingGroupIds.length === 0) {
+        waitingGroupIds = queueRef.current
+          .filter((g) => g.chapters.some((c) => c.status === 'waiting'))
+          .map((g) => g.id);
+      }
       if (waitingGroupIds.length > 0) {
-        selected = new Set(waitingGroupIds);
+        selected = shouldUnpauseAll ? new Set([...selected, ...waitingGroupIds]) : new Set(waitingGroupIds);
         queueSelectedIdsRef.current = selected;
         setQueueSelectedIds(selected);
       }
     }
 
-    const hasWaiting = queueRef.current.some(
+    let hasWaiting = queueRef.current.some(
       (g) =>
         selected.has(g.id) &&
         !g.paused &&
         g.chapters.some((c) => c.status === 'waiting')
     );
+
+    if (!hasWaiting && selected.size > 0) {
+      const nextQueue = unpauseQueueGroupsWithWaiting(queueRef.current, Array.from(selected));
+      if (nextQueue !== queueRef.current) {
+        queueRef.current = nextQueue;
+        setQueue(nextQueue);
+        hasWaiting = queueRef.current.some(
+          (g) =>
+            selected.has(g.id) &&
+            !g.paused &&
+            g.chapters.some((c) => c.status === 'waiting')
+        );
+      }
+    }
+
     if (!selected.size) {
       appendLog(t('app.log.queueStartNeedManga'), 'warn');
       return;

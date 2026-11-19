@@ -163,6 +163,22 @@ export function pauseQueueGroups(prev, group_ids, paused) {
   return prev.map((g) => (id_set.has(g.id) ? { ...g, paused } : g));
 }
 
+export function unpauseQueueGroupsWithWaiting(prev, group_ids = null) {
+  if (!Array.isArray(prev) || prev.length === 0) return prev;
+  const id_set = Array.isArray(group_ids) && group_ids.length ? new Set(group_ids) : null;
+  let changed = false;
+  const next = prev.map((g) => {
+    if (id_set && !id_set.has(g.id)) return g;
+    const hasWaiting = Array.isArray(g.chapters) && g.chapters.some((c) => c.status === 'waiting');
+    if (g.paused && hasWaiting) {
+      changed = true;
+      return { ...g, paused: false };
+    }
+    return g;
+  });
+  return changed ? next : prev;
+}
+
 export function toggleGroupDownloadOrder(prev, group_id) {
   return prev.map((g) => {
     if (g.id !== group_id) return g;

@@ -239,6 +239,7 @@ export default function ShellLayout() {
     favoritesWithNewList,
     downloadedCountForReaderCbz,
     favoriteSyncById,
+    enqueueFavoritePendingChapters,
     fetchAllFavoritesBusy,
     bellReadRemoteById,
     favoriteAutoCheckEnabled,
@@ -1098,6 +1099,10 @@ export default function ShellLayout() {
             mangaLoadOpts={latestMangaLoadOpts}
             onEnqueueLoadedManga={handleEnqueueLoadedMangaFromLatest}
             queue={queue}
+            queueProcessing={queueProcessing}
+            downloadProgress={downloadProgress}
+            onStartQueue={startQueue}
+            onStopQueue={stopQueue}
             onAddQueuedFromLatest={handleAddQueuedFromLatest}
             onDownloadMangadexCovers={handleDownloadMangadexCovers}
             savePath={savePath}
@@ -1109,6 +1114,8 @@ export default function ShellLayout() {
               openReader(ch, { stream: true });
             }}
             favorites={favorites}
+            favoriteSyncById={favoriteSyncById}
+            onEnqueuePendingChapters={enqueueFavoritePendingChapters}
             onToggleFavorite={toggleFavoriteFromLatest}
           />
         </div>

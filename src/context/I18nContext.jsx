@@ -13,6 +13,27 @@ function interpolate(str, params) {
   );
 }
 
+function resolveTranslation(dict, fallbackDict, key, paramsOrFallback, maybeParams) {
+  let s = dict?.[key] ?? fallbackDict?.[key];
+  const params =
+    maybeParams && typeof maybeParams === 'object'
+      ? maybeParams
+      : paramsOrFallback && typeof paramsOrFallback === 'object'
+        ? paramsOrFallback
+        : null;
+
+  if (s === undefined) {
+    if (typeof paramsOrFallback === 'string') {
+      return params ? interpolate(paramsOrFallback, params) : paramsOrFallback;
+    }
+    return key;
+  }
+  if (params) {
+    return interpolate(s, params);
+  }
+  return s;
+}
+
 function initialLocale() {
   if (typeof window === 'undefined') return 'vi';
   const s = localStorage.getItem(LOCALE_KEY);
@@ -22,17 +43,8 @@ function initialLocale() {
 
 export const I18nContext = createContext(null);
 
-const defaultFallbackT = (key, paramsOrFallback) => {
-  const dict = DICTS.vi || DICTS.en;
-  let s = dict[key] ?? DICTS.en[key];
-  if (s === undefined) {
-    if (typeof paramsOrFallback === 'string') return paramsOrFallback;
-    return key;
-  }
-  if (paramsOrFallback && typeof paramsOrFallback === 'object') {
-    return interpolate(s, paramsOrFallback);
-  }
-  return s;
+const defaultFallbackT = (key, paramsOrFallback, maybeParams) => {
+  return resolveTranslation(DICTS.vi || DICTS.en, DICTS.en, key, paramsOrFallback, maybeParams);
 };
 
 export function I18nProvider({ children }) {
@@ -46,18 +58,8 @@ export function I18nProvider({ children }) {
   }, [locale]);
 
   const t = useCallback(
-    (key, paramsOrFallback) => {
-      const dict = DICTS[locale] || DICTS.en;
-      const fallback = DICTS.en;
-      let s = dict[key] ?? fallback[key];
-      if (s === undefined) {
-        if (typeof paramsOrFallback === 'string') return paramsOrFallback;
-        return key;
-      }
-      if (paramsOrFallback && typeof paramsOrFallback === 'object') {
-        return interpolate(s, paramsOrFallback);
-      }
-      return s;
+    (key, paramsOrFallback, maybeParams) => {
+      return resolveTranslation(DICTS[locale] || DICTS.en, DICTS.en, key, paramsOrFallback, maybeParams);
     },
     [locale]
   );

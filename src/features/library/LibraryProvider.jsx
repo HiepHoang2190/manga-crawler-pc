@@ -180,7 +180,46 @@ export function LibraryProvider({ children }) {
       let next;
       if (exists) {
         next = prev.filter((f) => f.id !== id);
+        try {
+          const SYNC_STORAGE_KEY = 'crawler:followed-manga-sync-v1';
+          const stored = JSON.parse(localStorage.getItem(SYNC_STORAGE_KEY) || '{}');
+          if (stored[id]) {
+            delete stored[id];
+            localStorage.setItem(SYNC_STORAGE_KEY, JSON.stringify(stored));
+          }
+        } catch {
+          /* ignore */
+        }
       } else {
+        let initialChapterCount = 0;
+        const chapterLabel = String(
+          mangaData.latestChapterLabel || mangaData.latestChapter || mangaData.chapterTitle || ''
+        ).trim();
+        if (chapterLabel) {
+          const match = chapterLabel.match(/(\d+(?:\.\d+)?)/);
+          if (match) {
+            const parsed = parseFloat(match[1]);
+            if (Number.isFinite(parsed) && parsed > 0) {
+              initialChapterCount = Math.floor(parsed);
+            }
+          }
+        }
+
+        try {
+          const SYNC_STORAGE_KEY = 'crawler:followed-manga-sync-v1';
+          const stored = JSON.parse(localStorage.getItem(SYNC_STORAGE_KEY) || '{}');
+          stored[id] = {
+            hasNew: false,
+            pendingNewCount: 0,
+            remoteCount: initialChapterCount,
+            latestChapterTitle: chapterLabel,
+            checkedAt: Date.now(),
+          };
+          localStorage.setItem(SYNC_STORAGE_KEY, JSON.stringify(stored));
+        } catch {
+          /* ignore */
+        }
+
         next = [
           {
             id,
@@ -188,7 +227,7 @@ export function LibraryProvider({ children }) {
             siteId: siteId,
             title: mangaData.title,
             coverUrl: mangaData.coverUrl || '',
-            chapterCount: 0,
+            chapterCount: initialChapterCount,
             addedAt: new Date().toISOString(),
             notifyWatch: false,
           },
@@ -209,6 +248,16 @@ export function LibraryProvider({ children }) {
       const next = prev.filter((f) => f.id !== id);
       try {
         localStorage.setItem(FAVORITES_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      try {
+        const SYNC_STORAGE_KEY = 'crawler:followed-manga-sync-v1';
+        const stored = JSON.parse(localStorage.getItem(SYNC_STORAGE_KEY) || '{}');
+        if (stored[id]) {
+          delete stored[id];
+          localStorage.setItem(SYNC_STORAGE_KEY, JSON.stringify(stored));
+        }
       } catch {
         /* ignore */
       }
@@ -537,11 +586,43 @@ export function LibraryProvider({ children }) {
   const enqueueFavoritePendingChapters = useCallback(
     async (row) => {
       if (!row) return;
-      const pendingList = row.sync?.pendingChapters;
+      const targetId = row.favoriteId || row.id;
       const title = String(row.mangaTitle || row.title || '').trim();
       const url = String(row.mangaUrl || row.url || '').trim();
-      const siteId = String(row.siteId || '').trim();
+      const siteId = String(row.siteId || row.site || '').trim();
       const coverUrl = row.coverUrl || row.localCoverPath || '';
+
+      const syncObj = row.sync || (targetId ? favoriteSyncById[targetId] : null) || {};
+      let pendingList = Array.isArray(syncObj.pendingChapters) ? syncObj.pendingChapters : [];
+
+      // If pendingChapters are not yet fetched or cached in syncObj, fetch from API and compute frontier
+      if (pendingList.length === 0 && url && siteId) {
+        const api = window.electronAPI;
+        if (api?.loadManga) {
+          try {
+            const opts = siteId === 'mangadex' ? { mangadexLanguage } : {};
+            const res = await api.loadManga(siteId, url, opts);
+            if (res?.ok && Array.isArray(res.chapters) && res.chapters.length > 0) {
+              if (api.computeFavoriteChapterSync && savePath) {
+                const frontier = await api.computeFavoriteChapterSync(savePath, title, res.chapters);
+                if (Array.isArray(frontier?.pendingChapters) && frontier.pendingChapters.length > 0) {
+                  pendingList = frontier.pendingChapters;
+                }
+              }
+              if (pendingList.length === 0) {
+                const count = syncObj.pendingNewCount || syncObj.remoteCount || 0;
+                if (count > 0) {
+                  pendingList = res.chapters.slice(0, count);
+                } else {
+                  pendingList = res.chapters;
+                }
+              }
+            }
+          } catch (err) {
+            console.warn('Failed to load manga for enqueue pending chapters:', err);
+          }
+        }
+      }
 
       if (Array.isArray(pendingList) && pendingList.length > 0 && url && siteId) {
         const { addedCount } = enqueueChapters(
@@ -558,7 +639,6 @@ export function LibraryProvider({ children }) {
             t('favorites.enqueuedPendingSuccess', { count: addedCount, title }),
             'success'
           );
-          const targetId = row.favoriteId || row.id;
           if (targetId) {
             setFavoriteSyncById((prev) => ({
               ...prev,
@@ -566,22 +646,69 @@ export function LibraryProvider({ children }) {
                 ...prev[targetId],
                 remoteCount: 0,
                 hasNew: false,
+                pendingNewCount: 0,
+                pendingChapters: [],
+              },
+            }));
+            try {
+              const SYNC_STORAGE_KEY = 'crawler:followed-manga-sync-v1';
+              const stored = JSON.parse(localStorage.getItem(SYNC_STORAGE_KEY) || '{}');
+              if (stored[targetId]) {
+                stored[targetId] = {
+                  ...stored[targetId],
+                  remoteCount: 0,
+                  hasNew: false,
+                  pendingNewCount: 0,
+                  pendingChapters: [],
+                };
+                localStorage.setItem(SYNC_STORAGE_KEY, JSON.stringify(stored));
+              }
+            } catch {
+              /* ignore */
+            }
+          }
+          if (typeof startQueue === 'function') {
+            setTimeout(() => {
+              startQueue();
+            }, 50);
+          }
+          return { ok: true, addedCount };
+        } else {
+          appendLog(t('app.log.chaptersAlreadyInQueue'), 'info');
+          if (typeof startQueue === 'function' && !queueProcessing) {
+            setTimeout(() => {
+              startQueue();
+            }, 50);
+          }
+          if (targetId) {
+            setFavoriteSyncById((prev) => ({
+              ...prev,
+              [targetId]: {
+                ...prev[targetId],
+                hasNew: false,
+                pendingNewCount: 0,
                 pendingChapters: [],
               },
             }));
           }
-        } else {
-          appendLog(t('app.log.chaptersAlreadyInQueue'), 'info');
+          return { ok: true, addedCount: 0 };
         }
       } else {
-        if (row.source === 'favorite') {
-          fetchMangaFromFavorite(row);
-        } else {
-          fetchMangaFromOfflineLibrary(row);
-        }
+        appendLog(t('latestUpdates.noChaptersFetched'), 'warn');
+        return { ok: false };
       }
     },
-    [enqueueChapters, appendLog, t, fetchMangaFromFavorite, fetchMangaFromOfflineLibrary]
+    [
+      favoriteSyncById,
+      savePath,
+      mangadexLanguage,
+      enqueueChapters,
+      appendLog,
+      t,
+      setFavoriteSyncById,
+      startQueue,
+      queueProcessing,
+    ]
   );
 
   const openOfflineFolderPath = useCallback(async (absolutePath) => {

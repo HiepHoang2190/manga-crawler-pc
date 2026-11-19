@@ -699,89 +699,103 @@ export default function BulkScanPanel({
                     })}
                   </div>
                 ) : (
-                  <div className="rounded-2xl border border-outline-variant/20 bg-surface-container-low/30 p-2 overflow-hidden">
-                    <ul className="space-y-1">
-                      {pageItems.map((item, index) => {
-                        const checked = selected.has(item.mangaUrl);
-                        return (
-                          <li
-                            key={item.mangaUrl}
-                            className={`group flex cursor-pointer select-none items-center justify-between gap-3 px-3 py-2.5 sm:px-4 rounded-xl border transition-all ${
-                              checked
-                                ? 'bg-primary/8 border-primary/25 shadow-xs'
-                                : 'bg-surface-container-low/20 border-transparent hover:border-outline-variant/20 hover:bg-surface-container-high/60'
-                            } ${controlsBusy ? 'pointer-events-none opacity-60' : ''}`}
-                            onClick={(e) => applyRowSelection(e, item, index)}
-                          >
-                            <div className="flex min-w-0 items-center gap-3">
-                              <input
-                                type="checkbox"
-                                className="size-4 shrink-0 accent-primary cursor-pointer"
-                                checked={checked}
-                                disabled={controlsBusy}
-                                onClick={(e) => e.stopPropagation()}
-                                onChange={(e) => {
-                                  e.stopPropagation();
-                                  applyRowSelection(e, item, index);
-                                }}
-                              />
-                              <div className="relative h-12 w-9 shrink-0 overflow-hidden rounded-md bg-surface-container-highest flex items-center justify-center shadow-xs sm:h-14 sm:w-10">
-                                <span className="material-symbols-outlined text-[20px] text-on-surface-variant/40 leading-none select-none">
-                                  menu_book
-                                </span>
-                                {item.coverUrl ? (
-                                  <img
-                                    src={item.coverUrl}
-                                    alt=""
-                                    className="pointer-events-none absolute inset-0 size-full object-cover"
-                                    loading="lazy"
-                                    decoding="async"
-                                    referrerPolicy="no-referrer"
-                                    onError={(e) => {
-                                      e.currentTarget.style.display = 'none';
-                                    }}
-                                  />
+                  <ul className="flex flex-col gap-2">
+                    {pageItems.map((item, index) => {
+                      const checked = selected.has(item.mangaUrl);
+                      const host = item.mangaUrl ? connectorHost(item.mangaUrl) : '';
+                      return (
+                        <li
+                          key={item.mangaUrl}
+                          className={`group flex cursor-pointer select-none items-center justify-between gap-3 px-3 py-2.5 sm:px-4 rounded-xl border transition-all ${
+                            checked
+                              ? 'border-primary/40 bg-primary/8 ring-1 ring-primary/20 shadow-xs'
+                              : 'border-outline-variant/20 bg-surface-container-high/35 hover:border-outline-variant/40 hover:bg-surface-container-high/55'
+                          } ${controlsBusy ? 'pointer-events-none opacity-60' : ''}`}
+                          onClick={(e) => applyRowSelection(e, item, index)}
+                        >
+                          <div className="flex min-w-0 flex-1 items-center gap-3">
+                            <input
+                              type="checkbox"
+                              className="size-4 shrink-0 accent-primary cursor-pointer"
+                              checked={checked}
+                              disabled={controlsBusy}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                applyRowSelection(e, item, index);
+                              }}
+                            />
+                            <div className="relative h-14 w-10 sm:h-16 sm:w-11 shrink-0 overflow-hidden rounded-lg bg-surface-container-highest border border-outline-variant/15 flex items-center justify-center shadow-xs">
+                              <span className="material-symbols-outlined text-[20px] text-on-surface-variant/40 leading-none select-none">
+                                menu_book
+                              </span>
+                              {item.coverUrl ? (
+                                <img
+                                  src={item.coverUrl}
+                                  alt=""
+                                  className="pointer-events-none absolute inset-0 size-full object-cover"
+                                  loading="lazy"
+                                  decoding="async"
+                                  referrerPolicy="no-referrer"
+                                  onError={(e) => {
+                                    e.currentTarget.style.display = 'none';
+                                  }}
+                                />
+                              ) : null}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 mb-0.5">
+                                <h4
+                                  className="truncate text-sm font-semibold text-on-surface group-hover:text-primary transition-colors"
+                                  data-tooltip={item.title}
+                                >
+                                  {item.title}
+                                </h4>
+                                {host ? (
+                                  <span className="text-[10px] font-semibold uppercase tracking-wide text-primary bg-primary/10 px-2 py-0.5 rounded shrink-0">
+                                    {host}
+                                  </span>
                                 ) : null}
                               </div>
-                              <div className="min-w-0">
-                                <div className="truncate text-sm font-semibold text-on-surface group-hover:text-primary transition-colors">
-                                  {item.title}
-                                </div>
-                                <div className="truncate text-[11px] text-on-surface-variant/60 font-mono">
-                                  {item.mangaUrl ? connectorHost(item.mangaUrl) : ''}
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-3 shrink-0">
-                              {item.latestChapterLabel ? (
-                                <span className="inline-flex items-center gap-1.5 rounded-full border border-outline-variant/30 bg-surface-container-highest px-3 py-1 text-xs font-medium text-on-surface-variant">
-                                  <span className="material-symbols-outlined text-[15px] text-primary/70">
-                                    bookmark
-                                  </span>
-                                  <span className="truncate max-w-[14rem] sm:max-w-[20rem]">
-                                    {item.latestChapterLabel}
-                                  </span>
-                                </span>
-                              ) : null}
-
-                              <div className="flex items-center justify-center w-7 h-7">
-                                {checked ? (
-                                  <span className="material-symbols-outlined text-[20px] text-primary">
-                                    check_circle
+                              <div className="flex items-center gap-2 text-xs text-on-surface-variant">
+                                {item.latestChapterLabel ? (
+                                  <span className="inline-flex items-center gap-1 truncate">
+                                    <span className="material-symbols-outlined text-[13px] text-primary/70 shrink-0">
+                                      bookmark
+                                    </span>
+                                    <span className="truncate">{item.latestChapterLabel}</span>
                                   </span>
                                 ) : (
-                                  <span className="material-symbols-outlined text-[20px] text-outline-variant/30 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    radio_button_unchecked
+                                  <span className="truncate text-on-surface-variant/60 font-mono text-[11px]">
+                                    {host}
                                   </span>
                                 )}
                               </div>
                             </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              disabled={controlsBusy}
+                              onClick={(e) => applyRowSelection(e, item, index)}
+                              className={`h-8 w-8 shrink-0 rounded-lg border flex items-center justify-center transition-all cursor-pointer shadow-2xs ${
+                                checked
+                                  ? 'border-primary bg-primary text-on-primary'
+                                  : 'border-outline-variant/20 bg-surface-container-highest text-on-surface-variant hover:border-outline-variant/40 hover:bg-surface-bright'
+                              }`}
+                              data-tooltip={checked ? t('bulkScan.deselectItem') || 'Bỏ chọn' : t('bulkScan.selectItem') || 'Chọn'}
+                              aria-label={checked ? 'Deselect' : 'Select'}
+                            >
+                              <span className="material-symbols-outlined text-[17px] leading-none">
+                                {checked ? 'check' : 'add'}
+                              </span>
+                            </button>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
                 )}
               </div>
 

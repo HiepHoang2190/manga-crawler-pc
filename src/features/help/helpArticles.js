@@ -84,11 +84,11 @@ export const helpArticles = {
       paragraphs: [
         '• Khu vực thông tin truyện: Sau khi Fetch thành công, thẻ hiển thị ảnh bìa, tên truyện, nguồn (site), số lượng chương, tác giả và tóm tắt nội dung.',
         '• Biểu tượng trái tim: Nằm ở góc ảnh bìa, bấm để thêm hoặc gỡ truyện khỏi tab Yêu thích (dữ liệu lưu trên máy).',
-        '• Nút Mở danh sách: Mở bảng danh sách chương dạng ngăn kéo (drawer) giúp bạn tìm kiếm, xem trạng thái từng chương và chọn các chương cần tải.',
+        '• Nút Xem chương (Mở danh sách): Mở bảng danh sách chương dạng ngăn kéo (drawer) giúp bạn tìm kiếm, xem trạng thái từng chương và chọn các chương cần tải.',
         '• Nút Thêm tất cả vào hàng đợi: Nhanh chóng đưa toàn bộ danh sách chương vào Hàng đợi để chuẩn bị tải chỉ với 1 cú click.',
       ],
       image: H('home-manga-info.png'),
-      imageCaption: 'Thông tin truyện: ảnh bìa, nút Yêu thích, Mở danh sách chương và Thêm tất cả vào hàng đợi.',
+      imageCaption: 'Thông tin truyện: ảnh bìa, nút Yêu thích, Xem chương và Thêm tất cả vào hàng đợi.',
     },
     {
       id: 'chapters',

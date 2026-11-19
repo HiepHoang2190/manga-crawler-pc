@@ -442,6 +442,88 @@ export default function LatestUpdatesPanel({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [focusSearchInput]);
 
+  // Passive cross-feed sync: if any favorite appears in latest rows, update followed sync cache (0ms cost)
+  useEffect(() => {
+    if (!rows.length || !favorites.length || typeof localStorage === 'undefined') return;
+    try {
+      const SYNC_STORAGE_KEY = 'crawler:followed-manga-sync-v1';
+      const stored = JSON.parse(localStorage.getItem(SYNC_STORAGE_KEY) || '{}');
+      let changed = false;
+
+      favorites.forEach((fav) => {
+        if (!fav?.mangaUrl) return;
+        const matchingRow = rows.find(
+          (r) => r && (r.mangaUrl === fav.mangaUrl || r.url === fav.mangaUrl)
+        );
+        if (matchingRow) {
+          const rowChapter = String(
+            matchingRow.latestChapterLabel || matchingRow.latestChapter || matchingRow.chapterTitle || ''
+          ).trim();
+          const existingSync = stored[fav.id];
+
+          if (!existingSync) {
+            // Baseline establishment when newly indexed: hasNew is FALSE
+            let rowChapterCount = fav.chapterCount || 0;
+            const match = rowChapter.match(/(\d+(?:\.\d+)?)/);
+            if (match) {
+              const parsed = parseFloat(match[1]);
+              if (Number.isFinite(parsed) && parsed > 0) {
+                rowChapterCount = Math.floor(parsed);
+              }
+            }
+            stored[fav.id] = {
+              hasNew: false,
+              pendingNewCount: 0,
+              remoteCount: rowChapterCount,
+              latestChapterTitle: rowChapter,
+              checkedAt: Date.now(),
+            };
+            changed = true;
+          } else if (
+            rowChapter &&
+            existingSync.latestChapterTitle &&
+            rowChapter !== existingSync.latestChapterTitle
+          ) {
+            // Compare chapter numbers to ensure the observed chapter is actually newer
+            let newNum = null;
+            let oldNum = null;
+            const mNew = rowChapter.match(/(\d+(?:\.\d+)?)/);
+            const mOld = String(existingSync.latestChapterTitle).match(/(\d+(?:\.\d+)?)/);
+            if (mNew) newNum = parseFloat(mNew[1]);
+            if (mOld) oldNum = parseFloat(mOld[1]);
+
+            const isNewer =
+              newNum != null && oldNum != null
+                ? newNum > oldNum
+                : rowChapter !== existingSync.latestChapterTitle;
+
+            if (isNewer && (!existingSync.hasNew || existingSync.latestChapterTitle !== rowChapter)) {
+              const diff =
+                newNum != null && oldNum != null && newNum > oldNum
+                  ? Math.round(newNum - oldNum)
+                  : 1;
+              stored[fav.id] = {
+                ...existingSync,
+                hasNew: true,
+                pendingNewCount: Math.max(1, (existingSync.pendingNewCount || 0) + diff),
+                remoteCount: newNum ? Math.floor(newNum) : existingSync.remoteCount,
+                latestChapterTitle: rowChapter,
+                checkedAt: Date.now(),
+              };
+              changed = true;
+            }
+          }
+        }
+      });
+
+      if (changed) {
+        localStorage.setItem(SYNC_STORAGE_KEY, JSON.stringify(stored));
+      }
+    } catch {
+      /* ignore storage errors */
+    }
+  }, [rows, favorites]);
+
   const markRowNoChapters = useCallback((siteId, item) => {
     const row_key = `${siteId}::${item.mangaUrl}`;
     setNoChapterRowKeys((prev) => {
@@ -1790,8 +1872,10 @@ export default function LatestUpdatesPanel({
                                 </span>
                               ) : (
                                 <>
-                                  <span className="material-symbols-outlined text-[15px] leading-none">list</span>
-                                  <span className="truncate">{t('latestUpdates.openChapterList')}</span>
+                                  <span className="material-symbols-outlined text-[15px] leading-none shrink-0">
+                                    format_list_bulleted
+                                  </span>
+                                  <span className="truncate whitespace-nowrap">{t('latestUpdates.openChapterList')}</span>
                                 </>
                               )}
                             </button>
@@ -1821,7 +1905,7 @@ export default function LatestUpdatesPanel({
                 })}
               </ul>
             ) : (
-              <ul className="flex flex-col gap-2 sm:gap-3">
+              <ul className="flex flex-col gap-2">
                 {rows.map((row) => {
                   const k = `${row.siteId}::${row.mangaUrl}`;
                   const enqBusy = enqueueKey === k;
@@ -1840,17 +1924,21 @@ export default function LatestUpdatesPanel({
                   return (
                     <li
                       key={k}
-                      className="flex flex-col gap-3 rounded-xl border border-outline-variant/20 bg-surface-container-high/35 p-3 sm:flex-row sm:items-center sm:gap-4"
+                      className="group flex cursor-pointer select-none items-center justify-between gap-3 px-3 py-2.5 sm:px-4 rounded-xl border border-outline-variant/20 bg-surface-container-high/35 hover:border-outline-variant/40 hover:bg-surface-container-high/55 transition-all"
+                      onClick={() => {
+                        if (pickEnabled && !chapterListDisabled) {
+                          handleOpenChapterListButton(row.siteId, row);
+                        }
+                      }}
                     >
-                      <div className="flex min-w-0 gap-3 sm:flex-1 sm:items-center">
-                      <div className="relative shrink-0 overflow-hidden rounded-md bg-surface-container-highest">
-                        <div className="size-[4.5rem] shrink-0 sm:size-24 relative flex items-center justify-center bg-surface-container-highest overflow-hidden">
-                          <span className="material-symbols-outlined text-[24px] text-on-surface-variant/40 leading-none select-none">menu_book</span>
+                      <div className="flex min-w-0 flex-1 items-center gap-3">
+                        <div className="relative h-14 w-10 sm:h-16 sm:w-11 shrink-0 overflow-hidden rounded-lg bg-surface-container-highest border border-outline-variant/15 flex items-center justify-center shadow-xs">
+                          <span className="material-symbols-outlined text-[20px] text-on-surface-variant/40 leading-none select-none">menu_book</span>
                           {row.coverUrl ? (
                             <img
                               src={row.coverUrl}
                               alt=""
-                              className="absolute inset-0 size-full object-cover"
+                              className="pointer-events-none absolute inset-0 size-full object-cover"
                               loading="lazy"
                               decoding="async"
                               onError={(e) => {
@@ -1859,27 +1947,92 @@ export default function LatestUpdatesPanel({
                             />
                           ) : null}
                         </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <h4 className="truncate text-sm font-semibold text-on-surface group-hover:text-primary transition-colors" data-tooltip={row.title}>
+                              {row.title}
+                            </h4>
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-primary bg-primary/10 px-2 py-0.5 rounded shrink-0">
+                              {row.siteLabel}
+                            </span>
+                          </div>
+                          {row.latestChapterLabel ? (
+                            <p className="text-xs text-on-surface-variant truncate">{row.latestChapterLabel}</p>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      {/* Action buttons matching unified list standard */}
+                      <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                        {pickEnabled ? (
+                          <button
+                            type="button"
+                            disabled={chapterListDisabled}
+                            data-tooltip={chapter_actions_disabled_title}
+                            onClick={() => handleOpenChapterListButton(row.siteId, row)}
+                            className="h-8 px-3 rounded-lg text-xs font-semibold bg-primary text-on-primary hover:opacity-90 flex items-center justify-center gap-1.5 transition-all active:scale-95 disabled:pointer-events-none disabled:opacity-45 cursor-pointer shadow-2xs whitespace-nowrap"
+                          >
+                            {openBusy ? (
+                              <span className="inline-flex items-center justify-center gap-1.5">
+                                <span className="material-symbols-outlined animate-spin text-[14px] leading-none">
+                                  progress_activity
+                                </span>
+                                <span>{t('latestUpdates.loading')}</span>
+                              </span>
+                            ) : (
+                              <>
+                                <span className="material-symbols-outlined text-[15px] leading-none shrink-0">
+                                  format_list_bulleted
+                                </span>
+                                <span className="whitespace-nowrap">{t('latestUpdates.openChapterList')}</span>
+                              </>
+                            )}
+                          </button>
+                        ) : null}
+
+                        <button
+                          type="button"
+                          disabled={enqueueDisabled}
+                          data-tooltip={chapter_actions_disabled_title || t('latestUpdates.addToQueue')}
+                          aria-label={t('latestUpdates.addToQueue')}
+                          onClick={() => handleEnqueue(row.siteId, row)}
+                          className="h-8 w-8 shrink-0 rounded-lg bg-primary text-on-primary hover:opacity-90 transition-all flex items-center justify-center disabled:pointer-events-none disabled:opacity-45 cursor-pointer shadow-2xs"
+                        >
+                          {enqBusy ? (
+                            <span className="material-symbols-outlined animate-spin text-[15px] leading-none">
+                              progress_activity
+                            </span>
+                          ) : (
+                            <span className="material-symbols-outlined text-[17px] leading-none">
+                              playlist_add
+                            </span>
+                          )}
+                        </button>
+
                         {typeof onToggleFavorite === 'function' ? (
                           <button
                             type="button"
                             aria-pressed={isMangaFavorite(row, row.siteId)}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleToggleFavorite(row, row.siteId);
-                            }}
-                            className={`absolute right-1 top-1 z-[1] flex h-6 w-6 cursor-pointer items-center justify-center rounded-full shadow-md transition-all sm:h-7 sm:w-7 ${
+                            onClick={() => handleToggleFavorite(row, row.siteId)}
+                            className={`h-8 w-8 shrink-0 rounded-lg border transition-all flex items-center justify-center cursor-pointer shadow-2xs ${
                               isMangaFavorite(row, row.siteId)
-                                ? 'bg-rose-500/80 text-white ring-1 ring-white/40 backdrop-blur-[2px] hover:bg-rose-500/90'
-                                : 'border border-white/25 bg-black/40 text-white/95 shadow-black/10 backdrop-blur-sm hover:bg-black/50'
+                                ? 'border-rose-500/30 bg-rose-500/15 text-rose-500 hover:bg-rose-500/25'
+                                : 'border-outline-variant/20 bg-surface-container-highest hover:bg-surface-bright text-on-surface-variant hover:text-rose-500'
                             }`}
                             data-tooltip={
                               isMangaFavorite(row, row.siteId)
                                 ? t('mangaInfo.favoriteRemove')
                                 : t('mangaInfo.favoriteAdd')
                             }
+                            aria-label={
+                              isMangaFavorite(row, row.siteId)
+                                ? t('mangaInfo.favoriteRemove')
+                                : t('mangaInfo.favoriteAdd')
+                            }
                           >
                             <span
-                              className="material-symbols-outlined block text-[13px] leading-none sm:text-[15px]"
+                              className="material-symbols-outlined text-[15px] leading-none"
                               style={
                                 isMangaFavorite(row, row.siteId)
                                   ? { fontVariationSettings: "'FILL' 1, 'wght' 300, 'GRAD' 0, 'opsz' 20" }
@@ -1890,49 +2043,6 @@ export default function LatestUpdatesPanel({
                             </span>
                           </button>
                         ) : null}
-                      </div>
-                      <div className="flex min-w-0 flex-1 flex-col justify-center gap-1">
-                        <span className="text-[10px] font-semibold uppercase tracking-wide text-on-surface-variant">
-                          {row.siteLabel}
-                        </span>
-                        <p className="line-clamp-2 text-sm font-semibold text-on-surface sm:text-base" data-tooltip={row.title}>
-                          {row.title}
-                        </p>
-                        {row.latestChapterLabel ? (
-                          <p className="text-xs text-on-surface-variant">{row.latestChapterLabel}</p>
-                        ) : null}
-                      </div>
-                      </div>
-                      <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:justify-center">
-                        {pickEnabled ? (
-                          <button
-                            type="button"
-                            disabled={chapterListDisabled}
-                            data-tooltip={chapter_actions_disabled_title}
-                            onClick={() => handleOpenChapterListButton(row.siteId, row)}
-                            className="h-10 w-full rounded-lg bg-secondary-container px-3 text-sm font-semibold text-on-secondary-container shadow-sm transition-[opacity,box-shadow] hover:opacity-90 hover:shadow-md disabled:pointer-events-none disabled:opacity-45 sm:h-9 sm:min-w-[7.5rem] sm:w-auto"
-                          >
-                            {openBusy ? (
-                              <span className="inline-flex items-center justify-center gap-1.5">
-                                <span className="material-symbols-outlined animate-spin text-[17px] leading-none">
-                                  progress_activity
-                                </span>
-                                {t('latestUpdates.loading')}
-                              </span>
-                            ) : (
-                              t('latestUpdates.openChapterList')
-                            )}
-                          </button>
-                        ) : null}
-                        <button
-                          type="button"
-                          disabled={enqueueDisabled}
-                          data-tooltip={chapter_actions_disabled_title}
-                          onClick={() => handleEnqueue(row.siteId, row)}
-                          className="h-10 w-full rounded-lg bg-primary px-3 text-sm font-medium text-on-primary hover:opacity-90 disabled:pointer-events-none disabled:opacity-50 sm:h-9 sm:min-w-[7.5rem] sm:w-auto"
-                        >
-                          {enqBusy ? t('latestUpdates.enqueueBusy') : t('latestUpdates.addToQueue')}
-                        </button>
                       </div>
                     </li>
                   );

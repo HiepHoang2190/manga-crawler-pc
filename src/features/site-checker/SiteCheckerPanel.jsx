@@ -786,7 +786,6 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
                         type="button"
                         onClick={handleResetAllResults}
                         className={BTN_SURFACE}
-                        data-tooltip={t('siteChecker.resetResults')}
                         aria-label={t('siteChecker.resetResults')}
                       >
                         <span className="material-symbols-outlined text-[16px]">restart_alt</span>
@@ -799,7 +798,6 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
                     type="button"
                     onClick={cancelTestAll}
                     className="inline-flex items-center justify-center gap-1.5 min-h-9 px-3.5 rounded-lg text-xs font-semibold bg-error text-on-error hover:opacity-95 shadow-sm transition-all cursor-pointer"
-                    data-tooltip={t('siteChecker.cancel')}
                     aria-label={t('siteChecker.cancel')}
                   >
                     <span className="material-symbols-outlined text-[16px] animate-spin">sync</span>
