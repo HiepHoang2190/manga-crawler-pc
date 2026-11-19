@@ -25,4 +25,8 @@ describe('DuplicateFinder Smart Check All tests', () => {
   test('handleToggleSelectAll adds all displayedItems when not all checked', () => {
     expect(src).toMatch(/handleToggleSelectAll[\s\S]*?for\s*\(\s*const\s+item\s+of\s+displayedItems\s*\)\s*next\.add\(item\.fullPath\)/);
   });
+
+  test('Auto-collapses all duplicate groups after scan completes', () => {
+    expect(src).toMatch(/setCollapsedGroups\s*\(\s*collectAllGroupIds\s*\(\s*duplicateImages\s*\)\s*\)/);
+  });
 });

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useI18n } from '../../../context/I18nContext';
 import { ResizeSplitter, SearchableSelect, SourcePicker, useToolsSidebarResize } from '../../../shared';
 import { ToolsStudioActionSlot, ToolsStudioCenterSlot } from '../../tools-studio/ToolsStudioActionSlot';
-import { formatBytes, toggleGroupCollapseInSet } from './duplicateUtils';
+import { formatBytes, toggleGroupCollapseInSet, collectAllGroupIds } from './duplicateUtils';
 
 const previewThumbnailCache = new Map();
 
@@ -332,7 +332,8 @@ export default function DuplicateFinderTab({
       setHasScanned(true);
       setSortBy('duplicates_first');
       setFilterStatus('all');
-      setCollapsedGroups(new Set());
+      // Mặc định thu gọn (collapse) tất cả nhóm trùng sau khi quét
+      setCollapsedGroups(collectAllGroupIds(duplicateImages));
 
       setStats(
         r.stats || {

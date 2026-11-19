@@ -58,3 +58,17 @@ export function toggleGroupCollapseInSet(prevSet, groupId) {
   return next;
 }
 
+/**
+ * Collects all unique group IDs from duplicate images into a Set for default collapse.
+ */
+export function collectAllGroupIds(items) {
+  const ids = new Set();
+  if (!Array.isArray(items)) return ids;
+  for (const item of items) {
+    if (item) {
+      ids.add(item.duplicateGroup ?? 'ungrouped');
+    }
+  }
+  return ids;
+}
+

@@ -2,6 +2,7 @@ import {
   normalizePathForCompare,
   removeDeletedFilesFromBuckets,
   toggleGroupCollapseInSet,
+  collectAllGroupIds,
 } from './duplicateUtils.js';
 
 describe('DuplicateFinder - Bucket State Updates on Deletion', () => {
@@ -134,6 +135,38 @@ describe('DuplicateFinder - Bucket State Updates on Deletion', () => {
 
       set = toggleGroupCollapseInSet(set, 'group-a');
       expect(Array.from(set)).toEqual(['group-b']);
+    });
+  });
+
+  describe('collectAllGroupIds', () => {
+    test('returns empty Set when items is empty or invalid', () => {
+      expect(collectAllGroupIds([])).toEqual(new Set());
+      expect(collectAllGroupIds(null)).toEqual(new Set());
+      expect(collectAllGroupIds(undefined)).toEqual(new Set());
+    });
+
+    test('collects all unique duplicate group IDs', () => {
+      const items = [
+        { fullPath: '/a.jpg', duplicateGroup: 1 },
+        { fullPath: '/b.jpg', duplicateGroup: 1 },
+        { fullPath: '/c.jpg', duplicateGroup: 2 },
+        { fullPath: '/d.jpg', duplicateGroup: 3 },
+      ];
+      const result = collectAllGroupIds(items);
+      expect(result.size).toBe(3);
+      expect(result.has(1)).toBe(true);
+      expect(result.has(2)).toBe(true);
+      expect(result.has(3)).toBe(true);
+    });
+
+    test('falls back to ungrouped when duplicateGroup is nullish', () => {
+      const items = [
+        { fullPath: '/a.jpg', duplicateGroup: null },
+        { fullPath: '/b.jpg' },
+      ];
+      const result = collectAllGroupIds(items);
+      expect(result.size).toBe(1);
+      expect(result.has('ungrouped')).toBe(true);
     });
   });
 });
