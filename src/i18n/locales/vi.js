@@ -874,6 +874,8 @@ export const vi = {
   'latestUpdates.multiSearchPartialSelected': 'Đã chọn {count}/{total} nguồn',
   'latestUpdates.multiSearchNoneSelected': 'Chưa chọn nguồn nào',
   'latestUpdates.selectAllSources': 'Chọn tất cả nguồn',
+  'latestUpdates.multiSearchSummary': 'Đã tìm thấy {count} truyện từ {sources} nguồn',
+  'latestUpdates.multiSearchNoPaginationNotice': 'Kết quả gộp trang 1 từ tất cả nguồn',
   'latestUpdates.noCover': 'Chưa có ảnh bìa',
   'latestUpdates.dismissError': 'Đóng thông báo',
   'latestUpdates.viewDetails': 'Chi tiết',

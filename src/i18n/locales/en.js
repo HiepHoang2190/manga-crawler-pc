@@ -873,6 +873,8 @@ export const en = {
   'latestUpdates.multiSearchPartialSelected': '{count}/{total} sources selected',
   'latestUpdates.multiSearchNoneSelected': 'No sources selected',
   'latestUpdates.selectAllSources': 'Select all sources',
+  'latestUpdates.multiSearchSummary': 'Found {count} manga from {sources} sources',
+  'latestUpdates.multiSearchNoPaginationNotice': 'Aggregated page 1 results across all sources',
   'latestUpdates.noCover': 'No cover image',
   'latestUpdates.dismissError': 'Dismiss notice',
   'latestUpdates.viewDetails': 'Details',

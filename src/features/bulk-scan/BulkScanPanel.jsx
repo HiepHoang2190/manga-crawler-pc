@@ -663,77 +663,109 @@ export default function BulkScanPanel({
         onToggleLeftSidebar={toggleLeftSidebar}
         leftSidebarTooltip={showLeftSidebar ? t('sidebar.hidePanel') : t('sidebar.showPanel')}
         leftSlot={
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-center gap-3">
             {subtabsSlot}
             {items.length > 0 ? (
-              <div className="flex items-center gap-2 min-w-0">
-                <button
-                  type="button"
-                  onClick={toggleSelectAll}
-                  disabled={controlsBusy}
-                  aria-label={allSelected ? t('bulkScan.uncheckAll') : t('bulkScan.checkAll')}
-                  className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-surface-container-highest/60 hover:bg-surface-container-high text-on-surface-variant transition-colors cursor-pointer border border-outline-variant/20 disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
-                >
-                  <span className="material-symbols-outlined text-[18px] leading-none text-primary">
-                    {masterIcon}
-                  </span>
-                </button>
-
-                <SearchableSelect
-                  value={listFilter}
-                  onChange={(val) => setListFilter(val)}
-                  size="sm"
-                  showPlaceholderOption={false}
-                  className="min-w-[11.5rem]"
-                  options={filterOptions}
-                  disabled={controlsBusy}
-                />
-
-                <div className="relative flex items-center min-w-[12rem] max-w-xs">
-                  <span className="material-symbols-outlined absolute left-2.5 text-[17px] text-on-surface-variant/60 pointer-events-none">
-                    search
-                  </span>
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder={t('bulkScan.filterPlaceholder') || 'Lọc truyện theo tên…'}
-                    aria-label={t('bulkScan.filterPlaceholder') || 'Lọc truyện theo tên…'}
-                    className="h-8 w-full rounded-lg bg-surface-container-high/60 pl-8 pr-7 text-xs text-on-surface outline-none border border-outline-variant/25 focus:border-primary/50 focus:ring-1 focus:ring-primary/30"
-                    autoComplete="off"
-                  />
-                  {searchQuery ? (
-                    <button
-                      type="button"
-                      onClick={() => setSearchQuery('')}
-                      className="absolute right-2 text-on-surface-variant/60 hover:text-on-surface cursor-pointer"
-                    >
-                      <span className="material-symbols-outlined text-[15px]">close</span>
-                    </button>
-                  ) : null}
-                </div>
-              </div>
+              <span className="text-xs text-on-surface-variant/80 hidden sm:inline-block tabular-nums font-medium pl-2 border-l border-outline-variant/20">
+                {t('bulkScan.selectedCount', { count: selectedCount })} / {items.length}
+              </span>
             ) : null}
           </div>
         }
         rightSlot={
-          items.length > 0 ? (
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium tabular-nums text-on-surface-variant bg-surface-container-high px-2.5 py-1 rounded-md border border-outline-variant/20 max-xl:hidden">
-                {t('bulkScan.selectedCount', { count: selectedCount })}
-                {items.length ? ` / ${items.length}` : ''}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className={`h-7 px-3 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shrink-0 ${
+                items.length > 0
+                  ? 'bg-surface-container-highest/80 hover:bg-surface-container-high border border-outline-variant/25 text-on-surface'
+                  : 'bg-primary text-on-primary hover:opacity-95 shadow-2xs'
+              }`}
+              disabled={controlsBusy || !selectedSiteId}
+              onClick={() => void runLoad()}
+              data-tooltip={busyList ? t('bulkScan.loading') : items.length > 0 ? t('bulkScan.rescanSource') : t('bulkScan.scanSource')}
+            >
+              <span className={`material-symbols-outlined text-[15px] leading-none ${busyList ? 'animate-spin' : ''}`}>
+                sync
               </span>
+              <span>
+                {busyList
+                  ? t('bulkScan.loading')
+                  : items.length > 0
+                    ? t('bulkScan.rescanSource')
+                    : t('bulkScan.scanSource')}
+              </span>
+            </button>
 
+            {items.length > 0 ? (
+              <button
+                type="button"
+                className="h-7 px-3 rounded-lg text-xs font-semibold bg-primary text-on-primary hover:opacity-95 shadow-2xs inline-flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0"
+                disabled={!selectedCount || controlsBusy || !selectedSiteId}
+                onClick={() => void runEnqueue()}
+                data-tooltip={enqueueBusy ? t('bulkScan.enqueueBusy') : t('bulkScan.enqueueSelected')}
+              >
+                <span className="material-symbols-outlined text-[15px] leading-none">playlist_add</span>
+                <span>{enqueueBusy ? t('bulkScan.enqueueBusy') : t('bulkScan.enqueueSelected')}</span>
+              </button>
+            ) : null}
+
+            {enqueueBusy ? (
+              <button
+                type="button"
+                className="h-7 px-3 rounded-lg text-xs font-semibold bg-error/15 text-error hover:bg-error/25 border border-error/30 inline-flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
+                onClick={stopEnqueue}
+              >
+                <span className="material-symbols-outlined text-[15px] leading-none">cancel</span>
+                <span>{t('bulkScan.stop')}</span>
+              </button>
+            ) : null}
+
+            {items.length > 0 ? (
               <ViewModeToggle
                 viewMode={viewMode}
                 onChange={setViewMode}
                 size="sm"
                 disabled={controlsBusy}
               />
-            </div>
-          ) : null
+            ) : null}
+          </div>
         }
       />
+
+      {/* Mini Progress Banner when scanning or enqueuing */}
+      {(busyList || enqueueBusy) && (
+        <div className="px-4 py-1.5 bg-primary/10 border-b border-primary/20 flex items-center justify-between text-xs transition-all shrink-0">
+          <div className="flex items-center gap-2 text-primary font-medium min-w-0 pr-4">
+            <span className="material-symbols-outlined text-[16px] animate-spin shrink-0">
+              {busyList ? 'sync' : 'playlist_add'}
+            </span>
+            <span className="truncate">
+              {listStatus || (busyList ? t('bulkScan.loading') : t('bulkScan.enqueueBusy'))}
+            </span>
+          </div>
+          {enqueueBusy && enqueueProgress && enqueueProgress.total > 0 && (
+            <div className="w-40 sm:w-56 h-1.5 rounded-full bg-surface-container-highest overflow-hidden shrink-0">
+              <div
+                className="h-full bg-primary transition-all duration-300"
+                style={{
+                  width: `${Math.min(100, Math.round(((enqueueProgress.current || 0) / enqueueProgress.total) * 100))}%`,
+                }}
+              />
+            </div>
+          )}
+          {busyList && listProgress && listProgress.totalPages > 0 && (
+            <div className="w-40 sm:w-56 h-1.5 rounded-full bg-surface-container-highest overflow-hidden shrink-0">
+              <div
+                className="h-full bg-primary transition-all duration-300"
+                style={{
+                  width: `${Math.min(100, Math.round(((listProgress.page || 0) / listProgress.totalPages) * 100))}%`,
+                }}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       <StudioLayout.Body>
         <StudioLayout.LeftSidebar
@@ -741,6 +773,35 @@ export default function BulkScanPanel({
           width={leftWidth}
           onResizeStart={handleLeftResizeStart}
         >
+          {/* Top Search Box (filters scanned items by title) */}
+          {items.length > 0 ? (
+            <div className="p-3 border-b border-outline-variant/15">
+              <div className="relative">
+                <span className="material-symbols-outlined absolute left-2.5 top-2 text-[18px] text-on-surface-variant/60 pointer-events-none">
+                  search
+                </span>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder={t('bulkScan.filterPlaceholder') || 'Lọc truyện theo tên…'}
+                  aria-label={t('bulkScan.filterPlaceholder') || 'Lọc truyện theo tên…'}
+                  className="w-full h-8 pl-8 pr-7 rounded-lg text-xs bg-surface-container-highest border border-outline-variant/20 focus:outline-none focus:border-primary text-on-surface placeholder:text-on-surface-variant/50 transition-colors"
+                  autoComplete="off"
+                />
+                {searchQuery ? (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2 top-2 text-on-surface-variant/60 hover:text-on-surface cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-[15px]">close</span>
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
           <div className="p-3.5 space-y-4">
             {/* Source Picker */}
             <div className="space-y-1.5">
@@ -758,6 +819,58 @@ export default function BulkScanPanel({
               />
             </div>
 
+            {/* Vertical Status Filter Group */}
+            {items.length > 0 ? (
+              <div className="space-y-1.5 pt-2 border-t border-outline-variant/15">
+                <div className="flex items-center justify-between px-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/60">
+                    {t('bulkScan.filter')}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={toggleSelectAll}
+                    disabled={controlsBusy}
+                    className="text-[11px] font-medium text-primary hover:opacity-80 transition-opacity cursor-pointer flex items-center gap-1"
+                  >
+                    <span className="material-symbols-outlined text-[14px]">{masterIcon}</span>
+                    <span>{allSelected ? t('bulkScan.uncheckAll') : t('bulkScan.checkAll')}</span>
+                  </button>
+                </div>
+                <div className="space-y-0.5 text-xs">
+                  {BULK_SCAN_FILTERS.map((f) => {
+                    const count =
+                      f.id === 'all'
+                        ? items.length
+                        : f.id === 'selected'
+                          ? selectedCount
+                          : items.length - selectedCount;
+                    const isActive = listFilter === f.id;
+                    return (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => setListFilter(f.id)}
+                        className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                          isActive
+                            ? 'bg-primary/15 text-primary font-semibold'
+                            : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <span className="material-symbols-outlined text-[16px]">
+                            {f.id === 'all' ? 'menu' : f.id === 'selected' ? 'check_box' : 'check_box_outline_blank'}
+                          </span>
+                          <span>{t(f.labelKey)}</span>
+                        </span>
+                        <span className="px-1.5 py-0.2 rounded-md bg-surface-container-highest text-[10px] tabular-nums font-semibold">
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
             {/* Action Buttons */}
             <div className="space-y-2 pt-1">
               <button
@@ -852,11 +965,21 @@ export default function BulkScanPanel({
               <h3 className="text-base font-semibold text-on-surface mb-1.5">
                 {t('bulkScan.pickSource')}
               </h3>
-              <p className="max-w-md text-xs text-on-surface-variant leading-relaxed">
+              <p className="max-w-md text-xs text-on-surface-variant leading-relaxed mb-4">
                 {t('bulkScan.emptySubtitle') ||
                   t('bulkScan.hint1') ||
                   'Chọn nguồn truyện từ thanh bên trái và nhấn "Tải" để bắt đầu quét toàn bộ danh mục.'}
               </p>
+              {selectedSiteId && !busyList ? (
+                <button
+                  type="button"
+                  onClick={() => void runLoad()}
+                  className="h-8 px-4 rounded-xl bg-primary text-on-primary hover:opacity-90 text-xs font-semibold inline-flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
+                >
+                  <span className="material-symbols-outlined text-[16px]">sync</span>
+                  <span>{t('bulkScan.scanSource')}</span>
+                </button>
+              ) : null}
             </div>
           ) : (
             <div className="flex h-full w-full flex-col min-h-0 overflow-hidden">

@@ -10,6 +10,8 @@ describe('Multi-source search i18n keys', () => {
     'latestUpdates.multiSearchPartialSelected',
     'latestUpdates.multiSearchNoneSelected',
     'latestUpdates.selectAllSources',
+    'latestUpdates.multiSearchSummary',
+    'latestUpdates.multiSearchNoPaginationNotice',
   ];
 
   test('vi.js has all multi-source search keys', () => {

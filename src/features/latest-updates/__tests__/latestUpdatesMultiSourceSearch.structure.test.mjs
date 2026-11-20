@@ -31,16 +31,34 @@ describe('LatestUpdatesPanel Multi-Source Search Integration', () => {
     expect(scopeControlMatch[0]).not.toContain('data-tooltip');
   });
 
-  test('multi-source search lists selected sources as cards when searchAllSources is active', () => {
+  test('multi-source search uses MultiSelectDropdown for selecting sources cleanly without redundant cards', () => {
     const content = fs.readFileSync(panelPath, 'utf8');
-    expect(content).toContain('selectedMultiDescriptors');
-    expect(content).toContain('selectedMultiDescriptors.map');
+    expect(content).toContain('MultiSelectDropdown');
+    expect(content).toContain('searchCapableSiteOptions');
+    expect(content).toContain('handleMultiSearchSiteIdsChange');
   });
 
-  test('latestListFetchTriggerKey incorporates selectedMultiSearchSiteIds and disables search when none selected', () => {
+  test('latestListFetchTriggerKey incorporates selectedMultiSearchSiteIds only when isMultiSourceSearch is active', () => {
     const content = fs.readFileSync(panelPath, 'utf8');
     expect(content).toContain('selectedMultiSearchSiteIds.slice().sort().join');
     expect(content).toContain('searchAllSources && selectedMultiSearchSiteIds.length === 0');
+    expect(content).toMatch(/scope\s*=\s*isMultiSourceSearch\s*\?\s*`all:\$\{selectedMultiSearchSiteIds/);
+  });
+
+  test('exports latestUpdatesMultiSearchCache and supports dual cache switching without redundant fetch', () => {
+    const content = fs.readFileSync(panelPath, 'utf8');
+    expect(content).toContain('export const latestUpdatesMultiSearchCache = {');
+    expect(content).toContain('singleSourceCacheRef');
+    expect(content).toContain('latestUpdatesMultiSearchCache.rows?.length > 0');
+    expect(content).toContain("latestUpdatesMultiSearchCache.searchTerm = ''");
+  });
+
+  test('supports client-side pagination for multi-source search results', () => {
+    const content = fs.readFileSync(panelPath, 'utf8');
+    expect(content).toContain('MULTI_SEARCH_PAGE_SIZE');
+    expect(content).toContain('multiSearchTotalPages');
+    expect(content).toContain('displayedRows');
+    expect(content).toContain('handleMultiPageJumpSubmit');
   });
 });
 

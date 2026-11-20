@@ -692,20 +692,11 @@ export default function FollowedMangaPanel({
     <StudioLayout>
       {/* Top Toolbar */}
       <StudioLayout.Toolbar
+        showLeftSidebar={showLeftSidebar}
+        onToggleLeftSidebar={toggleLeftSidebar}
+        leftSidebarTooltip={showLeftSidebar ? t('sidebar.hidePanel') : t('sidebar.showPanel')}
         leftSlot={
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={toggleLeftSidebar}
-              className="w-8 h-8 rounded-lg inline-flex items-center justify-center text-on-surface-variant hover:text-on-surface bg-surface-container-highest/60 hover:bg-surface-container-high border border-outline-variant/20 transition-all active:scale-95 cursor-pointer"
-              data-tooltip={showLeftSidebar ? 'Thu gọn sidebar' : 'Mở sidebar'}
-              aria-label={showLeftSidebar ? 'Thu gọn sidebar' : 'Mở sidebar'}
-            >
-              <span className="material-symbols-outlined text-[20px]">
-                {showLeftSidebar ? 'dock_to_left' : 'view_sidebar'}
-              </span>
-            </button>
-
             {/* Subtabs Navigation Slot */}
             {subtabsSlot}
 
@@ -724,11 +715,11 @@ export default function FollowedMangaPanel({
               <button
                 type="button"
                 onClick={() => onStopQueue?.()}
-                className="inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold bg-amber-600 dark:bg-amber-500 text-white hover:opacity-95 shadow-2xs transition-all active:scale-95 cursor-pointer shrink-0"
+                className="inline-flex items-center justify-center gap-1.5 h-7 px-3 rounded-lg text-xs font-semibold bg-amber-600 dark:bg-amber-500 text-white hover:opacity-95 shadow-2xs transition-all active:scale-95 cursor-pointer shrink-0"
                 data-tooltip={t('followedManga.actions.pauseDownload')}
                 aria-label={t('followedManga.actions.pauseQueue', { percent: overall.percent })}
               >
-                <span className="material-symbols-outlined text-[16px] leading-none">
+                <span className="material-symbols-outlined text-[15px] leading-none">
                   pause
                 </span>
                 <span>{t('followedManga.actions.pauseQueue', { percent: overall.percent })}</span>
@@ -737,11 +728,11 @@ export default function FollowedMangaPanel({
               <button
                 type="button"
                 onClick={() => onStartQueue?.({ unpauseAll: true })}
-                className="inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold bg-primary text-on-primary hover:opacity-95 shadow-2xs transition-all active:scale-95 cursor-pointer shrink-0"
+                className="inline-flex items-center justify-center gap-1.5 h-7 px-3 rounded-lg text-xs font-semibold bg-primary text-on-primary hover:opacity-95 shadow-2xs transition-all active:scale-95 cursor-pointer shrink-0"
                 data-tooltip={t('followedManga.actions.resumeDownload')}
                 aria-label={t('followedManga.actions.resumeQueue', { count: unfinishedQueueCount })}
               >
-                <span className="material-symbols-outlined text-[16px] leading-none">
+                <span className="material-symbols-outlined text-[15px] leading-none">
                   play_arrow
                 </span>
                 <span>{t('followedManga.actions.resumeQueue', { count: unfinishedQueueCount })}</span>
@@ -751,7 +742,7 @@ export default function FollowedMangaPanel({
                 type="button"
                 disabled={isEnqueuingAll || isCheckingAll}
                 onClick={handleEnqueueAllNew}
-                className="inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold bg-emerald-600 dark:bg-emerald-500 text-white hover:opacity-95 shadow-2xs transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none cursor-pointer shrink-0"
+                className="inline-flex items-center justify-center gap-1.5 h-7 px-3 rounded-lg text-xs font-semibold bg-emerald-600 dark:bg-emerald-500 text-white hover:opacity-95 shadow-2xs transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none cursor-pointer shrink-0"
                 data-tooltip={t('followedManga.actions.enqueueAllTooltip', {
                   mangaCount: stats.hasNewCount,
                   chapterCount: totalPendingChaptersCount,
@@ -762,7 +753,7 @@ export default function FollowedMangaPanel({
                 })}
               >
                 <span
-                  className={`material-symbols-outlined text-[16px] leading-none ${
+                  className={`material-symbols-outlined text-[15px] leading-none ${
                     isEnqueuingAll ? 'animate-spin' : ''
                   }`}
                 >
@@ -782,10 +773,10 @@ export default function FollowedMangaPanel({
               <button
                 type="button"
                 onClick={handleStopCheck}
-                className="inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold bg-error text-on-error hover:opacity-95 shadow-2xs transition-all active:scale-95 cursor-pointer"
+                className="inline-flex items-center justify-center gap-1.5 h-7 px-3 rounded-lg text-xs font-semibold bg-error text-on-error hover:opacity-95 shadow-2xs transition-all active:scale-95 cursor-pointer"
                 aria-label={t('followedManga.actions.stop')}
               >
-                <span className="material-symbols-outlined text-[16px]">stop</span>
+                <span className="material-symbols-outlined text-[15px]">stop</span>
                 <span>{t('followedManga.actions.stop')}</span>
               </button>
             ) : !queueProcessing && unfinishedQueueCount === 0 ? (
@@ -793,10 +784,10 @@ export default function FollowedMangaPanel({
                 type="button"
                 onClick={handleCheckAll}
                 disabled={favorites.length === 0 || isEnqueuingAll}
-                className="inline-flex items-center justify-center gap-1.5 h-8 px-3.5 rounded-lg text-xs font-semibold bg-primary text-on-primary hover:opacity-95 shadow-2xs transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
+                className="inline-flex items-center justify-center gap-1.5 h-7 px-3.5 rounded-lg text-xs font-semibold bg-primary text-on-primary hover:opacity-95 shadow-2xs transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
                 aria-label={t('followedManga.actions.checkAll')}
               >
-                <span className="material-symbols-outlined text-[16px]">sync</span>
+                <span className="material-symbols-outlined text-[15px]">sync</span>
                 <span>{t('followedManga.actions.checkAll')}</span>
               </button>
             ) : null}
@@ -838,11 +829,12 @@ export default function FollowedMangaPanel({
 
 
       {/* 2-Column StudioLayout Frame */}
-      <div className="flex-1 flex min-h-0 min-w-0 overflow-hidden relative">
+      <StudioLayout.Body>
         {/* Left Sidebar: Filters & Connectors */}
         <StudioLayout.LeftSidebar
+          open={showLeftSidebar}
           width={leftWidth}
-          collapsed={!showLeftSidebar}
+          onResizeStart={handleLeftResizeStart}
           className="bg-surface-container-low/50 relative border-r border-outline-variant/20 flex flex-col overflow-visible"
         >
           {/* Search Box */}
@@ -862,7 +854,7 @@ export default function FollowedMangaPanel({
           </div>
 
           {/* Filter Groups & Connectors List */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-4 mr-1.5">
+          <div className="p-3 space-y-4 flex-1 flex flex-col">
             {/* Status Filter Group */}
             <div>
               <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/60 mb-1.5 px-1">
@@ -883,7 +875,7 @@ export default function FollowedMangaPanel({
                     <span className="material-symbols-outlined text-[16px]">menu</span>
                     <span>{t('followedManga.filter.all')}</span>
                   </span>
-                  <span className="px-1.5 py-0.2 rounded-md bg-surface-container-highest text-[10px] tabular-nums font-semibold">
+                  <span className="px-1.5 py-0.5 rounded-md bg-surface-container-highest text-[10px] tabular-nums font-semibold">
                     {stats.total}
                   </span>
                 </button>
@@ -899,10 +891,10 @@ export default function FollowedMangaPanel({
                   }`}
                 >
                   <span className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
                     <span>{t('followedManga.filter.hasNew')}</span>
                   </span>
-                  <span className="px-1.5 py-0.2 rounded-md bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold text-[10px] tabular-nums">
+                  <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold text-[10px] tabular-nums">
                     {stats.hasNewCount}
                   </span>
                 </button>
@@ -925,6 +917,9 @@ export default function FollowedMangaPanel({
               </div>
             </div>
 
+            {/* Divider */}
+            <div className="border-t border-outline-variant/15 -mx-1" />
+
             {/* Web Sources Filter Group */}
             <div>
               <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/60 mb-1.5 px-1">
@@ -941,8 +936,11 @@ export default function FollowedMangaPanel({
                       : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
                   }`}
                 >
-                  <span>{t('followedManga.filter.allSources')}</span>
-                  <span className="text-[10px] tabular-nums font-semibold opacity-75">
+                  <span className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
+                    <span>{t('followedManga.filter.allSources')}</span>
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded-md bg-surface-container-highest text-[10px] tabular-nums font-semibold opacity-75">
                     {stats.total}
                   </span>
                 </button>
@@ -964,7 +962,11 @@ export default function FollowedMangaPanel({
                       }`}
                     >
                       <span className="flex items-center gap-1.5 truncate pr-2">
-                        {icon && <img src={icon} alt="" className="w-3.5 h-3.5 rounded shrink-0" />}
+                        {icon ? (
+                          <img src={icon} alt="" className="w-3.5 h-3.5 rounded shrink-0" />
+                        ) : (
+                          <span className="w-1.5 h-1.5 rounded-full bg-outline-variant shrink-0" />
+                        )}
                         <span className="truncate">{label}</span>
                       </span>
                       <span className="flex items-center gap-1 shrink-0">
@@ -980,6 +982,30 @@ export default function FollowedMangaPanel({
                 })}
               </div>
             </div>
+
+            {/* Stats Card — Quick summary at bottom */}
+            {stats.total > 0 && (
+              <div className="mt-auto pt-2">
+                <div className="rounded-xl border border-primary/15 bg-primary/5 p-2.5">
+                  <div className="text-[10px] font-bold text-primary mb-2 flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-[13px]">bar_chart</span>
+                    {t('followedManga.stats.overviewTitle') || 'Tổng quan'}
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+                    <span className="text-on-surface-variant">{t('followedManga.stats.total') || 'Đang theo dõi'}</span>
+                    <span className="font-bold text-on-surface text-right tabular-nums">{stats.total}</span>
+                    <span className="text-on-surface-variant">{t('followedManga.stats.hasNew') || 'Có chương mới'}</span>
+                    <span className="font-bold text-emerald-600 dark:text-emerald-400 text-right tabular-nums">{stats.hasNewCount}</span>
+                    {totalPendingChaptersCount > 0 && (
+                      <>
+                        <span className="text-on-surface-variant">{t('followedManga.stats.pendingChapters') || 'Chờ tải'}</span>
+                        <span className="font-bold text-amber-600 dark:text-amber-400 text-right tabular-nums">{totalPendingChaptersCount} ch.</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Standard Resize Splitter */}
@@ -1250,7 +1276,7 @@ export default function FollowedMangaPanel({
             </div>
           )}
         </StudioLayout.Content>
-      </div>
+      </StudioLayout.Body>
 
       <ChaptersDrawer
         open={chapterDrawerOpen}

@@ -26,6 +26,9 @@ const SEARCH_ALL_SOURCES_KEY = 'mangaLatestUpdatesSearchAllSources';
 /** Khớp mobile Home tab — giới hạn phân trang danh sách mới cập nhật. */
 const LATEST_UPDATES_MAX_LISTING_PAGES = 20;
 
+/** Số lượng truyện hiển thị trên mỗi trang khi tìm kiếm đa nguồn (Client-side pagination). */
+const MULTI_SEARCH_PAGE_SIZE = 24;
+
 const LATEST_SEARCH_PAGINATED_SITE_IDS = new Set(['minotruyen', 'nettruyenar']);
 
 function clampLatestListingPage(pageNum) {
@@ -262,6 +265,16 @@ export const latestUpdatesListingCache = {
 };
 
 /**
+ * In-memory cache for multi-source search results to avoid redundant fetches on scope switch.
+ */
+export const latestUpdatesMultiSearchCache = {
+  key: '',
+  searchTerm: '',
+  rows: [],
+  fetchError: '',
+};
+
+/**
  * Sites that expose connector.fetchLatestUpdates (main process).
  *
  * @param {{ id: string, label?: string, supportsLatestUpdates?: boolean }[]} connectors
@@ -368,6 +381,8 @@ export default function LatestUpdatesPanel({
 
   const [page, setPage] = useState(() => latestUpdatesListingCache.page || 1);
   const [raw_page_input, setRawPageInput] = useState(() => String(latestUpdatesListingCache.page || 1));
+  const [multiSearchPage, setMultiSearchPage] = useState(1);
+  const [rawMultiPageInput, setRawMultiPageInput] = useState('1');
   const [rows, setRows] = useState(() => (Array.isArray(latestUpdatesListingCache.rows) ? latestUpdatesListingCache.rows : []));
   const [listingTotalPages, setListingTotalPages] = useState(() => latestUpdatesListingCache.listingTotalPages || 1);
   const [fetchError, setFetchError] = useState(() => latestUpdatesListingCache.fetchError || '');
@@ -633,6 +648,32 @@ export default function LatestUpdatesPanel({
   const isSearchActive = Boolean(String(appliedSearch || '').trim());
   const isMultiSourceSearch = isSearchActive && searchAllSources;
 
+  const multiSearchTotalPages = useMemo(
+    () => Math.max(1, Math.ceil(rows.length / MULTI_SEARCH_PAGE_SIZE)),
+    [rows.length],
+  );
+
+  const displayedRows = useMemo(() => {
+    if (!isMultiSourceSearch) return rows;
+    const start = (multiSearchPage - 1) * MULTI_SEARCH_PAGE_SIZE;
+    return rows.slice(start, start + MULTI_SEARCH_PAGE_SIZE);
+  }, [isMultiSourceSearch, rows, multiSearchPage]);
+
+  const contentScrollRef = useRef(null);
+
+  const handleMultiPageJumpSubmit = useCallback(() => {
+    const raw = String(rawMultiPageInput || '').trim();
+    const parsed = parseInt(raw, 10);
+    if (!Number.isFinite(parsed)) {
+      setRawMultiPageInput(String(multiSearchPage));
+      return;
+    }
+    const clamped = Math.min(multiSearchTotalPages, Math.max(1, parsed));
+    setMultiSearchPage(clamped);
+    setRawMultiPageInput(String(clamped));
+    contentScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [rawMultiPageInput, multiSearchPage, multiSearchTotalPages]);
+
   const selectedSupportsSearch = useMemo(() => {
     if (!selectedSiteId) return false;
     if (selectedDescriptor && typeof selectedDescriptor.supportsLatestUpdatesSearch === 'boolean') {
@@ -773,11 +814,62 @@ export default function LatestUpdatesPanel({
     };
   }, [selectedDescriptor, selectedSiteId, t, searchAllSources]);
 
-  const handleSearchAllSourcesChange = useCallback((nextAll) => {
-    const enabled = Boolean(nextAll);
-    setSearchAllSources(enabled);
-    persistSearchAllSourcesPref(enabled);
-  }, []);
+  const handleSearchAllSourcesChange = useCallback(
+    (nextAll) => {
+      const enabled = Boolean(nextAll);
+      if (enabled === searchAllSources) return;
+      setSearchAllSources(enabled);
+      persistSearchAllSourcesPref(enabled);
+
+      if (enabled) {
+        // Chuyển sang "Tất cả nguồn"
+        setMultiSearchPage(1);
+        setRawMultiPageInput('1');
+        if (
+          latestUpdatesMultiSearchCache.rows?.length > 0 &&
+          latestUpdatesMultiSearchCache.searchTerm
+        ) {
+          // Khôi phục kết quả tìm kiếm đa nguồn đã lưu trong phiên
+          setRows(latestUpdatesMultiSearchCache.rows);
+          setListingTotalPages(1);
+          setPage(1);
+          setFetchError(latestUpdatesMultiSearchCache.fetchError || '');
+          setAppliedSearch(latestUpdatesMultiSearchCache.searchTerm);
+          setSearchDraft(latestUpdatesMultiSearchCache.searchTerm);
+        } else {
+          // Chưa từng tìm kiếm đa nguồn: giữ nguyên rows hiện tại, không call API
+          setAppliedSearch('');
+        }
+      } else {
+        // Chuyển về "Nguồn chọn"
+        setMultiSearchPage(1);
+        setRawMultiPageInput('1');
+        if (
+          singleSourceCacheRef.current?.rows?.length > 0 &&
+          singleSourceCacheRef.current.siteId === selectedSiteId
+        ) {
+          // Khôi phục kết quả/feed của nguồn được chọn từ cache
+          const cached = singleSourceCacheRef.current;
+          setRows(cached.rows);
+          setListingTotalPages(cached.listingTotalPages || 1);
+          setPage(cached.page || 1);
+          setFetchError(cached.fetchError || '');
+          setAppliedSearch(cached.appliedSearch || '');
+          setSearchDraft(cached.appliedSearch || '');
+        } else if (
+          latestUpdatesListingCache.rows?.length > 0 &&
+          !latestUpdatesListingCache.key.includes('|all:')
+        ) {
+          setRows(latestUpdatesListingCache.rows);
+          setListingTotalPages(latestUpdatesListingCache.listingTotalPages || 1);
+          setPage(latestUpdatesListingCache.page || 1);
+          setFetchError(latestUpdatesListingCache.fetchError || '');
+          setAppliedSearch('');
+        }
+      }
+    },
+    [searchAllSources, selectedSiteId],
+  );
 
   const effectiveMangaLoadOpts = useMemo(() => {
     let opts = mangaLoadOpts;
@@ -796,6 +888,15 @@ export default function LatestUpdatesPanel({
   );
 
   const chapterDrawerCacheRef = useRef(new Map());
+  const singleSourceCacheRef = useRef({
+    siteId: '',
+    key: '',
+    page: 1,
+    rows: [],
+    listingTotalPages: 1,
+    fetchError: '',
+    appliedSearch: '',
+  });
 
   const mangadexPanelLangOptions = useMemo(
     () => [
@@ -827,7 +928,7 @@ export default function LatestUpdatesPanel({
   }, []);
 
   const latestListFetchTriggerKey = useMemo(() => {
-    const scope = searchAllSources
+    const scope = isMultiSourceSearch
       ? `all:${selectedMultiSearchSiteIds.slice().sort().join(',')}`
       : 'one';
     if (selectedSiteId === 'mangadex') {
@@ -840,7 +941,7 @@ export default function LatestUpdatesPanel({
   }, [
     selectedSiteId,
     appliedSearch,
-    searchAllSources,
+    isMultiSourceSearch,
     selectedMultiSearchSiteIds,
     panelMangadexLanguage,
     panelMinotruyenCategory,
@@ -958,6 +1059,22 @@ export default function LatestUpdatesPanel({
           if (errs.length) warn = errs.join(' · ');
         }
         setFetchError(warn);
+        if (isMultiSourceSearch) {
+          latestUpdatesMultiSearchCache.key = latestListFetchTriggerKey;
+          latestUpdatesMultiSearchCache.searchTerm = searchTerm;
+          latestUpdatesMultiSearchCache.rows = merged;
+          latestUpdatesMultiSearchCache.fetchError = warn;
+        } else {
+          singleSourceCacheRef.current = {
+            siteId: selectedSiteId,
+            key: latestListFetchTriggerKey,
+            page: p,
+            rows: merged,
+            listingTotalPages: calculatedTotalPages,
+            fetchError: warn,
+            appliedSearch: searchTerm,
+          };
+        }
         latestUpdatesListingCache.key = latestListFetchTriggerKey;
         latestUpdatesListingCache.page = p;
         latestUpdatesListingCache.rows = merged;
@@ -1019,13 +1136,22 @@ export default function LatestUpdatesPanel({
   useEffect(() => {
     if (!selectedSiteId) return;
     if (
-      latestUpdatesListingCache.key === latestListFetchTriggerKey &&
-      latestUpdatesListingCache.rows?.length > 0 &&
-      latestUpdatesListingCache.page === 1
+      (latestUpdatesListingCache.key === latestListFetchTriggerKey &&
+        latestUpdatesListingCache.rows?.length > 0 &&
+        latestUpdatesListingCache.page === 1) ||
+      (isMultiSourceSearch &&
+        latestUpdatesMultiSearchCache.key === latestListFetchTriggerKey &&
+        latestUpdatesMultiSearchCache.rows?.length > 0)
     ) {
-      setRows(latestUpdatesListingCache.rows);
-      setListingTotalPages(latestUpdatesListingCache.listingTotalPages || 1);
-      setFetchError(latestUpdatesListingCache.fetchError || '');
+      if (isMultiSourceSearch && latestUpdatesMultiSearchCache.key === latestListFetchTriggerKey) {
+        setRows(latestUpdatesMultiSearchCache.rows);
+        setListingTotalPages(1);
+        setFetchError(latestUpdatesMultiSearchCache.fetchError || '');
+      } else {
+        setRows(latestUpdatesListingCache.rows);
+        setListingTotalPages(latestUpdatesListingCache.listingTotalPages || 1);
+        setFetchError(latestUpdatesListingCache.fetchError || '');
+      }
       setIsSearchLoading(false);
       return;
     }
@@ -1039,6 +1165,8 @@ export default function LatestUpdatesPanel({
     setAppliedSearch(trimmed);
     setPage(1);
     setRawPageInput('1');
+    setMultiSearchPage(1);
+    setRawMultiPageInput('1');
     if (trimmed === appliedSearch && page === 1) {
       void runFetchForPage(1, trimmed);
     }
@@ -1049,7 +1177,28 @@ export default function LatestUpdatesPanel({
     setAppliedSearch('');
     setIsSearchLoading(false);
     setPage(1);
-  }, []);
+    setMultiSearchPage(1);
+    setRawMultiPageInput('1');
+
+    if (searchAllSources) {
+      latestUpdatesMultiSearchCache.key = '';
+      latestUpdatesMultiSearchCache.searchTerm = '';
+      latestUpdatesMultiSearchCache.rows = [];
+      latestUpdatesMultiSearchCache.fetchError = '';
+    } else if (singleSourceCacheRef.current) {
+      singleSourceCacheRef.current.appliedSearch = '';
+    }
+
+    if (
+      singleSourceCacheRef.current?.rows?.length > 0 &&
+      singleSourceCacheRef.current.siteId === selectedSiteId
+    ) {
+      const cached = singleSourceCacheRef.current;
+      setRows(cached.rows);
+      setListingTotalPages(cached.listingTotalPages || 1);
+      setFetchError(cached.fetchError || '');
+    }
+  }, [searchAllSources, selectedSiteId]);
 
   const handlePluginConsoleCopy = useCallback(async () => {
     const text = pluginConsoleLines.join('\n');
@@ -1350,87 +1499,16 @@ export default function LatestUpdatesPanel({
         leftSlot={subtabsSlot}
         rightSlot={
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1 text-xs text-on-surface-variant">
-              <span className="tabular-nums px-1 max-sm:hidden">
-                {t('latestUpdates.pageOf', { page, total: listingTotalPages })}
-              </span>
-              <button
-                type="button"
-                data-tooltip={t('latestUpdates.firstPage')}
-                aria-label={t('latestUpdates.firstPage')}
-                disabled={page <= 1 || busyList || !selectedSiteId || pagination_search_locked}
-                onClick={go_first_page}
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-outline-variant/30 bg-surface-container-high text-on-surface-variant hover:bg-surface-bright disabled:pointer-events-none disabled:opacity-40 cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-[16px] leading-none">first_page</span>
-              </button>
-              <button
-                type="button"
-                disabled={page <= 1 || busyList || pagination_search_locked}
-                onClick={() => {
-                  const next = Math.max(1, page - 1);
-                  setPage(next);
-                  void runFetchForPage(next);
-                }}
-                className="h-7 shrink-0 rounded-md border border-outline-variant/30 bg-surface-container-high px-2 text-xs hover:bg-surface-bright disabled:opacity-40 cursor-pointer"
-              >
-                {t('latestUpdates.prevPage')}
-              </button>
-              <form
-                className="flex min-w-0 items-center gap-1"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  handle_jump_page_submit();
-                }}
-              >
-                <input
-                  type="number"
-                  min={1}
-                  max={listingTotalPages}
-                  inputMode="numeric"
-                  aria-label={t('latestUpdates.pageInputAria', { total: listingTotalPages })}
-                  disabled={busyList || !selectedSiteId || pagination_search_locked}
-                  value={raw_page_input}
-                  onChange={(e) => setRawPageInput(e.target.value)}
-                  className="h-7 w-11 shrink-0 rounded-md border border-outline-variant/30 bg-surface px-1 text-center text-xs font-mono text-on-surface outline-none focus:border-primary/50 disabled:opacity-40"
-                />
-              </form>
-              <button
-                type="button"
-                disabled={busyList || page >= listingTotalPages || pagination_search_locked}
-                onClick={() => {
-                  const next = Math.min(listingTotalPages, page + 1);
-                  setPage(next);
-                  void runFetchForPage(next);
-                }}
-                className="h-7 shrink-0 rounded-md border border-outline-variant/30 bg-surface-container-high px-2 text-xs hover:bg-surface-bright disabled:opacity-40 cursor-pointer"
-              >
-                {t('latestUpdates.nextPage')}
-              </button>
-              <button
-                type="button"
-                data-tooltip={t('latestUpdates.lastPage')}
-                aria-label={t('latestUpdates.lastPage')}
-                disabled={
-                  busyList || !selectedSiteId || page >= listingTotalPages || pagination_search_locked
-                }
-                onClick={go_last_page}
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-outline-variant/30 bg-surface-container-high text-on-surface-variant hover:bg-surface-bright disabled:pointer-events-none disabled:opacity-40 cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-[16px] leading-none">last_page</span>
-              </button>
-            </div>
-
             <button
               type="button"
               disabled={busyList || !selectedSiteId}
               onClick={handleManualRefresh}
-              className="h-7.5 shrink-0 rounded-lg bg-primary px-3 text-xs font-semibold text-on-primary transition-opacity hover:opacity-90 disabled:pointer-events-none disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+              className="h-7 px-3 shrink-0 rounded-lg bg-primary text-xs font-semibold text-on-primary transition-all hover:opacity-95 active:scale-95 disabled:pointer-events-none disabled:opacity-50 flex items-center gap-1.5 cursor-pointer shadow-2xs"
             >
-              <span className={`material-symbols-outlined text-[15px] leading-none ${busyList ? 'animate-spin' : ''}`}>
+              <span className={`material-symbols-outlined text-[15px] leading-none ${busyList && !isSearchLoading ? 'animate-spin' : ''}`}>
                 refresh
               </span>
-              <span>{busyList ? t('latestUpdates.loading') : t('latestUpdates.refresh')}</span>
+              <span>{busyList && !isSearchLoading ? t('latestUpdates.loading') : t('latestUpdates.refresh')}</span>
             </button>
 
             {is_plugin_source ? (
@@ -1448,7 +1526,7 @@ export default function LatestUpdatesPanel({
                     : t('latestUpdates.pluginConsoleShow')
                 }
                 aria-expanded={pluginConsoleOpen}
-                className={`relative inline-flex h-7.5 w-7.5 items-center justify-center rounded-lg border border-outline-variant/30 transition-colors cursor-pointer ${
+                className={`relative inline-flex h-7 w-7 items-center justify-center rounded-lg border border-outline-variant/30 transition-colors cursor-pointer ${
                   pluginConsoleOpen
                     ? 'bg-primary/15 text-primary'
                     : pluginConsoleLines.length > 0
@@ -1542,23 +1620,14 @@ export default function LatestUpdatesPanel({
                   <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant shrink-0">
                     {t('latestUpdates.searchTitle')}
                   </label>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-surface-container-highest text-on-surface-variant font-medium truncate max-w-[130px]">
-                    {searchAllSources
-                      ? t('latestUpdates.searchScopeActiveBadgeAll')
-                      : selectedDescriptor?.label || selectedSiteId}
-                  </span>
+                  {searchAllSources && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-surface-container-highest text-on-surface-variant font-medium truncate max-w-[130px]">
+                      {t('latestUpdates.searchScopeActiveBadgeAll')}
+                    </span>
+                  )}
                 </div>
 
                 <div className="relative flex items-center w-full">
-                  <span
-                    className={`material-symbols-outlined absolute left-2.5 text-[17px] pointer-events-none transition-colors ${
-                      isSearchLoading
-                        ? 'text-primary animate-spin'
-                        : 'text-on-surface-variant/60'
-                    }`}
-                  >
-                    {isSearchLoading ? 'progress_activity' : 'search'}
-                  </span>
                   <input
                     ref={searchInputRef}
                     type="text"
@@ -1573,7 +1642,7 @@ export default function LatestUpdatesPanel({
                     }}
                     placeholder={latestSearchFieldLabels.placeholder}
                     aria-label={latestSearchFieldLabels.ariaLabel}
-                    className="h-8.5 w-full rounded-xl bg-surface-container-high/60 pl-8 pr-7 text-xs text-on-surface outline-none border border-outline-variant/25 focus:border-primary/50 focus:ring-1 focus:ring-primary/30"
+                    className="h-8.5 w-full rounded-xl bg-surface-container-high/60 px-3 pr-7 text-xs text-on-surface outline-none border border-outline-variant/25 focus:border-primary/50 focus:ring-1 focus:ring-primary/30"
                     autoComplete="off"
                   />
                   {searchDraft && !isSearchLoading ? (
@@ -1608,50 +1677,11 @@ export default function LatestUpdatesPanel({
                 {t('latestUpdates.cuutruyenVpnNotice')}
               </div>
             )}
-
-            {searchAllSources ? (
-              <div className="space-y-2">
-                {selectedMultiDescriptors.map((desc) => (
-                  <div
-                    key={desc.id}
-                    className="rounded-xl border border-outline-variant/15 bg-surface-container-low/50 p-3 space-y-1 text-xs text-on-surface-variant hover:border-outline-variant/30 transition-colors"
-                  >
-                    <div className="flex items-center justify-between font-semibold text-on-surface">
-                      <span className="truncate">{desc.label || desc.id}</span>
-                      {desc.domain && (
-                        <span className="text-[10px] font-normal text-on-surface-variant/70 shrink-0 ml-1">
-                          {connectorHost(desc.domain)}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-[11px] text-on-surface-variant/80">
-                      {t('latestUpdates.pageOf', { page: 1, total: 1 })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              selectedDescriptor && (
-                <div className="rounded-xl border border-outline-variant/15 bg-surface-container-low/50 p-3 space-y-1 text-xs text-on-surface-variant">
-                  <div className="flex items-center justify-between font-semibold text-on-surface">
-                    <span className="truncate">{selectedDescriptor.label || selectedSiteId}</span>
-                    {selectedDescriptor.domain && (
-                      <span className="text-[10px] font-normal text-on-surface-variant/70 shrink-0 ml-1">
-                        {connectorHost(selectedDescriptor.domain)}
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-[11px] text-on-surface-variant/80">
-                    {t('latestUpdates.pageOf', { page, total: listingTotalPages })}
-                  </div>
-                </div>
-              )
-            )}
           </div>
         </StudioLayout.LeftSidebar>
 
         <StudioLayout.Content>
-          <div className="custom-scrollbar flex-1 min-h-0 overflow-auto px-4 py-4 sm:px-6 sm:py-5">
+          <div ref={contentScrollRef} className="custom-scrollbar flex-1 min-h-0 overflow-auto px-4 py-4 sm:px-6 sm:py-5">
             <div className="w-full min-w-0">
           {fetchError && !errorDismissed ? (
             multiErrorItems.length > 1 ? (
@@ -1775,7 +1805,7 @@ export default function LatestUpdatesPanel({
             <div className={`transition-opacity duration-200 ${isSearchLoading ? 'opacity-40 pointer-events-none' : ''}`}>
               {viewMode === 'grid' ? (
               <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
-                {rows.map((row) => {
+                {displayedRows.map((row) => {
                   const k = `${row.siteId}::${row.mangaUrl}`;
                   const enqBusy = enqueueKey === k;
                   const openBusy = inlineChapterBusyKey === k;
@@ -1906,7 +1936,7 @@ export default function LatestUpdatesPanel({
               </ul>
             ) : (
               <ul className="flex flex-col gap-2">
-                {rows.map((row) => {
+                {displayedRows.map((row) => {
                   const k = `${row.siteId}::${row.mangaUrl}`;
                   const enqBusy = enqueueKey === k;
                   const openBusy = inlineChapterBusyKey === k;
@@ -2064,6 +2094,239 @@ export default function LatestUpdatesPanel({
           ) : null}
         </div>
       </div>
+
+      {/* Modern Bottom Pagination Bar */}
+      {!isMultiSourceSearch && selectedSiteId && listingTotalPages > 0 && rows.length > 0 && (
+        <div
+          className="shrink-0 border-t border-outline-variant/20 bg-surface-container-low/80 backdrop-blur-md px-4 py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 select-none"
+          role="region"
+          aria-label={t('latestUpdates.pageOf', { page, total: listingTotalPages })}
+        >
+          {/* Left: Status badge */}
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary tabular-nums shadow-2xs">
+              <span className="material-symbols-outlined text-[15px]">auto_stories</span>
+              <span>{t('latestUpdates.pageOf', { page, total: listingTotalPages })}</span>
+            </span>
+          </div>
+
+          {/* Right: Modern Compact Page Navigation */}
+          <div className="flex items-center gap-1 text-xs text-on-surface-variant sm:ml-auto">
+            {/* First page button */}
+            <button
+              type="button"
+              data-tooltip={t('latestUpdates.firstPage')}
+              aria-label={t('latestUpdates.firstPage')}
+              disabled={page <= 1 || busyList || !selectedSiteId || pagination_search_locked}
+              onClick={go_first_page}
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-outline-variant/30 bg-surface-container-high text-on-surface-variant hover:bg-surface-bright hover:text-on-surface hover:border-outline-variant/60 active:scale-95 disabled:pointer-events-none disabled:opacity-40 transition-all cursor-pointer shadow-2xs"
+            >
+              <span className="material-symbols-outlined text-[17px] leading-none">first_page</span>
+            </button>
+
+            {/* Previous page button */}
+            <button
+              type="button"
+              aria-label={t('latestUpdates.prevPage')}
+              disabled={page <= 1 || busyList || pagination_search_locked}
+              onClick={() => {
+                const next = Math.max(1, page - 1);
+                setPage(next);
+                void runFetchForPage(next);
+              }}
+              className="inline-flex h-8 px-2.5 shrink-0 items-center gap-1 rounded-xl border border-outline-variant/30 bg-surface-container-high text-on-surface-variant hover:bg-surface-bright hover:text-on-surface hover:border-outline-variant/60 active:scale-95 disabled:pointer-events-none disabled:opacity-40 transition-all cursor-pointer shadow-2xs font-medium"
+            >
+              <span className="material-symbols-outlined text-[16px] leading-none">chevron_left</span>
+              <span className="max-sm:hidden">{t('latestUpdates.prevPage')}</span>
+            </button>
+
+            {/* Quick jump page input */}
+            <form
+              className="flex min-w-0 items-center gap-1.5 px-1"
+              onSubmit={(e) => {
+                e.preventDefault();
+                handle_jump_page_submit();
+              }}
+            >
+              <input
+                type="number"
+                min={1}
+                max={listingTotalPages}
+                inputMode="numeric"
+                aria-label={t('latestUpdates.pageInputAria', { total: listingTotalPages })}
+                disabled={busyList || !selectedSiteId || pagination_search_locked}
+                value={raw_page_input}
+                onChange={(e) => setRawPageInput(e.target.value)}
+                className="h-8 w-12 shrink-0 rounded-xl border border-outline-variant/30 bg-surface-container-highest px-1.5 text-center text-xs font-semibold font-mono text-on-surface outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all disabled:opacity-40 shadow-inner"
+              />
+              <span className="text-on-surface-variant/70 font-medium">/</span>
+              <span className="tabular-nums font-semibold text-on-surface-variant min-w-[1.5rem] text-center">
+                {listingTotalPages}
+              </span>
+            </form>
+
+            {/* Next page button */}
+            <button
+              type="button"
+              aria-label={t('latestUpdates.nextPage')}
+              disabled={busyList || page >= listingTotalPages || pagination_search_locked}
+              onClick={() => {
+                const next = Math.min(listingTotalPages, page + 1);
+                setPage(next);
+                void runFetchForPage(next);
+              }}
+              className="inline-flex h-8 px-2.5 shrink-0 items-center gap-1 rounded-xl border border-outline-variant/30 bg-surface-container-high text-on-surface-variant hover:bg-surface-bright hover:text-on-surface hover:border-outline-variant/60 active:scale-95 disabled:pointer-events-none disabled:opacity-40 transition-all cursor-pointer shadow-2xs font-medium"
+            >
+              <span className="max-sm:hidden">{t('latestUpdates.nextPage')}</span>
+              <span className="material-symbols-outlined text-[16px] leading-none">chevron_right</span>
+            </button>
+
+            {/* Last page button */}
+            <button
+              type="button"
+              data-tooltip={t('latestUpdates.lastPage')}
+              aria-label={t('latestUpdates.lastPage')}
+              disabled={
+                busyList || !selectedSiteId || page >= listingTotalPages || pagination_search_locked
+              }
+              onClick={go_last_page}
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-outline-variant/30 bg-surface-container-high text-on-surface-variant hover:bg-surface-bright hover:text-on-surface hover:border-outline-variant/60 active:scale-95 disabled:pointer-events-none disabled:opacity-40 transition-all cursor-pointer shadow-2xs"
+            >
+              <span className="material-symbols-outlined text-[17px] leading-none">last_page</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Multi-source search result summary footer with in-memory pagination */}
+      {isMultiSourceSearch && rows.length > 0 && (
+        <div
+          className="shrink-0 border-t border-outline-variant/20 bg-surface-container-low/80 backdrop-blur-md px-4 py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 select-none"
+          role="region"
+          aria-label={t('latestUpdates.multiSearchSummary', {
+            count: rows.length,
+            sources: selectedMultiDescriptors.length || searchCapableSiteOptions.length,
+          })}
+        >
+          {/* Left: Summary & page badge */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary tabular-nums shadow-2xs">
+              <span className="material-symbols-outlined text-[15px]">manage_search</span>
+              <span>
+                {t('latestUpdates.multiSearchSummary', {
+                  count: rows.length,
+                  sources: selectedMultiDescriptors.length || searchCapableSiteOptions.length,
+                })}
+              </span>
+            </span>
+            {multiSearchTotalPages > 1 && (
+              <span className="text-xs text-on-surface-variant/80 font-medium tabular-nums max-sm:hidden">
+                ({t('latestUpdates.pageOf', { page: multiSearchPage, total: multiSearchTotalPages })})
+              </span>
+            )}
+          </div>
+
+          {/* Right: Client-side Page Navigation Controls */}
+          {multiSearchTotalPages > 1 ? (
+            <div className="flex items-center gap-1 text-xs text-on-surface-variant sm:ml-auto">
+              {/* First page button */}
+              <button
+                type="button"
+                data-tooltip={t('latestUpdates.firstPage')}
+                aria-label={t('latestUpdates.firstPage')}
+                disabled={multiSearchPage <= 1 || isSearchLoading}
+                onClick={() => {
+                  setMultiSearchPage(1);
+                  setRawMultiPageInput('1');
+                  contentScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-outline-variant/30 bg-surface-container-high text-on-surface-variant hover:bg-surface-bright hover:text-on-surface hover:border-outline-variant/60 active:scale-95 disabled:pointer-events-none disabled:opacity-40 transition-all cursor-pointer shadow-2xs"
+              >
+                <span className="material-symbols-outlined text-[17px] leading-none">first_page</span>
+              </button>
+
+              {/* Previous page button */}
+              <button
+                type="button"
+                aria-label={t('latestUpdates.prevPage')}
+                disabled={multiSearchPage <= 1 || isSearchLoading}
+                onClick={() => {
+                  const next = Math.max(1, multiSearchPage - 1);
+                  setMultiSearchPage(next);
+                  setRawMultiPageInput(String(next));
+                  contentScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className="inline-flex h-8 px-2.5 shrink-0 items-center gap-1 rounded-xl border border-outline-variant/30 bg-surface-container-high text-on-surface-variant hover:bg-surface-bright hover:text-on-surface hover:border-outline-variant/60 active:scale-95 disabled:pointer-events-none disabled:opacity-40 transition-all cursor-pointer shadow-2xs font-medium"
+              >
+                <span className="material-symbols-outlined text-[16px] leading-none">chevron_left</span>
+                <span className="max-sm:hidden">{t('latestUpdates.prevPage')}</span>
+              </button>
+
+              {/* Quick jump page input */}
+              <form
+                className="flex min-w-0 items-center gap-1.5 px-1"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleMultiPageJumpSubmit();
+                }}
+              >
+                <input
+                  type="number"
+                  min={1}
+                  max={multiSearchTotalPages}
+                  inputMode="numeric"
+                  aria-label={t('latestUpdates.pageInputAria', { total: multiSearchTotalPages })}
+                  disabled={isSearchLoading}
+                  value={rawMultiPageInput}
+                  onChange={(e) => setRawMultiPageInput(e.target.value)}
+                  className="h-8 w-12 shrink-0 rounded-xl border border-outline-variant/30 bg-surface-container-highest px-1.5 text-center text-xs font-semibold font-mono text-on-surface outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all disabled:opacity-40 shadow-inner"
+                />
+                <span className="text-on-surface-variant/70 font-medium">/</span>
+                <span className="tabular-nums font-semibold text-on-surface-variant min-w-[1.5rem] text-center">
+                  {multiSearchTotalPages}
+                </span>
+              </form>
+
+              {/* Next page button */}
+              <button
+                type="button"
+                aria-label={t('latestUpdates.nextPage')}
+                disabled={multiSearchPage >= multiSearchTotalPages || isSearchLoading}
+                onClick={() => {
+                  const next = Math.min(multiSearchTotalPages, multiSearchPage + 1);
+                  setMultiSearchPage(next);
+                  setRawMultiPageInput(String(next));
+                  contentScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className="inline-flex h-8 px-2.5 shrink-0 items-center gap-1 rounded-xl border border-outline-variant/30 bg-surface-container-high text-on-surface-variant hover:bg-surface-bright hover:text-on-surface hover:border-outline-variant/60 active:scale-95 disabled:pointer-events-none disabled:opacity-40 transition-all cursor-pointer shadow-2xs font-medium"
+              >
+                <span className="max-sm:hidden">{t('latestUpdates.nextPage')}</span>
+                <span className="material-symbols-outlined text-[16px] leading-none">chevron_right</span>
+              </button>
+
+              {/* Last page button */}
+              <button
+                type="button"
+                data-tooltip={t('latestUpdates.lastPage')}
+                aria-label={t('latestUpdates.lastPage')}
+                disabled={multiSearchPage >= multiSearchTotalPages || isSearchLoading}
+                onClick={() => {
+                  setMultiSearchPage(multiSearchTotalPages);
+                  setRawMultiPageInput(String(multiSearchTotalPages));
+                  contentScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-outline-variant/30 bg-surface-container-high text-on-surface-variant hover:bg-surface-bright hover:text-on-surface hover:border-outline-variant/60 active:scale-95 disabled:pointer-events-none disabled:opacity-40 transition-all cursor-pointer shadow-2xs"
+              >
+                <span className="material-symbols-outlined text-[17px] leading-none">last_page</span>
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1 text-xs text-on-surface-variant/70 italic sm:ml-auto">
+              <span>{t('latestUpdates.multiSearchNoPaginationNotice')}</span>
+            </div>
+          )}
+        </div>
+      )}
     </StudioLayout.Content>
   </StudioLayout.Body>
 

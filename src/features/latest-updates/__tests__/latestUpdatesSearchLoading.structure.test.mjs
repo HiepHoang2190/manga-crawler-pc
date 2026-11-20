@@ -21,7 +21,7 @@ describe('LatestUpdatesPanel Search Loading Indicator Structure', () => {
     expect(code).toMatch(/isSearchLoading\s*\?\s*['"]progress_activity['"]\s*:\s*['"]search['"]/);
   });
 
-  test('search input icon updates when search is in progress', () => {
+  test('search button icon spins when search is in progress', () => {
     const code = fs.readFileSync(panelPath, 'utf8');
     expect(code).toMatch(/isSearchLoading\s*\?\s*['"][^'"]*animate-spin[^'"]*['"]/);
   });

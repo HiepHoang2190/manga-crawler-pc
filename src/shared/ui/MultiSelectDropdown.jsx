@@ -92,8 +92,8 @@ export default function MultiSelectDropdown({
     const rect = triggerRef.current.getBoundingClientRect();
     const spaceBelow = window.innerHeight - rect.bottom;
     const spaceAbove = rect.top;
-    const maxH = 340;
-    const minW = Math.max(rect.width, isSm ? 220 : 250);
+    const maxH = 420;
+    const minW = Math.max(rect.width, isSm ? 240 : 280);
     const targetLeft = Math.max(8, Math.min(rect.left, window.innerWidth - minW - 8));
 
     if (spaceBelow < Math.min(maxH, 220) && spaceAbove > spaceBelow) {
@@ -219,11 +219,11 @@ export default function MultiSelectDropdown({
       onKeyDown={handleKeyDown}
     >
       {/* Header: Chọn tất cả */}
-      <div className="p-2 border-b border-outline-variant/15 flex items-center justify-between gap-2 shrink-0 bg-surface-container-highest/30">
+      <div className="p-2.5 px-3 border-b border-outline-variant/15 flex items-center justify-between gap-2 shrink-0 bg-surface-container-highest/40">
         <button
           type="button"
           onClick={handleToggleAll}
-          className="flex items-center gap-2 text-xs font-semibold text-on-surface hover:text-primary transition-colors cursor-pointer min-w-0"
+          className="flex items-center gap-2 text-xs font-semibold text-on-surface hover:text-primary transition-colors cursor-pointer min-w-0 select-none"
         >
           <span
             className={`material-symbols-outlined text-[18px] leading-none shrink-0 ${
@@ -236,16 +236,24 @@ export default function MultiSelectDropdown({
             {selectAllLabel || t('latestUpdates.selectAllSources')}
           </span>
         </button>
-        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-surface-container-highest text-on-surface-variant shrink-0">
+        <span
+          className={`text-[11px] font-bold px-2 py-0.5 rounded-full tabular-nums shrink-0 transition-colors ${
+            isAllSelected
+              ? 'bg-primary/15 text-primary border border-primary/25'
+              : count > 0
+              ? 'bg-surface-container-highest text-on-surface border border-outline-variant/30'
+              : 'bg-surface-container-highest text-on-surface-variant/60'
+          }`}
+        >
           {count}/{total}
         </span>
       </div>
 
       {/* Ô tìm kiếm lọc danh sách nếu có nhiều options */}
       {showSearch && (
-        <div className="p-1.5 border-b border-outline-variant/15 shrink-0">
-          <div className="flex items-center gap-2 bg-surface-container-highest rounded-xl px-2.5 h-7 border border-outline-variant/20 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/20 transition-all">
-            <span className="material-symbols-outlined text-[16px] leading-none text-on-surface-variant shrink-0">
+        <div className="p-2 border-b border-outline-variant/15 shrink-0 bg-surface-container-high/40">
+          <div className="flex items-center gap-2 bg-surface-container-highest rounded-xl px-2.5 h-8 border border-outline-variant/25 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/20 transition-all">
+            <span className="material-symbols-outlined text-[16px] leading-none text-on-surface-variant/70 shrink-0">
               search
             </span>
             <input
@@ -254,13 +262,13 @@ export default function MultiSelectDropdown({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t('searchableSelect.searchPlaceholder')}
-              className="flex-1 min-w-0 bg-transparent border-none outline-none text-xs text-on-surface placeholder:text-on-surface-variant"
+              className="flex-1 min-w-0 bg-transparent border-none outline-none text-xs text-on-surface placeholder:text-on-surface-variant/60"
             />
             {query && (
               <button
                 type="button"
                 onClick={() => setQuery('')}
-                className="text-on-surface-variant hover:text-on-surface cursor-pointer flex items-center"
+                className="text-on-surface-variant hover:text-on-surface cursor-pointer flex items-center p-0.5 rounded hover:bg-surface-container-highest"
               >
                 <span className="material-symbols-outlined text-[14px] leading-none">close</span>
               </button>
@@ -270,10 +278,11 @@ export default function MultiSelectDropdown({
       )}
 
       {/* Danh sách options */}
-      <div className="p-1 space-y-0.5 overflow-y-auto custom-scrollbar flex-1 max-h-56">
+      <div className="p-1.5 space-y-0.5 overflow-y-auto custom-scrollbar flex-1 max-h-[360px]">
         {filteredOptions.length === 0 ? (
-          <div className="px-3 py-4 text-center text-xs text-on-surface-variant/60">
-            {t('searchableSelect.noResults')}
+          <div className="px-3 py-6 text-center text-xs text-on-surface-variant/60 flex flex-col items-center gap-1.5">
+            <span className="material-symbols-outlined text-[20px] text-on-surface-variant/40">search_off</span>
+            <span>{t('searchableSelect.noResults')}</span>
           </div>
         ) : (
           filteredOptions.map((opt) => {
@@ -283,26 +292,17 @@ export default function MultiSelectDropdown({
                 key={opt.value}
                 type="button"
                 onClick={() => handleToggleOption(opt.value)}
-                className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs transition-colors cursor-pointer text-left ${
-                  isChecked
-                    ? 'bg-primary/10 text-primary font-medium'
-                    : 'text-on-surface hover:bg-surface-container-highest'
-                }`}
+                className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs transition-colors cursor-pointer text-left select-none text-on-surface hover:bg-surface-container-highest"
               >
                 <span
-                  className={`material-symbols-outlined text-[18px] leading-none shrink-0 ${
+                  className={`material-symbols-outlined text-[18px] leading-none shrink-0 transition-colors ${
                     isChecked ? 'text-primary' : 'text-on-surface-variant/50'
                   }`}
                 >
                   {isChecked ? 'check_box' : 'check_box_outline_blank'}
                 </span>
                 {renderOptionIcon(opt, isChecked, isSm)}
-                <span className="truncate flex-1">{opt.label}</span>
-                {opt.hint && (
-                  <span className="text-[11px] text-on-surface-variant/60 shrink-0 font-normal">
-                    {opt.hint}
-                  </span>
-                )}
+                <span className="truncate flex-1 font-medium">{opt.label}</span>
               </button>
             );
           })
@@ -408,11 +408,7 @@ export default function MultiSelectDropdown({
                       type="button"
                       disabled={disabled}
                       onClick={() => handleToggleOption(opt.value)}
-                      className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs transition-colors cursor-pointer text-left ${
-                        isChecked
-                          ? 'bg-primary/10 text-primary font-medium'
-                          : 'text-on-surface hover:bg-surface-container-highest'
-                      } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs transition-colors cursor-pointer text-left select-none text-on-surface hover:bg-surface-container-highest ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       <span
                         className={`material-symbols-outlined text-[18px] leading-none shrink-0 ${
@@ -423,11 +419,6 @@ export default function MultiSelectDropdown({
                       </span>
                       {renderOptionIcon(opt, isChecked, isSm)}
                       <span className="truncate flex-1">{opt.label}</span>
-                      {opt.hint && (
-                        <span className="text-[11px] text-on-surface-variant/60 shrink-0 font-normal">
-                          {opt.hint}
-                        </span>
-                      )}
                     </button>
                   );
                 })
