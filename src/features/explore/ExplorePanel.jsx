@@ -1,10 +1,29 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useI18n } from '../../context/I18nContext';
+import { loadPanelUi, savePanelUi } from '../../utils/panelUiPrefs';
 import LatestUpdatesPanel from '../latest-updates';
 import BulkScanPanel from '../bulk-scan';
 import FollowedMangaPanel from './components/FollowedMangaPanel';
 
 export const EXPLORE_SUBTAB_KEY = 'explore_subtab_v1';
+export const EXPLORE_VIEW_MODE_KEY = 'explore_view_mode_v1';
+
+function loadExploreViewMode(fallback = 'grid') {
+  if (typeof localStorage === 'undefined') return fallback;
+  try {
+    const val = localStorage.getItem(EXPLORE_VIEW_MODE_KEY);
+    if (val === 'list' || val === 'grid') return val;
+    const latestPref = localStorage.getItem('mangaMenuViewPref_v1');
+    if (latestPref === 'list' || latestPref === 'grid') return latestPref;
+    const followedPref = localStorage.getItem('followed_manga_view_mode_v1');
+    if (followedPref === 'list' || followedPref === 'grid') return followedPref;
+    const bulkPref = loadPanelUi().bulkScan?.viewMode;
+    if (bulkPref === 'list' || bulkPref === 'grid') return bulkPref;
+  } catch {
+    /* ignore storage errors */
+  }
+  return fallback;
+}
 
 function loadExploreSubtab(fallback = 'latest') {
   if (typeof localStorage === 'undefined') return fallback;
@@ -45,6 +64,20 @@ export default function ExplorePanel({
     }
     return loadExploreSubtab('latest');
   });
+  const [viewMode, setViewMode] = useState(() => loadExploreViewMode('grid'));
+
+  const handleViewModeChange = useCallback((next) => {
+    const nextMode = next === 'list' ? 'list' : 'grid';
+    setViewMode(nextMode);
+    try {
+      localStorage.setItem(EXPLORE_VIEW_MODE_KEY, nextMode);
+      localStorage.setItem('mangaMenuViewPref_v1', nextMode);
+      localStorage.setItem('followed_manga_view_mode_v1', nextMode);
+      savePanelUi({ bulkScan: { viewMode: nextMode } });
+    } catch {
+      /* ignore storage errors */
+    }
+  }, []);
 
   useEffect(() => {
     if (initialSubtab === 'bulk' || initialSubtab === 'latest' || initialSubtab === 'followed') {
@@ -136,6 +169,8 @@ export default function ExplorePanel({
           favorites={favorites}
           onToggleFavorite={onToggleFavorite}
           subtabsSlot={subtabsSlot}
+          viewMode={viewMode}
+          onViewModeChange={handleViewModeChange}
         />
       </div>
       <div className={`w-full h-full ${activeSubtab === 'followed' ? 'block' : 'hidden'}`}>
@@ -158,6 +193,8 @@ export default function ExplorePanel({
           onStopQueue={onStopQueue}
           onAddQueuedFromLatest={onAddQueuedFromLatest}
           onDownloadMangadexCovers={onDownloadMangadexCovers}
+          viewMode={viewMode}
+          onViewModeChange={handleViewModeChange}
         />
       </div>
       <div className={`w-full h-full ${activeSubtab === 'bulk' ? 'block' : 'hidden'}`}>
@@ -175,6 +212,8 @@ export default function ExplorePanel({
           onReadChapterOnlineForDrawerChapter={onReadChapterOnlineForDrawerChapter}
           onAddQueuedFromLatest={onAddQueuedFromLatest}
           onDownloadMangadexCovers={onDownloadMangadexCovers}
+          viewMode={viewMode}
+          onViewModeChange={handleViewModeChange}
         />
       </div>
     </div>

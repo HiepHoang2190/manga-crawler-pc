@@ -21,12 +21,12 @@ describe('Explore Subtabs Layout Consistency Standards', () => {
     }
   });
 
-  test('all 3 subtabs accept and render subtabsSlot in StudioLayout.Toolbar leftSlot', () => {
+  test('all 3 subtabs accept and render subtabsSlot in StudioLayout.Toolbar leftSlot cleanly without outer clutter', () => {
     for (const f of files) {
       const content = fs.readFileSync(f.path, 'utf8');
       expect(content).toContain('subtabsSlot');
       expect(content).toContain('StudioLayout.Toolbar');
-      expect(content).toMatch(/leftSlot=[\s\S]*?subtabsSlot/);
+      expect(content).toMatch(/leftSlot=\{\s*subtabsSlot\s*\}/);
     }
   });
 
@@ -51,7 +51,19 @@ describe('Explore Subtabs Layout Consistency Standards', () => {
       const content = fs.readFileSync(f.path, 'utf8');
       expect(content).toContain('ViewModeToggle');
       expect(content).toContain('viewMode');
+      expect(content).toContain('onViewModeChange');
     }
+  });
+
+  test('ExplorePanel coordinates unified viewMode state and synchronization across subtabs', () => {
+    const explorePanelPath = path.resolve(process.cwd(), 'src/features/explore/ExplorePanel.jsx');
+    expect(fs.existsSync(explorePanelPath)).toBe(true);
+    const content = fs.readFileSync(explorePanelPath, 'utf8');
+    expect(content).toContain('EXPLORE_VIEW_MODE_KEY');
+    expect(content).toContain('loadExploreViewMode');
+    expect(content).toContain('handleViewModeChange');
+    expect(content).toContain('viewMode={viewMode}');
+    expect(content).toContain('onViewModeChange={handleViewModeChange}');
   });
 
   test('all 3 subtabs share unified storagePrefix explore_subtabs for synchronized sidebar resizing', () => {
@@ -66,5 +78,13 @@ describe('Explore Subtabs Layout Consistency Standards', () => {
     const content = fs.readFileSync(backupPath, 'utf8');
     expect(content).toContain("'explore_subtabs_left_width_v1'");
     expect(content).toContain("'explore_subtabs_left_open_v1'");
+    expect(content).toContain("'explore_view_mode_v1'");
+  });
+
+  test('all 3 subtabs use unified ExploreSourceSelect in LeftSidebar adhering to h-10 rounded-xl standard', () => {
+    for (const f of files) {
+      const content = fs.readFileSync(f.path, 'utf8');
+      expect(content).toContain('ExploreSourceSelect');
+    }
   });
 });

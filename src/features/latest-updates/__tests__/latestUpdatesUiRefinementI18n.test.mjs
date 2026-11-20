@@ -11,6 +11,13 @@ describe('Explore tab UI refinement i18n keys', () => {
     'latestUpdates.viewDetails',
     'latestUpdates.hideDetails',
     'latestUpdates.multiFetchErrorSummary',
+    'latestUpdates.stats.overviewTitle',
+    'latestUpdates.stats.total',
+    'latestUpdates.stats.following',
+    'latestUpdates.stats.page',
+    'latestUpdates.stats.sources',
+    'latestUpdates.stats.lastUpdated',
+    'latestUpdates.stats.tip',
   ];
 
   test('vi.js has all UI refinement keys', () => {
@@ -27,6 +34,17 @@ describe('Explore tab UI refinement i18n keys', () => {
     for (const key of requiredKeys) {
       expect(enContent).toContain(`'${key}':`);
     }
+  });
+
+  test('LatestUpdatesPanel renders overview stats card in LeftSidebar', () => {
+    const panelPath = path.resolve(process.cwd(), 'src/features/latest-updates/LatestUpdatesPanel.jsx');
+    const panelContent = fs.readFileSync(panelPath, 'utf8');
+    expect(panelContent).toContain('latestUpdates.stats.overviewTitle');
+    expect(panelContent).toContain('latestUpdates.stats.total');
+    expect(panelContent).toContain('latestUpdates.stats.following');
+    expect(panelContent).toContain('latestUpdates.stats.page');
+    expect(panelContent).toContain('followingCount');
+    expect(panelContent).toContain('lastFetchedAt');
   });
 });
 

@@ -3,6 +3,7 @@ import { useI18n } from '../../context/I18nContext';
 import { ResizeSplitter, SearchableSelect, StudioLayout, useStudioLayout, ViewModeToggle } from '../../shared';
 import { ChaptersDrawer } from '../reader';
 import { dedupeChaptersByNumber } from '../download';
+import { ExploreSourceSelect } from '../explore';
 import {
   buildSessionAfterScan,
   filterBulkScanItems,
@@ -13,12 +14,7 @@ import {
 } from './bulkScanSessionPrefs.mjs';
 import { loadPanelUi, savePanelUi } from '../../utils/panelUiPrefs';
 
-const BTN_ROW =
-  'inline-flex items-center justify-center gap-2 min-h-9 px-3 rounded-lg text-sm font-medium transition-all active:scale-[0.98] disabled:opacity-45 disabled:pointer-events-none cursor-pointer';
-const BTN_SURFACE = `${BTN_ROW} bg-surface-container-high text-on-surface hover:bg-surface-bright border border-outline-variant/20`;
-const BTN_PRIMARY = `${BTN_ROW} bg-primary text-on-primary border border-primary hover:opacity-95 shadow-sm`;
-
-const PAGE_SIZES = [24, 48, 96];
+const PAGE_SIZES = [20, 50, 100];
 
 const BULK_SCAN_FILTERS = [
   { id: 'all', labelKey: 'bulkScan.filterAll', icon: 'filter_alt' },
@@ -59,6 +55,8 @@ export default function BulkScanPanel({
   onReadChapterOnlineForDrawerChapter = null,
   onAddQueuedFromLatest = null,
   onDownloadMangadexCovers = null,
+  viewMode: propViewMode,
+  onViewModeChange,
 }) {
   const { t } = useI18n();
   const {
@@ -93,13 +91,26 @@ export default function BulkScanPanel({
   const [fetchError, setFetchError] = useState('');
   const [enqueueBusy, setEnqueueBusy] = useState(false);
   const [enqueueProgress, setEnqueueProgress] = useState(null);
-  const [viewMode, setViewMode] = useState(() => {
+  const [internalViewMode, setInternalViewMode] = useState(() => {
     const m = loadPanelUi().bulkScan?.viewMode;
     return m === 'list' ? 'list' : 'grid';
   });
+  const viewMode = propViewMode !== undefined ? propViewMode : internalViewMode;
+
+  const handleViewModeChange = useCallback(
+    (mode) => {
+      const next = mode === 'list' ? 'list' : 'grid';
+      if (propViewMode === undefined) {
+        setInternalViewMode(next);
+      }
+      savePanelUi({ bulkScan: { viewMode: next } });
+      onViewModeChange?.(next);
+    },
+    [propViewMode, onViewModeChange]
+  );
   const [pageSize, setPageSize] = useState(() => {
     const n = Number(loadPanelUi().bulkScan?.pageSize);
-    return PAGE_SIZES.includes(n) ? n : 24;
+    return PAGE_SIZES.includes(n) ? n : 20;
   });
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
@@ -444,6 +455,24 @@ export default function BulkScanPanel({
   const fromRow = visibleItems.length ? sliceStart + 1 : 0;
   const toRow = Math.min(sliceStart + pageSize, visibleItems.length);
 
+  const [rawPageInput, setRawPageInput] = useState(() => String(safePage));
+  useEffect(() => {
+    setRawPageInput(String(safePage));
+  }, [safePage]);
+
+  const handleDirectPageSubmit = useCallback(
+    (e) => {
+      e.preventDefault();
+      const num = parseInt(rawPageInput, 10);
+      if (!Number.isNaN(num) && num >= 1 && num <= totalPages) {
+        setPage(num);
+      } else {
+        setRawPageInput(String(safePage));
+      }
+    },
+    [rawPageInput, totalPages, safePage]
+  );
+
   const controlsBusy = busyList || enqueueBusy;
 
   useEffect(() => {
@@ -452,6 +481,7 @@ export default function BulkScanPanel({
 
   useEffect(() => {
     setPage(1);
+    setRawPageInput('1');
   }, [selectedSiteId, listFilter, items, pageSize, searchQuery]);
 
   useEffect(() => {
@@ -657,25 +687,48 @@ export default function BulkScanPanel({
   return (
     <StudioLayout className="w-full h-full">
       <StudioLayout.Toolbar
-        leftSlot={
-          <div className="flex items-center gap-3">
-            {subtabsSlot}
-            {items.length > 0 ? (
-              <span className="text-xs text-on-surface-variant/80 hidden sm:inline-block tabular-nums font-medium pl-2 border-l border-outline-variant/20">
-                {t('bulkScan.selectedCount', { count: selectedCount })} / {items.length}
-              </span>
-            ) : null}
-          </div>
-        }
+        leftSlot={subtabsSlot}
         rightSlot={
           <div className="flex items-center gap-2">
+            {items.length > 0 ? (
+              <button
+                type="button"
+                className="h-7 px-3 rounded-lg text-xs font-semibold bg-emerald-600 dark:bg-emerald-500 text-white hover:opacity-95 shadow-2xs inline-flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0"
+                disabled={!selectedCount || controlsBusy || !selectedSiteId}
+                onClick={() => void runEnqueue()}
+                data-tooltip={
+                  enqueueBusy
+                    ? t('bulkScan.enqueueBusy')
+                    : selectedCount > 0
+                      ? t('bulkScan.enqueueSelectedCount', { count: selectedCount })
+                      : t('bulkScan.enqueueSelected')
+                }
+              >
+                <span className="material-symbols-outlined text-[15px] leading-none">playlist_add</span>
+                <span>
+                  {enqueueBusy
+                    ? t('bulkScan.enqueueBusy')
+                    : selectedCount > 0
+                      ? t('bulkScan.enqueueSelectedCount', { count: selectedCount })
+                      : t('bulkScan.enqueueSelected')}
+                </span>
+              </button>
+            ) : null}
+
+            {enqueueBusy ? (
+              <button
+                type="button"
+                className="h-7 px-3 rounded-lg text-xs font-semibold bg-error/15 text-error hover:bg-error/25 border border-error/30 inline-flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
+                onClick={stopEnqueue}
+              >
+                <span className="material-symbols-outlined text-[15px] leading-none">cancel</span>
+                <span>{t('bulkScan.stop')}</span>
+              </button>
+            ) : null}
+
             <button
               type="button"
-              className={`h-7 px-3 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shrink-0 ${
-                items.length > 0
-                  ? 'bg-surface-container-highest/80 hover:bg-surface-container-high border border-outline-variant/25 text-on-surface'
-                  : 'bg-primary text-on-primary hover:opacity-95 shadow-2xs'
-              }`}
+              className="h-7 px-3.5 rounded-lg text-xs font-semibold bg-primary text-on-primary hover:opacity-95 shadow-2xs inline-flex items-center justify-center gap-1.5 transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none cursor-pointer shrink-0"
               disabled={controlsBusy || !selectedSiteId}
               onClick={() => void runLoad()}
               data-tooltip={busyList ? t('bulkScan.loading') : items.length > 0 ? t('bulkScan.rescanSource') : t('bulkScan.scanSource')}
@@ -693,33 +746,9 @@ export default function BulkScanPanel({
             </button>
 
             {items.length > 0 ? (
-              <button
-                type="button"
-                className="h-7 px-3 rounded-lg text-xs font-semibold bg-primary text-on-primary hover:opacity-95 shadow-2xs inline-flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0"
-                disabled={!selectedCount || controlsBusy || !selectedSiteId}
-                onClick={() => void runEnqueue()}
-                data-tooltip={enqueueBusy ? t('bulkScan.enqueueBusy') : t('bulkScan.enqueueSelected')}
-              >
-                <span className="material-symbols-outlined text-[15px] leading-none">playlist_add</span>
-                <span>{enqueueBusy ? t('bulkScan.enqueueBusy') : t('bulkScan.enqueueSelected')}</span>
-              </button>
-            ) : null}
-
-            {enqueueBusy ? (
-              <button
-                type="button"
-                className="h-7 px-3 rounded-lg text-xs font-semibold bg-error/15 text-error hover:bg-error/25 border border-error/30 inline-flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
-                onClick={stopEnqueue}
-              >
-                <span className="material-symbols-outlined text-[15px] leading-none">cancel</span>
-                <span>{t('bulkScan.stop')}</span>
-              </button>
-            ) : null}
-
-            {items.length > 0 ? (
               <ViewModeToggle
                 viewMode={viewMode}
-                onChange={setViewMode}
+                onChange={handleViewModeChange}
                 size="sm"
                 disabled={controlsBusy}
               />
@@ -767,57 +796,22 @@ export default function BulkScanPanel({
           open={true}
           width={leftWidth}
           onResizeStart={handleLeftResizeStart}
+          className="bg-surface-container-low/50 relative border-r border-outline-variant/20 flex flex-col overflow-visible"
         >
-          {/* Top Search Box (filters scanned items by title) */}
-          {items.length > 0 ? (
-            <div className="p-3 border-b border-outline-variant/15">
-              <div className="relative">
-                <span className="material-symbols-outlined absolute left-2.5 top-2 text-[18px] text-on-surface-variant/60 pointer-events-none">
-                  search
-                </span>
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={t('bulkScan.filterPlaceholder') || 'Lọc truyện theo tên…'}
-                  aria-label={t('bulkScan.filterPlaceholder') || 'Lọc truyện theo tên…'}
-                  className="w-full h-8 pl-8 pr-7 rounded-lg text-xs bg-surface-container-highest border border-outline-variant/20 focus:outline-none focus:border-primary text-on-surface placeholder:text-on-surface-variant/50 transition-colors"
-                  autoComplete="off"
-                />
-                {searchQuery ? (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-2 top-2 text-on-surface-variant/60 hover:text-on-surface cursor-pointer"
-                  >
-                    <span className="material-symbols-outlined text-[15px]">close</span>
-                  </button>
-                ) : null}
-              </div>
-            </div>
-          ) : null}
+          <div className="custom-scrollbar flex-1 overflow-y-auto p-3 space-y-3.5 mr-1.5 flex flex-col min-h-0">
+            {/* 1. Nguồn (Source Picker) */}
+            <ExploreSourceSelect
+              mode="picker"
+              options={selectOptions}
+              value={selectedSiteId}
+              onChange={handleSiteChange}
+              disabled={controlsBusy}
+            />
 
-          <div className="p-3.5 space-y-4">
-            {/* Source Picker */}
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant shrink-0 block">
-                {t('bulkScan.pickSource')}
-              </label>
-              <SearchableSelect
-                value={selectedSiteId}
-                onChange={handleSiteChange}
-                options={selectOptions}
-                placeholder={t('bulkScan.pickSource')}
-                showPlaceholderOption={false}
-                className="w-full min-w-0"
-                disabled={controlsBusy}
-              />
-            </div>
-
-            {/* Vertical Status Filter Group */}
-            {items.length > 0 ? (
-              <div className="space-y-1.5 pt-2 border-t border-outline-variant/15">
-                <div className="flex items-center justify-between px-1">
+            {/* 2. Trạng thái (Segmented pill grid: All / Selected / Unselected) */}
+            {items.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-1.5 px-1">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/60">
                     {t('bulkScan.filter')}
                   </span>
@@ -831,97 +825,92 @@ export default function BulkScanPanel({
                     <span>{allSelected ? t('bulkScan.uncheckAll') : t('bulkScan.checkAll')}</span>
                   </button>
                 </div>
-                <div className="space-y-0.5 text-xs">
-                  {BULK_SCAN_FILTERS.map((f) => {
-                    const count =
-                      f.id === 'all'
-                        ? items.length
-                        : f.id === 'selected'
-                          ? selectedCount
-                          : items.length - selectedCount;
-                    const isActive = listFilter === f.id;
-                    return (
-                      <button
-                        key={f.id}
-                        type="button"
-                        onClick={() => setListFilter(f.id)}
-                        className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                          isActive
-                            ? 'bg-primary/15 text-primary font-semibold'
-                            : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
-                        }`}
-                      >
-                        <span className="flex items-center gap-2">
-                          <span className="material-symbols-outlined text-[16px]">
-                            {f.id === 'all' ? 'menu' : f.id === 'selected' ? 'check_box' : 'check_box_outline_blank'}
-                          </span>
-                          <span>{t(f.labelKey)}</span>
-                        </span>
-                        <span className="px-1.5 py-0.2 rounded-md bg-surface-container-highest text-[10px] tabular-nums font-semibold">
-                          {count}
-                        </span>
-                      </button>
-                    );
-                  })}
+                <div className="grid grid-cols-3 gap-1 h-10 items-center bg-surface-container-highest/60 p-1 rounded-xl border border-outline-variant/20 text-xs">
+                  {/* Tất cả */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setListFilter('all');
+                      setPage(1);
+                    }}
+                    className={`flex items-center justify-center gap-1 h-8 px-1 rounded-lg font-semibold transition-all cursor-pointer ${
+                      listFilter === 'all'
+                        ? 'bg-primary text-on-primary font-semibold shadow-2xs'
+                        : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
+                    }`}
+                  >
+                    <span className="truncate">{t('bulkScan.filterAll')}</span>
+                    <span className="text-[10px] opacity-80 tabular-nums">({items.length})</span>
+                  </button>
+
+                  {/* Đã chọn */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setListFilter('selected');
+                      setPage(1);
+                    }}
+                    className={`flex items-center justify-center gap-1 h-8 px-1 rounded-lg font-semibold transition-all cursor-pointer ${
+                      listFilter === 'selected'
+                        ? 'bg-primary text-on-primary font-semibold shadow-2xs'
+                        : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
+                    }`}
+                  >
+                    <span className="truncate">{t('bulkScan.filterSelected')}</span>
+                    <span className="text-[10px] opacity-80 tabular-nums">({selectedCount})</span>
+                  </button>
+
+                  {/* Chưa chọn */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setListFilter('unselected');
+                      setPage(1);
+                    }}
+                    className={`flex items-center justify-center gap-1 h-8 px-1 rounded-lg font-semibold transition-all cursor-pointer ${
+                      listFilter === 'unselected'
+                        ? 'bg-primary text-on-primary font-semibold shadow-2xs'
+                        : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
+                    }`}
+                  >
+                    <span className="truncate">{t('bulkScan.filterUnselected')}</span>
+                    <span className="text-[10px] opacity-80 tabular-nums">({items.length - selectedCount})</span>
+                  </button>
                 </div>
               </div>
-            ) : null}
-            {/* Action Buttons */}
-            <div className="space-y-2 pt-1">
-              <button
-                type="button"
-                data-testid="bulk-sidebar-scan-btn"
-                className={`w-full ${items.length > 0 ? BTN_SURFACE : BTN_PRIMARY}`}
-                disabled={controlsBusy || !selectedSiteId}
-                onClick={() => void runLoad()}
-              >
-                <span className={`material-symbols-outlined text-[18px] ${busyList ? 'animate-spin' : ''}`}>
-                  sync
-                </span>
-                <span>
-                  {busyList
-                    ? t('bulkScan.loading')
-                    : items.length > 0
-                      ? t('bulkScan.rescanSource')
-                      : t('bulkScan.scanSource')}
-                </span>
-              </button>
+            )}
 
-              <button
-                type="button"
-                data-testid="bulk-enqueue-btn"
-                className={`w-full ${BTN_PRIMARY}`}
-                disabled={!selectedCount || controlsBusy || !selectedSiteId}
-                onClick={() => void runEnqueue()}
-              >
-                <span className="material-symbols-outlined text-[18px]">playlist_add</span>
-                {enqueueBusy ? t('bulkScan.enqueueBusy') : t('bulkScan.enqueueSelected')}
-              </button>
-              {enqueueBusy ? (
-                <button type="button" className={`w-full ${BTN_SURFACE}`} onClick={stopEnqueue}>
-                  <span className="material-symbols-outlined text-[18px]">cancel</span>
-                  {t('bulkScan.stop')}
-                </button>
-              ) : null}
-            </div>
-
-            {/* Alerts & Hints */}
-            {cookieHint ? (
-              <div className="rounded-xl border border-outline-variant/20 bg-surface-container-high/30 p-2.5 text-xs leading-relaxed text-on-surface-variant flex items-start gap-2">
-                <span className="material-symbols-outlined text-[16px] shrink-0 text-on-surface-variant/70 mt-0.5">
-                  vpn_key
-                </span>
-                <span className="leading-snug">{cookieHint}</span>
+            {/* 3. Tìm kiếm (Search Box with Clear button) */}
+            {items.length > 0 && (
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/60 mb-1.5 px-1">
+                  {t('common.search') || 'Tìm kiếm'}
+                </div>
+                <div className="relative flex items-center">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder={t('bulkScan.filterPlaceholder') || 'Lọc truyện theo tên…'}
+                    aria-label={t('bulkScan.filterPlaceholder') || 'Lọc truyện theo tên…'}
+                    className="h-10 w-full rounded-xl border border-outline-variant/25 bg-surface-container-highest px-3.5 pr-8 text-xs sm:text-sm text-on-surface placeholder:text-on-surface-variant/50 outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/30"
+                    autoComplete="off"
+                  />
+                  {searchQuery ? (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-2.5 text-on-surface-variant/60 hover:text-on-surface cursor-pointer p-0.5 rounded"
+                      aria-label="Xoá tìm kiếm"
+                    >
+                      <span className="material-symbols-outlined text-[16px] leading-none">close</span>
+                    </button>
+                  ) : null}
+                </div>
               </div>
-            ) : null}
+            )}
 
-            {restoredHint || listStatus ? (
-              <div className="rounded-xl border border-primary/20 bg-primary/5 p-2.5 text-xs text-primary flex items-start gap-2">
-                <span className="material-symbols-outlined text-[16px] shrink-0 mt-0.5">info</span>
-                <span className="leading-snug">{restoredHint || listStatus}</span>
-              </div>
-            ) : null}
-
+            {/* Alerts & Warnings */}
             {persistWarning ? (
               <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-100 flex items-start gap-2">
                 <span className="material-symbols-outlined text-[16px] shrink-0 mt-0.5">warning</span>
@@ -936,16 +925,56 @@ export default function BulkScanPanel({
               </div>
             ) : null}
 
-            {items.length > 0 ? (
-              <div className="rounded-xl border border-outline-variant/15 bg-surface-container-high/25 p-2.5 text-[11px] text-on-surface-variant/80 flex items-start gap-2">
-                <span className="material-symbols-outlined text-[16px] text-primary/70 shrink-0 mt-0.5">
-                  touch_app
-                </span>
-                <p className="leading-relaxed">
-                  {t('bulkScan.shiftTip')}
-                </p>
+            {/* Thẻ thống kê tổng quan (Stats Card) matching FollowedMangaPanel style */}
+            {items.length > 0 && (
+              <div className="mt-auto pt-2">
+                <div className="rounded-xl border border-primary/15 bg-primary/5 p-2.5">
+                  <div className="text-[10px] font-bold text-primary mb-2 flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-[13px]">bar_chart</span>
+                    <span>{t('bulkScan.stats.overviewTitle')}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+                    <span className="text-on-surface-variant">{t('bulkScan.stats.total')}</span>
+                    <span className="font-bold text-on-surface text-right tabular-nums">{items.length}</span>
+                    <span className="text-on-surface-variant">{t('bulkScan.stats.selected')}</span>
+                    <span className="font-bold text-emerald-600 dark:text-emerald-400 text-right tabular-nums">{selectedCount}</span>
+                    {items.length - selectedCount > 0 && (
+                      <>
+                        <span className="text-on-surface-variant">{t('bulkScan.stats.unselected')}</span>
+                        <span className="font-bold text-on-surface-variant/80 text-right tabular-nums">{items.length - selectedCount}</span>
+                      </>
+                    )}
+                  </div>
+
+                  {(scannedAt || cookieHint || t('bulkScan.shiftTip')) && (
+                    <div className="mt-2.5 pt-2 border-t border-primary/10 space-y-1.5 text-[10px] text-on-surface-variant/75 leading-relaxed">
+                      {(restoredHint || listStatus) && (
+                        <div className="flex items-start gap-1.5">
+                          <span className="w-4 h-4 flex items-center justify-center shrink-0 text-primary/70">
+                            <span className="material-symbols-outlined text-[13px] leading-none">schedule</span>
+                          </span>
+                          <span className="flex-1 min-w-0 leading-snug pt-0.5">{restoredHint || listStatus}</span>
+                        </div>
+                      )}
+                      {cookieHint && (
+                        <div className="flex items-start gap-1.5 text-amber-700 dark:text-amber-300">
+                          <span className="w-4 h-4 flex items-center justify-center shrink-0">
+                            <span className="material-symbols-outlined text-[13px] leading-none">vpn_key</span>
+                          </span>
+                          <span className="flex-1 min-w-0 leading-snug pt-0.5">{cookieHint}</span>
+                        </div>
+                      )}
+                      <div className="flex items-start gap-1.5">
+                        <span className="w-4 h-4 flex items-center justify-center shrink-0 text-primary/70">
+                          <span className="material-symbols-outlined text-[13px] leading-none">touch_app</span>
+                        </span>
+                        <span className="flex-1 min-w-0 leading-snug pt-0.5">{t('bulkScan.shiftTip')}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
-            ) : null}
+            )}
           </div>
         </StudioLayout.LeftSidebar>
 
@@ -1232,20 +1261,15 @@ export default function BulkScanPanel({
                                   </span>
                                 ) : null}
                               </div>
-                              <div className="flex items-center gap-2 text-xs text-on-surface-variant">
-                                {item.latestChapterLabel ? (
-                                  <span className="inline-flex items-center gap-1 truncate">
-                                    <span className="material-symbols-outlined text-[13px] text-primary/70 shrink-0">
-                                      bookmark
-                                    </span>
-                                    <span className="truncate">{item.latestChapterLabel}</span>
-                                  </span>
-                                ) : (
-                                  <span className="truncate text-on-surface-variant/60 font-mono text-[11px]">
-                                    {host}
-                                  </span>
-                                )}
-                              </div>
+                              {item.latestChapterLabel ? (
+                                <p className="text-xs text-on-surface-variant truncate">
+                                  {item.latestChapterLabel}
+                                </p>
+                              ) : host ? (
+                                <span className="truncate text-on-surface-variant/60 font-mono text-[11px]">
+                                  {host}
+                                </span>
+                              ) : null}
                             </div>
                           </div>
 
@@ -1326,23 +1350,6 @@ export default function BulkScanPanel({
                                 </span>
                               </button>
                             ) : null}
-
-                            <button
-                              type="button"
-                              disabled={controlsBusy}
-                              onClick={(e) => applyRowSelection(e, item, index)}
-                              className={`h-8 w-8 shrink-0 rounded-lg border flex items-center justify-center transition-all cursor-pointer shadow-2xs ${
-                                checked
-                                  ? 'border-primary bg-primary text-on-primary'
-                                  : 'border-outline-variant/20 bg-surface-container-highest text-on-surface-variant hover:border-outline-variant/40 hover:bg-surface-bright'
-                              }`}
-                              data-tooltip={checked ? t('bulkScan.unselectItem') : t('bulkScan.selectItem')}
-                              aria-label={checked ? 'Deselect' : 'Select'}
-                            >
-                              <span className="material-symbols-outlined text-[17px] leading-none">
-                                {checked ? 'check' : 'add'}
-                              </span>
-                            </button>
                           </div>
                         </li>
                       );
@@ -1351,94 +1358,115 @@ export default function BulkScanPanel({
                 )}
               </div>
 
-              {/* Bottom pagination */}
+              {/* Bottom In-Memory Pagination Bar */}
               <div
-                className="shrink-0 border-t border-outline-variant/20 bg-surface-container-low/80 backdrop-blur px-4 py-2.5"
+                className="shrink-0 border-t border-outline-variant/20 bg-surface-container-low/80 backdrop-blur-md px-4 py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 select-none"
                 role="region"
                 aria-label={t('bulkScan.paginationAria')}
               >
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-                  <label className="flex items-center gap-2 text-sm text-on-surface-variant">
-                    <span className="whitespace-nowrap font-medium text-on-surface/90">
-                      {t('bulkScan.pageSize')}
-                    </span>
-                    <SearchableSelect
-                      value={String(pageSize)}
-                      onChange={(v) => setPageSize(Number(v))}
-                      options={pageSizeOptions}
-                      placeholder=""
-                      className="min-w-[4.5rem]"
-                      disabled={controlsBusy}
-                    />
-                  </label>
-                  <div className="flex flex-wrap items-center gap-2 sm:ml-auto" aria-live="polite">
-                    <span className="inline-flex items-center rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary tabular-nums">
+                {/* Left: Summary & page badge */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary tabular-nums shadow-2xs">
+                    <span className="material-symbols-outlined text-[15px]">document_scanner</span>
+                    <span>
                       {t('bulkScan.pageStatus', {
                         page: safePage,
                         total: totalPages,
                         count: visibleItems.length,
                       })}
+                      {selectedCount > 0 ? ` • ${selectedCount} ${t('bulkScan.selectedUnit') || 'đã chọn'}` : ''}
                     </span>
-                    {visibleItems.length > 0 ? (
-                      <span className="text-xs text-on-surface-variant tabular-nums sm:text-sm">
-                        {t('bulkScan.showingRange', {
-                          from: fromRow,
-                          to: toRow,
-                          total: visibleItems.length,
-                        })}
-                      </span>
-                    ) : null}
-                    <div className="inline-flex items-center gap-1">
+                  </span>
+                </div>
+
+                {/* Right: Page Navigation Controls & PageSize Selector */}
+                <div className="flex items-center gap-2 text-xs text-on-surface-variant sm:ml-auto flex-wrap">
+                  <SearchableSelect
+                    value={String(pageSize)}
+                    onChange={(v) => {
+                      setPageSize(Number(v));
+                      setPage(1);
+                    }}
+                    options={pageSizeOptions}
+                    placeholder=""
+                    size="sm"
+                    className="w-[4.5rem]"
+                    disabled={controlsBusy}
+                    data-tooltip={t('bulkScan.pageSize')}
+                    aria-label={t('bulkScan.pageSize')}
+                  />
+
+                  {totalPages > 1 && (
+                    <div className="flex items-center gap-1">
+                      {/* First page button */}
                       <button
                         type="button"
                         onClick={() => setPage(1)}
                         disabled={safePage <= 1 || controlsBusy}
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-outline-variant/50 bg-surface-bright text-on-surface shadow-sm transition hover:border-primary/30 hover:bg-surface-container-highest disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
-                        aria-label={t('latestUpdates.firstPage')}
                         data-tooltip={t('latestUpdates.firstPage')}
+                        aria-label={t('latestUpdates.firstPage')}
+                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-outline-variant/30 bg-surface-container-high text-on-surface-variant hover:bg-surface-bright hover:text-on-surface hover:border-outline-variant/60 active:scale-95 disabled:pointer-events-none disabled:opacity-40 transition-all cursor-pointer shadow-2xs"
                       >
-                        <span className="material-symbols-outlined text-[18px] leading-none" aria-hidden>
-                          first_page
-                        </span>
+                        <span className="material-symbols-outlined text-[17px] leading-none">first_page</span>
                       </button>
+
+                      {/* Prev page button */}
                       <button
                         type="button"
                         onClick={() => setPage((p) => Math.max(1, p - 1))}
                         disabled={safePage <= 1 || controlsBusy}
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-outline-variant/50 bg-surface-bright text-on-surface shadow-sm transition hover:border-primary/30 hover:bg-surface-container-highest disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
-                        aria-label={t('bulkScan.pagePrev')}
-                        data-tooltip={t('bulkScan.pagePrev')}
+                        aria-label={t('latestUpdates.prevPage')}
+                        className="inline-flex h-8 px-2.5 shrink-0 items-center gap-1 rounded-xl border border-outline-variant/30 bg-surface-container-high text-on-surface-variant hover:bg-surface-bright hover:text-on-surface hover:border-outline-variant/60 active:scale-95 disabled:pointer-events-none disabled:opacity-40 transition-all cursor-pointer shadow-2xs font-medium"
                       >
-                        <span className="material-symbols-outlined text-[20px] leading-none" aria-hidden>
-                          chevron_left
-                        </span>
+                        <span className="material-symbols-outlined text-[16px] leading-none">chevron_left</span>
+                        <span className="max-sm:hidden">{t('latestUpdates.prevPage')}</span>
                       </button>
+
+                      {/* Jump to page form */}
+                      <form onSubmit={handleDirectPageSubmit} className="flex min-w-0 items-center gap-1.5 px-1">
+                        <input
+                          type="number"
+                          min={1}
+                          max={totalPages}
+                          inputMode="numeric"
+                          value={rawPageInput}
+                          onChange={(e) => setRawPageInput(e.target.value)}
+                          onBlur={() => setRawPageInput(String(safePage))}
+                          disabled={controlsBusy}
+                          className="h-8 w-12 shrink-0 rounded-xl border border-outline-variant/30 bg-surface-container-highest px-1.5 text-center text-xs font-semibold font-mono text-on-surface outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all disabled:opacity-40 shadow-inner"
+                          aria-label={t('latestUpdates.pageInputAria', { total: totalPages })}
+                        />
+                        <span className="text-on-surface-variant/70 font-medium">/</span>
+                        <span className="tabular-nums font-semibold text-on-surface-variant min-w-[1.5rem] text-center">
+                          {totalPages}
+                        </span>
+                      </form>
+
+                      {/* Next page button */}
                       <button
                         type="button"
                         onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                         disabled={safePage >= totalPages || controlsBusy}
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-outline-variant/50 bg-surface-bright text-on-surface shadow-sm transition hover:border-primary/30 hover:bg-surface-container-highest disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
-                        aria-label={t('bulkScan.pageNext')}
-                        data-tooltip={t('bulkScan.pageNext')}
+                        aria-label={t('latestUpdates.nextPage')}
+                        className="inline-flex h-8 px-2.5 shrink-0 items-center gap-1 rounded-xl border border-outline-variant/30 bg-surface-container-high text-on-surface-variant hover:bg-surface-bright hover:text-on-surface hover:border-outline-variant/60 active:scale-95 disabled:pointer-events-none disabled:opacity-40 transition-all cursor-pointer shadow-2xs font-medium"
                       >
-                        <span className="material-symbols-outlined text-[20px] leading-none" aria-hidden>
-                          chevron_right
-                        </span>
+                        <span className="max-sm:hidden">{t('latestUpdates.nextPage')}</span>
+                        <span className="material-symbols-outlined text-[16px] leading-none">chevron_right</span>
                       </button>
+
+                      {/* Last page button */}
                       <button
                         type="button"
                         onClick={() => setPage(totalPages)}
                         disabled={safePage >= totalPages || controlsBusy}
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-outline-variant/50 bg-surface-bright text-on-surface shadow-sm transition hover:border-primary/30 hover:bg-surface-container-highest disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
-                        aria-label={t('latestUpdates.lastPage')}
                         data-tooltip={t('latestUpdates.lastPage')}
+                        aria-label={t('latestUpdates.lastPage')}
+                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-outline-variant/30 bg-surface-container-high text-on-surface-variant hover:bg-surface-bright hover:text-on-surface hover:border-outline-variant/60 active:scale-95 disabled:pointer-events-none disabled:opacity-40 transition-all cursor-pointer shadow-2xs"
                       >
-                        <span className="material-symbols-outlined text-[18px] leading-none" aria-hidden>
-                          last_page
-                        </span>
+                        <span className="material-symbols-outlined text-[17px] leading-none">last_page</span>
                       </button>
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
             </div>

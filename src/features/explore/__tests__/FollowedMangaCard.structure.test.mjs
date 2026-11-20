@@ -86,26 +86,12 @@ describe('FollowedMangaCard structure and UI standards', () => {
     expect(progressMatches).toHaveLength(1);
   });
 
-  test('primary view chapters button expands across full row and hides secondary action when downloadState is active', () => {
+  test('action footer provides unified single-row action layout with flex-1 viewChapters and h-8 w-8 playlist_add matching LatestUpdates standard', () => {
     const content = fs.readFileSync(cardPath, 'utf8');
-    expect(content).toContain('!downloadState');
     expect(content).toContain('onOpenManga');
-  });
-
-  test('provides playlist_add quick action button to add chapters to queue regardless of hasNew status, matching LatestUpdatesPanel', () => {
-    const content = fs.readFileSync(cardPath, 'utf8');
+    expect(content).toContain('format_list_bulleted');
     expect(content).toContain('playlist_add');
-    expect(content).toContain('latestUpdates.addToQueue');
-    expect(content).toContain('border-emerald-500/30');
-    expect(content).toMatch(/onEnqueueNew[\s\S]*?playlist_add/);
-  });
-
-  test('action footer provides full-width viewChapters button and equal-sized pair of quick actions for queue and recheck', () => {
-    const content = fs.readFileSync(cardPath, 'utf8');
-    expect(content).toContain('onEnqueueNew');
-    expect(content).toContain('onRecheck');
-    expect(content).toContain('playlist_add');
-    expect(content).toContain('refresh');
-    expect(content).toMatch(/w-full[^"]*bg-primary[\s\S]*?viewChapters/);
+    expect(content).toContain('flex-1 min-w-0 h-8 rounded-lg bg-primary');
+    expect(content).toContain('h-8 w-8 shrink-0 rounded-lg');
   });
 });

@@ -29,5 +29,12 @@ describe('LatestUpdatesPanel Manga Card Actions and Placeholder', () => {
     expect(viewModeIndex).toBeGreaterThan(-1);
     expect(viewModeIndex).toBeGreaterThan(refreshIndex);
   });
+
+  test('Grid card is clickable to open chapter list drawer', () => {
+    const content = fs.readFileSync(panelPath, 'utf8');
+    expect(content).toContain('handleOpenChapterListButton(row.siteId, row)');
+    // Verifies card row has onClick with closest button check
+    expect(content).toContain("e.target.closest('button')");
+  });
 });
 

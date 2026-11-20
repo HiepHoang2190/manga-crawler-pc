@@ -178,13 +178,15 @@ describe('FollowedMangaPanel structure and standards', () => {
     expect(content).not.toMatch(/<div className="relative flex items-center">\s*<span className="material-symbols-outlined[^"]*">\s*search\s*<\/span>/);
   });
 
-  test('implements in-memory pagination with page size 24 and bottom pagination bar', () => {
+  test('implements in-memory pagination with page size [20, 50, 100] and bottom pagination bar', () => {
     const content = fs.readFileSync(panelPath, 'utf8');
-    expect(content).toContain('FOLLOWED_MANGA_PAGE_SIZE = 24');
+    expect(content).toContain('const PAGE_SIZES = [20, 50, 100];');
+    expect(content).toContain('FOLLOWED_MANGA_PAGE_SIZE = 20');
     expect(content).toContain('displayedFavorites');
     expect(content).toContain('contentScrollRef');
     expect(content).toContain('handlePageJumpSubmit');
     expect(content).toContain('followedManga.pagination.summary');
+    expect(content).toContain('bulkScan.pageSize');
     expect(content).toContain('latestUpdates.firstPage');
     expect(content).toContain('latestUpdates.lastPage');
     expect(content).toContain('latestUpdates.prevPage');
@@ -195,5 +197,11 @@ describe('FollowedMangaPanel structure and standards', () => {
     const backupPath = path.resolve(process.cwd(), 'src/utils/userDataBackup.js');
     const content = fs.readFileSync(backupPath, 'utf8');
     expect(content).toContain("'mangaFollowedSortPref_v1'");
+  });
+
+  test('Stats Card renders overview tip matching explore family standard', () => {
+    const content = fs.readFileSync(panelPath, 'utf8');
+    expect(content).toContain('followedManga.stats.tip');
+    expect(content).toContain('touch_app');
   });
 });

@@ -9,6 +9,7 @@ describe('Bulk Scan UI refinement i18n keys', () => {
     'bulkScan.scanSource',
     'bulkScan.rescanSource',
     'bulkScan.shiftTip',
+    'bulkScan.selectedUnit',
   ];
 
   test('vi.js has all bulk scan refinement keys', () => {

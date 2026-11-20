@@ -51,7 +51,7 @@ function normalizeHistoryColWidths(obj) {
 
 const OFFLINE_SORT_MODES = ['titleAsc', 'titleDesc'];
 
-const BULK_SCAN_PAGE_SIZES = [24, 48, 96];
+const BULK_SCAN_PAGE_SIZES = [20, 50, 100];
 
 const DEFAULTS = {
   queueTab: 'queue',
@@ -70,7 +70,7 @@ const DEFAULTS = {
   },
   bulkScan: {
     viewMode: 'grid',
-    pageSize: 24,
+    pageSize: 20,
   },
 };
 

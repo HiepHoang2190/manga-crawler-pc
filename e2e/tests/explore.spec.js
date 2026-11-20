@@ -44,6 +44,19 @@ test.describe('Explore Tab', () => {
     await captureHelp(window, 'explore-latest-updates');
   });
 
+  test('should switch to followed manga sub-tab', async () => {
+    await navigateToTab(window, 'explore');
+    const followedTab = window.locator('[data-testid="subtab-followed"]:visible');
+    if (await followedTab.isVisible().catch(() => false)) {
+      await followedTab.click();
+    } else {
+      await window.locator('[data-testid="subtab-followed"]').first().click({ force: true });
+    }
+    await window.waitForTimeout(1000);
+
+    await captureHelp(window, 'explore-followed-manga');
+  });
+
   test('should switch to bulk scan sub-tab and load catalog', async () => {
     await navigateToTab(window, 'explore');
     // Real sub-tab ID is "bulk" (not "bulkScan")

@@ -14,10 +14,9 @@ describe('BulkScanPanel List View Layout and Toolbar Dedup', () => {
     expect(toolbarRightMatch[1]).not.toContain('bulk-load-btn');
   });
 
-  test('list view utilizes horizontal space with structured columns and chapter badge', () => {
+  test('list view utilizes horizontal space with structured columns and chapter label', () => {
     const content = fs.readFileSync(panelPath, 'utf8');
     expect(content).toContain('latestChapterLabel');
-    expect(content).toContain('bookmark');
   });
 
   test('complies with UI standards: zero native title and zero underline', () => {

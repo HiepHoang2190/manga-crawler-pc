@@ -161,6 +161,7 @@ describe('TAB_HELP_MAP & helpArticles', () => {
     expect(TAB_HELP_MAP.explore).toEqual([
       'explore',
       'latest-updates',
+      'followed-manga',
       'bulk-scan',
     ]);
 
@@ -168,6 +169,7 @@ describe('TAB_HELP_MAP & helpArticles', () => {
       const articles = helpArticles[lang];
       const exploreArt = articles.find((a) => a.id === 'explore');
       const latestArt = articles.find((a) => a.id === 'latest-updates');
+      const followedArt = articles.find((a) => a.id === 'followed-manga');
       const bulkArt = articles.find((a) => a.id === 'bulk-scan');
 
       expect(exploreArt).toBeDefined();
@@ -176,6 +178,9 @@ describe('TAB_HELP_MAP & helpArticles', () => {
 
       expect(latestArt).toBeDefined();
       expect(latestArt.image).toContain('explore-latest-updates.png');
+
+      expect(followedArt).toBeDefined();
+      expect(followedArt.image).toContain('explore-followed-manga.png');
 
       expect(bulkArt).toBeDefined();
       expect(bulkArt.image).toContain('explore-bulk-scan.png');

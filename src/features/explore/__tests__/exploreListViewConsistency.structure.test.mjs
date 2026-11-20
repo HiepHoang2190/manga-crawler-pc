@@ -57,4 +57,13 @@ describe('Explore Subtabs List View Consistency Standards', () => {
       expect(content).not.toMatch(/\bunderline\b/);
     }
   });
+
+  test('all 3 subtabs provide unified action buttons in list mode: h-8 px-3 format_list_bulleted + h-8 w-8 playlist_add', () => {
+    for (const f of files) {
+      const content = fs.readFileSync(f.path, 'utf8');
+      expect(content).toContain('h-8 px-3 rounded-lg');
+      expect(content).toContain('format_list_bulleted');
+      expect(content).toContain('playlist_add');
+    }
+  });
 });

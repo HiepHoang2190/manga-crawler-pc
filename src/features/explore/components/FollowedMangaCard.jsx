@@ -159,36 +159,33 @@ export default function FollowedMangaCard({
             </div>
           </div>
         ) : hasNew ? (
-          <div className="flex items-center justify-between text-xs text-on-surface-variant">
+          <div
+            className="flex items-center text-xs text-on-surface-variant truncate"
+            data-tooltip={pendingNewCount > 0 ? t('followedManga.badge.newChapters', { count: pendingNewCount }) : undefined}
+          >
             <span className="inline-flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-400 truncate">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
               <span className="truncate">
                 {pendingNewCount > 0
-                  ? t('followedManga.badge.newChapters', { count: pendingNewCount })
+                  ? `+${pendingNewCount} chap mới`
                   : t('followedManga.filter.hasNew')}
               </span>
             </span>
             <span className="text-[11px] text-on-surface-variant/60 tabular-nums shrink-0 ml-1">
-              {remoteCount} chap
+              • {remoteCount} chap
             </span>
           </div>
         ) : (
-          <div className="flex items-center justify-between text-xs text-on-surface-variant">
+          <div className="flex items-center text-xs text-on-surface-variant">
             <span className="inline-flex items-center gap-1 text-[11px] text-on-surface-variant/70 truncate">
               <span className="material-symbols-outlined text-[13px] text-emerald-500 leading-none shrink-0">check</span>
-              <span className="truncate">{t('followedManga.badge.upToDate')}</span>
+              <span className="truncate">{remoteCount > 0 ? `${remoteCount} chap` : t('followedManga.badge.upToDate')}</span>
             </span>
-            {remoteCount > 0 ? (
-              <span className="text-[11px] text-on-surface-variant/60 tabular-nums shrink-0 ml-1">
-                {remoteCount} chap
-              </span>
-            ) : null}
           </div>
         )}
 
-        {/* Card Action Controls (Two rows: Full-width Primary + Equal Quick Actions) */}
-        <div className="mt-auto flex flex-col gap-1.5 pt-1">
-          {/* Primary Action Button (Full Width) */}
+        {/* Card Action Controls (Single row matching LatestUpdatesPanel) */}
+        <div className="mt-auto flex w-full items-center gap-1.5 pt-1">
           <button
             type="button"
             disabled={isLoading}
@@ -196,7 +193,7 @@ export default function FollowedMangaCard({
               e.stopPropagation();
               onOpenManga?.(item);
             }}
-            className="w-full h-8 rounded-lg bg-primary text-on-primary hover:opacity-90 text-xs font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs whitespace-nowrap px-2 disabled:opacity-50"
+            className="flex-1 min-w-0 h-8 rounded-lg bg-primary text-on-primary hover:opacity-90 text-xs font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs whitespace-nowrap px-2 disabled:opacity-50"
             aria-label={t('followedManga.actions.viewChapters')}
           >
             {isLoading ? (
@@ -218,72 +215,7 @@ export default function FollowedMangaCard({
             )}
           </button>
 
-          {/* Quick Actions Row */}
-          {!downloadState ? (
-            <div className="flex items-center gap-1.5 w-full">
-              {typeof onEnqueueNew === 'function' && (
-                <button
-                  type="button"
-                  disabled={isEnqueuing}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onEnqueueNew(item, sync);
-                  }}
-                  className={`flex-1 min-w-0 h-8 px-2 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs disabled:opacity-50 text-xs font-medium ${
-                    hasNew
-                      ? 'border border-emerald-500/30 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25'
-                      : 'border border-outline-variant/20 bg-surface-container-highest hover:bg-surface-bright text-on-surface-variant hover:text-on-surface'
-                  }`}
-                  data-tooltip={
-                    hasNew && pendingNewCount > 0
-                      ? t('followedManga.actions.enqueueNew', { count: pendingNewCount })
-                      : t('latestUpdates.addToQueue')
-                  }
-                  aria-label={
-                    hasNew && pendingNewCount > 0
-                      ? t('followedManga.actions.enqueueNew', { count: pendingNewCount })
-                      : t('latestUpdates.addToQueue')
-                  }
-                >
-                  <span
-                    className={`material-symbols-outlined text-[16px] leading-none shrink-0 ${
-                      isEnqueuing ? 'animate-spin' : ''
-                    }`}
-                  >
-                    {isEnqueuing ? 'progress_activity' : 'playlist_add'}
-                  </span>
-                  <span className="truncate whitespace-nowrap">
-                    {hasNew && pendingNewCount > 0
-                      ? `Tải ${pendingNewCount}`
-                      : t('followedManga.actions.enqueueShort')}
-                  </span>
-                </button>
-              )}
-
-              <button
-                type="button"
-                disabled={isChecking}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRecheck?.(item);
-                }}
-                className="flex-1 min-w-0 h-8 px-2 rounded-lg border border-outline-variant/20 bg-surface-container-highest hover:bg-surface-bright text-on-surface-variant hover:text-on-surface transition-all flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none cursor-pointer shadow-2xs text-xs font-medium"
-                data-tooltip={t('followedManga.actions.recheckSingle')}
-                aria-label={t('followedManga.actions.recheckSingle')}
-              >
-                <span
-                  className={`material-symbols-outlined text-[15px] leading-none shrink-0 ${
-                    isChecking ? 'animate-spin text-primary' : ''
-                  }`}
-                >
-                  refresh
-                </span>
-                <span className="truncate whitespace-nowrap">
-                  {t('followedManga.actions.recheckShort')}
-                </span>
-              </button>
-            </div>
-          ) : (
+          {downloadState ? (
             <button
               type="button"
               onClick={(e) => {
@@ -294,7 +226,7 @@ export default function FollowedMangaCard({
                   onStartQueue?.({ unpauseAll: true });
                 }
               }}
-              className="w-full h-8 rounded-lg border border-outline-variant/20 bg-surface-container-highest hover:bg-surface-bright text-on-surface transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs text-xs font-medium"
+              className="h-8 w-8 shrink-0 rounded-lg border border-outline-variant/20 bg-surface-container-highest hover:bg-surface-bright text-on-surface transition-all flex items-center justify-center cursor-pointer shadow-2xs"
               data-tooltip={
                 downloadState.isCurrentDownloading
                   ? t('followedManga.actions.pauseDownload')
@@ -306,16 +238,39 @@ export default function FollowedMangaCard({
                   : t('followedManga.actions.resumeDownload')
               }
             >
-              <span className="material-symbols-outlined text-[16px] leading-none shrink-0">
+              <span className="material-symbols-outlined text-[16px] leading-none">
                 {downloadState.isCurrentDownloading ? 'pause' : 'play_arrow'}
               </span>
-              <span className="truncate whitespace-nowrap">
-                {downloadState.isCurrentDownloading
-                  ? t('followedManga.actions.pauseDownload')
-                  : t('followedManga.actions.resumeDownload')}
+            </button>
+          ) : typeof onEnqueueNew === 'function' ? (
+            <button
+              type="button"
+              disabled={isEnqueuing}
+              onClick={(e) => {
+                e.stopPropagation();
+                onEnqueueNew(item, sync);
+              }}
+              className="h-8 w-8 shrink-0 rounded-lg bg-primary text-on-primary hover:opacity-90 transition-all flex items-center justify-center disabled:pointer-events-none disabled:opacity-45 cursor-pointer shadow-2xs"
+              data-tooltip={
+                hasNew && pendingNewCount > 0
+                  ? t('followedManga.actions.enqueueNew', { count: pendingNewCount })
+                  : t('latestUpdates.addToQueue')
+              }
+              aria-label={
+                hasNew && pendingNewCount > 0
+                  ? t('followedManga.actions.enqueueNew', { count: pendingNewCount })
+                  : t('latestUpdates.addToQueue')
+              }
+            >
+              <span
+                className={`material-symbols-outlined text-[17px] leading-none ${
+                  isEnqueuing ? 'animate-spin' : ''
+                }`}
+              >
+                {isEnqueuing ? 'progress_activity' : 'playlist_add'}
               </span>
             </button>
-          )}
+          ) : null}
         </div>
       </div>
     </div>

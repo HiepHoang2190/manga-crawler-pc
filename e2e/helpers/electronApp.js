@@ -12,12 +12,15 @@ const path = require('path');
  * @returns {Promise<{ electronApp: import('@playwright/test').ElectronApplication, window: import('@playwright/test').Page }>}
  */
 async function launchApp() {
+  const env = {
+    ...process.env,
+    NODE_ENV: 'test',
+  };
+  delete env.ELECTRON_RUN_AS_NODE;
+
   const electronApp = await electron.launch({
     args: [path.join(__dirname, '../../electron/main.js')],
-    env: {
-      ...process.env,
-      NODE_ENV: 'test',
-    },
+    env,
   });
 
   // Wait for first BrowserWindow

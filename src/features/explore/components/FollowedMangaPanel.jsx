@@ -10,6 +10,7 @@ import {
   SearchableSelect,
 } from '../../../shared';
 import FollowedMangaCard from './FollowedMangaCard';
+import ExploreSourceSelect from './ExploreSourceSelect';
 import { ChaptersDrawer } from '../../reader';
 import { dedupeChaptersByNumber } from '../../download';
 import {
@@ -27,7 +28,9 @@ import {
 
 const SYNC_STORAGE_KEY = 'crawler:followed-manga-sync-v1';
 const SORT_STORAGE_KEY = 'mangaFollowedSortPref_v1';
-const FOLLOWED_MANGA_PAGE_SIZE = 24;
+const PAGE_SIZE_STORAGE_KEY = 'mangaFollowedPageSizePref_v1';
+const PAGE_SIZES = [20, 50, 100];
+const FOLLOWED_MANGA_PAGE_SIZE = 20;
 
 function loadStoredSync() {
   if (typeof localStorage === 'undefined') return {};
@@ -68,6 +71,8 @@ export default function FollowedMangaPanel({
   onStopQueue = null,
   onAddQueuedFromLatest = null,
   onDownloadMangadexCovers = null,
+  viewMode: propViewMode,
+  onViewModeChange,
 }) {
   const { t } = useI18n();
   const { appendLog } = useAppLog();
@@ -120,7 +125,7 @@ export default function FollowedMangaPanel({
   }, []);
 
   // Layout View Mode ('grid' | 'list')
-  const [viewMode, setViewMode] = useState(() => {
+  const [internalViewMode, setInternalViewMode] = useState(() => {
     if (typeof localStorage === 'undefined') return 'grid';
     try {
       const v = localStorage.getItem('followed_manga_view_mode_v1');
@@ -130,15 +135,23 @@ export default function FollowedMangaPanel({
     }
     return 'grid';
   });
+  const viewMode = propViewMode !== undefined ? propViewMode : internalViewMode;
 
-  const handleViewModeChange = useCallback((next) => {
-    setViewMode(next);
-    try {
-      localStorage.setItem('followed_manga_view_mode_v1', next);
-    } catch {
-      /* ignore */
-    }
-  }, []);
+  const handleViewModeChange = useCallback(
+    (next) => {
+      const nextMode = next === 'list' ? 'list' : 'grid';
+      if (propViewMode === undefined) {
+        setInternalViewMode(nextMode);
+      }
+      try {
+        localStorage.setItem('followed_manga_view_mode_v1', nextMode);
+      } catch {
+        /* ignore */
+      }
+      onViewModeChange?.(nextMode);
+    },
+    [propViewMode, onViewModeChange]
+  );
 
   // Local Sync state (merged with externalSyncById)
   const [localSyncById, setLocalSyncById] = useState(() => loadStoredSync());
@@ -317,10 +330,39 @@ export default function FollowedMangaPanel({
     return list;
   }, [filteredList, sortBy, activeSyncById]);
 
-  // Total pages based on FOLLOWED_MANGA_PAGE_SIZE
+  const [pageSize, setPageSize] = useState(() => {
+    if (typeof localStorage === 'undefined') return FOLLOWED_MANGA_PAGE_SIZE;
+    try {
+      const stored = Number(localStorage.getItem(PAGE_SIZE_STORAGE_KEY));
+      return PAGE_SIZES.includes(stored) ? stored : FOLLOWED_MANGA_PAGE_SIZE;
+    } catch {
+      return FOLLOWED_MANGA_PAGE_SIZE;
+    }
+  });
+
+  const pageSizeOptions = useMemo(
+    () => PAGE_SIZES.map((n) => ({ value: String(n), label: String(n) })),
+    [],
+  );
+
+  const handlePageSizeChange = useCallback((val) => {
+    const next = Number(val);
+    if (PAGE_SIZES.includes(next)) {
+      setPageSize(next);
+      setPage(1);
+      setRawPageInput('1');
+      try {
+        localStorage.setItem(PAGE_SIZE_STORAGE_KEY, String(next));
+      } catch {
+        /* ignore */
+      }
+    }
+  }, []);
+
+  // Total pages based on pageSize
   const totalPages = useMemo(
-    () => Math.max(1, Math.ceil(sortedFavorites.length / FOLLOWED_MANGA_PAGE_SIZE)),
-    [sortedFavorites.length]
+    () => Math.max(1, Math.ceil(sortedFavorites.length / pageSize)),
+    [sortedFavorites.length, pageSize]
   );
 
   // Clamp page if totalPages shrinks
@@ -333,9 +375,12 @@ export default function FollowedMangaPanel({
 
   // In-memory sliced items for current page
   const displayedFavorites = useMemo(() => {
-    const start = (page - 1) * FOLLOWED_MANGA_PAGE_SIZE;
-    return sortedFavorites.slice(start, start + FOLLOWED_MANGA_PAGE_SIZE);
-  }, [sortedFavorites, page]);
+    const start = (page - 1) * pageSize;
+    return sortedFavorites.slice(start, start + pageSize);
+  }, [sortedFavorites, page, pageSize]);
+
+  const fromRow = sortedFavorites.length === 0 ? 0 : (page - 1) * pageSize + 1;
+  const toRow = Math.min(page * pageSize, sortedFavorites.length);
 
   // Jump page submit
   const handlePageJumpSubmit = useCallback(() => {
@@ -970,31 +1015,24 @@ export default function FollowedMangaPanel({
           className="bg-surface-container-low/50 relative border-r border-outline-variant/20 flex flex-col overflow-visible"
         >
           <div className="custom-scrollbar flex-1 overflow-y-auto p-3 space-y-3.5 mr-1.5 flex flex-col min-h-0">
-            {/* 1. Nguồn web (Source dropdown) */}
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/60 mb-1.5 px-1">
-                {t('followedManga.filter.bySource')}
-              </div>
-              <SearchableSelect
-                value={siteFilter}
-                onChange={(val) => {
-                  setSiteFilter(val);
-                  setPage(1);
-                  setRawPageInput('1');
-                }}
-                options={siteOptions}
-                size="sm"
-                className="w-full"
-                showPlaceholderOption={false}
-              />
-            </div>
+            {/* 1. Nguồn (Source dropdown) */}
+            <ExploreSourceSelect
+              mode="filter"
+              options={siteOptions}
+              value={siteFilter}
+              onChange={(val) => {
+                setSiteFilter(val);
+                setPage(1);
+                setRawPageInput('1');
+              }}
+            />
 
             {/* 2. Trạng thái (Segmented pill grid) */}
             <div>
               <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/60 mb-1.5 px-1">
                 {t('followedManga.filter.status')}
               </div>
-              <div className="grid grid-cols-2 gap-1.5 bg-surface-container-highest/60 p-1 rounded-xl border border-outline-variant/20 text-xs">
+              <div className="grid grid-cols-2 gap-1.5 h-10 items-center bg-surface-container-highest/60 p-1 rounded-xl border border-outline-variant/20 text-xs">
                 {/* Tất cả */}
                 <button
                   type="button"
@@ -1003,7 +1041,7 @@ export default function FollowedMangaPanel({
                     setPage(1);
                     setRawPageInput('1');
                   }}
-                  className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg font-medium transition-all cursor-pointer ${
+                  className={`flex items-center justify-center gap-1.5 h-8 px-2 rounded-lg font-semibold transition-all cursor-pointer ${
                     statusFilter === 'all'
                       ? 'bg-primary text-on-primary font-semibold shadow-2xs'
                       : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
@@ -1022,7 +1060,7 @@ export default function FollowedMangaPanel({
                     setPage(1);
                     setRawPageInput('1');
                   }}
-                  className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg font-medium transition-all cursor-pointer ${
+                  className={`flex items-center justify-center gap-1.5 h-8 px-2 rounded-lg font-semibold transition-all cursor-pointer ${
                     statusFilter === 'hasNew'
                       ? 'bg-emerald-600 dark:bg-emerald-500 text-white font-semibold shadow-2xs'
                       : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
@@ -1047,7 +1085,6 @@ export default function FollowedMangaPanel({
                 value={sortBy}
                 onChange={handleSortChange}
                 options={sortOptions}
-                size="sm"
                 className="w-full"
                 showPlaceholderOption={false}
               />
@@ -1069,7 +1106,7 @@ export default function FollowedMangaPanel({
                   }}
                   placeholder={t('followedManga.searchPlaceholder')}
                   aria-label={t('followedManga.searchPlaceholder')}
-                  className="h-8.5 w-full rounded-xl border border-outline-variant/25 bg-surface-container-high/60 px-3 pr-7 text-xs text-on-surface placeholder:text-on-surface-variant/50 outline-none transition-colors focus:border-primary/50 focus:ring-1 focus:ring-primary/30"
+                  className="h-10 w-full rounded-xl border border-outline-variant/25 bg-surface-container-highest px-3.5 pr-8 text-xs sm:text-sm text-on-surface placeholder:text-on-surface-variant/50 outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/30"
                   autoComplete="off"
                 />
                 {searchTerm && (
@@ -1082,7 +1119,7 @@ export default function FollowedMangaPanel({
                     }}
                     data-tooltip={t('followedManga.searchClear')}
                     aria-label={t('followedManga.searchClear')}
-                    className="absolute right-2 text-on-surface-variant/60 hover:text-on-surface cursor-pointer p-0.5 rounded"
+                    className="absolute right-2.5 text-on-surface-variant/60 hover:text-on-surface cursor-pointer p-0.5 rounded"
                   >
                     <span className="material-symbols-outlined text-[15px] leading-none">close</span>
                   </button>
@@ -1109,6 +1146,15 @@ export default function FollowedMangaPanel({
                         <span className="font-bold text-amber-600 dark:text-amber-400 text-right tabular-nums">{activePendingChaptersCount} ch.</span>
                       </>
                     )}
+                  </div>
+
+                  <div className="mt-2.5 pt-2 border-t border-primary/10 space-y-1.5 text-[10px] text-on-surface-variant/75 leading-relaxed">
+                    <div className="flex items-start gap-1.5">
+                      <span className="w-4 h-4 flex items-center justify-center shrink-0 text-primary/70">
+                        <span className="material-symbols-outlined text-[13px] leading-none">touch_app</span>
+                      </span>
+                      <span className="flex-1 min-w-0 leading-snug pt-0.5">{t('followedManga.stats.tip')}</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1245,24 +1291,24 @@ export default function FollowedMangaPanel({
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
                                 <span>
                                   {pendingNewCount > 0
-                                    ? t('followedManga.badge.newChapters', { count: pendingNewCount })
+                                    ? `+${pendingNewCount} chap mới`
                                     : t('followedManga.filter.hasNew')}
                                 </span>
+                                <span>•</span>
+                                <span className="tabular-nums">{remoteCount} chap</span>
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1 text-[11px] text-on-surface-variant/70">
                                 <span className="material-symbols-outlined text-[13px] text-emerald-500 leading-none">check</span>
-                                <span>{t('followedManga.badge.upToDate')}</span>
+                                <span>{remoteCount > 0 ? `${remoteCount} chap` : t('followedManga.badge.upToDate')}</span>
                               </span>
                             )}
-                            <span>•</span>
-                            <span className="tabular-nums">{remoteCount} chapters</span>
                           </div>
                         )}
                       </div>
                     </div>
 
-                    {/* List action buttons */}
+                    {/* List action buttons (matching LatestUpdates & BulkScan standard) */}
                     <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
                       <button
                         type="button"
@@ -1295,11 +1341,7 @@ export default function FollowedMangaPanel({
                               type="button"
                               disabled={isEnqueuing}
                               onClick={() => handleEnqueueNew(item, sync)}
-                              className={`h-8 w-8 shrink-0 rounded-lg transition-all flex items-center justify-center cursor-pointer shadow-2xs disabled:opacity-50 ${
-                                hasNew
-                                  ? 'border border-emerald-500/30 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25'
-                                  : 'border border-outline-variant/20 bg-surface-container-highest hover:bg-surface-bright text-on-surface-variant hover:text-on-surface'
-                              }`}
+                              className="h-8 w-8 shrink-0 rounded-lg bg-primary text-on-primary hover:opacity-90 transition-all flex items-center justify-center cursor-pointer shadow-2xs disabled:opacity-50"
                               data-tooltip={
                                 hasNew && pendingNewCount > 0
                                   ? t('followedManga.actions.enqueueNew', { count: pendingNewCount })
@@ -1320,23 +1362,6 @@ export default function FollowedMangaPanel({
                               </span>
                             </button>
                           )}
-
-                          <button
-                            type="button"
-                            disabled={isChecking}
-                            onClick={() => handleRecheckSingle(item)}
-                            className="h-8 w-8 shrink-0 rounded-lg border border-outline-variant/20 bg-surface-container-highest hover:bg-surface-bright text-on-surface-variant flex items-center justify-center transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none cursor-pointer shadow-2xs"
-                            data-tooltip={t('followedManga.actions.recheckSingle')}
-                            aria-label={t('followedManga.actions.recheckSingle')}
-                          >
-                            <span
-                              className={`material-symbols-outlined text-[15px] leading-none ${
-                                isChecking ? 'animate-spin text-primary' : ''
-                              }`}
-                            >
-                              refresh
-                            </span>
-                          </button>
                         </>
                       )}
 
@@ -1392,113 +1417,121 @@ export default function FollowedMangaPanel({
               role="region"
               aria-label={t('followedManga.pagination.summary', { count: sortedFavorites.length })}
             >
-              {/* Left: Summary & page badge */}
+              {/* Left: Summary & page range */}
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary tabular-nums shadow-2xs">
                   <span className="material-symbols-outlined text-[15px]">bookmarks</span>
                   <span>{t('followedManga.pagination.summary', { count: sortedFavorites.length })}</span>
                 </span>
-                {totalPages > 1 && (
-                  <span className="text-xs text-on-surface-variant/80 font-medium tabular-nums max-sm:hidden">
-                    ({t('latestUpdates.pageOf', { page, total: totalPages })})
-                  </span>
-                )}
               </div>
 
-              {/* Right: Client-side Page Navigation Controls */}
-              {totalPages > 1 ? (
-                <div className="flex items-center gap-1 text-xs text-on-surface-variant sm:ml-auto">
-                  {/* First page button */}
-                  <button
-                    type="button"
-                    data-tooltip={t('latestUpdates.firstPage')}
-                    aria-label={t('latestUpdates.firstPage')}
-                    disabled={page <= 1}
-                    onClick={() => {
-                      setPage(1);
-                      setRawPageInput('1');
-                      contentScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-                    }}
-                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-outline-variant/30 bg-surface-container-high text-on-surface-variant hover:bg-surface-bright hover:text-on-surface hover:border-outline-variant/60 active:scale-95 disabled:pointer-events-none disabled:opacity-40 transition-all cursor-pointer shadow-2xs"
-                  >
-                    <span className="material-symbols-outlined text-[17px] leading-none">first_page</span>
-                  </button>
+              {/* Right: Client-side Page Navigation Controls & PageSize Selector */}
+              <div className="flex items-center gap-2 text-xs text-on-surface-variant sm:ml-auto flex-wrap">
+                <SearchableSelect
+                  value={String(pageSize)}
+                  onChange={handlePageSizeChange}
+                  options={pageSizeOptions}
+                  placeholder=""
+                  size="sm"
+                  className="w-[4.5rem]"
+                  data-tooltip={t('bulkScan.pageSize')}
+                  aria-label={t('bulkScan.pageSize')}
+                />
 
-                  {/* Previous page button */}
-                  <button
-                    type="button"
-                    aria-label={t('latestUpdates.prevPage')}
-                    disabled={page <= 1}
-                    onClick={() => {
-                      const next = Math.max(1, page - 1);
-                      setPage(next);
-                      setRawPageInput(String(next));
-                      contentScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-                    }}
-                    className="inline-flex h-8 px-2.5 shrink-0 items-center gap-1 rounded-xl border border-outline-variant/30 bg-surface-container-high text-on-surface-variant hover:bg-surface-bright hover:text-on-surface hover:border-outline-variant/60 active:scale-95 disabled:pointer-events-none disabled:opacity-40 transition-all cursor-pointer shadow-2xs font-medium"
-                  >
-                    <span className="material-symbols-outlined text-[16px] leading-none">chevron_left</span>
-                    <span className="max-sm:hidden">{t('latestUpdates.prevPage')}</span>
-                  </button>
+                {totalPages > 1 && (
+                  <div className="flex items-center gap-1">
+                    {/* First page button */}
+                    <button
+                      type="button"
+                      data-tooltip={t('latestUpdates.firstPage')}
+                      aria-label={t('latestUpdates.firstPage')}
+                      disabled={page <= 1}
+                      onClick={() => {
+                        setPage(1);
+                        setRawPageInput('1');
+                        contentScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-outline-variant/30 bg-surface-container-high text-on-surface-variant hover:bg-surface-bright hover:text-on-surface hover:border-outline-variant/60 active:scale-95 disabled:pointer-events-none disabled:opacity-40 transition-all cursor-pointer shadow-2xs"
+                    >
+                      <span className="material-symbols-outlined text-[17px] leading-none">first_page</span>
+                    </button>
 
-                  {/* Quick jump page input */}
-                  <form
-                    className="flex min-w-0 items-center gap-1.5 px-1"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      handlePageJumpSubmit();
-                    }}
-                  >
-                    <input
-                      type="number"
-                      min={1}
-                      max={totalPages}
-                      inputMode="numeric"
-                      aria-label={t('latestUpdates.pageInputAria', { total: totalPages })}
-                      value={rawPageInput}
-                      onChange={(e) => setRawPageInput(e.target.value)}
-                      className="h-8 w-12 shrink-0 rounded-xl border border-outline-variant/30 bg-surface-container-highest px-1.5 text-center text-xs font-semibold font-mono text-on-surface outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all disabled:opacity-40 shadow-inner"
-                    />
-                    <span className="text-on-surface-variant/70 font-medium">/</span>
-                    <span className="tabular-nums font-semibold text-on-surface-variant min-w-[1.5rem] text-center">
-                      {totalPages}
-                    </span>
-                  </form>
+                    {/* Previous page button */}
+                    <button
+                      type="button"
+                      aria-label={t('latestUpdates.prevPage')}
+                      disabled={page <= 1}
+                      onClick={() => {
+                        const next = Math.max(1, page - 1);
+                        setPage(next);
+                        setRawPageInput(String(next));
+                        contentScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className="inline-flex h-8 px-2.5 shrink-0 items-center gap-1 rounded-xl border border-outline-variant/30 bg-surface-container-high text-on-surface-variant hover:bg-surface-bright hover:text-on-surface hover:border-outline-variant/60 active:scale-95 disabled:pointer-events-none disabled:opacity-40 transition-all cursor-pointer shadow-2xs font-medium"
+                    >
+                      <span className="material-symbols-outlined text-[16px] leading-none">chevron_left</span>
+                      <span className="max-sm:hidden">{t('latestUpdates.prevPage')}</span>
+                    </button>
 
-                  {/* Next page button */}
-                  <button
-                    type="button"
-                    aria-label={t('latestUpdates.nextPage')}
-                    disabled={page >= totalPages}
-                    onClick={() => {
-                      const next = Math.min(totalPages, page + 1);
-                      setPage(next);
-                      setRawPageInput(String(next));
-                      contentScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-                    }}
-                    className="inline-flex h-8 px-2.5 shrink-0 items-center gap-1 rounded-xl border border-outline-variant/30 bg-surface-container-high text-on-surface-variant hover:bg-surface-bright hover:text-on-surface hover:border-outline-variant/60 active:scale-95 disabled:pointer-events-none disabled:opacity-40 transition-all cursor-pointer shadow-2xs font-medium"
-                  >
-                    <span className="max-sm:hidden">{t('latestUpdates.nextPage')}</span>
-                    <span className="material-symbols-outlined text-[16px] leading-none">chevron_right</span>
-                  </button>
+                    {/* Quick jump page input */}
+                    <form
+                      className="flex min-w-0 items-center gap-1.5 px-1"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        handlePageJumpSubmit();
+                      }}
+                    >
+                      <input
+                        type="number"
+                        min={1}
+                        max={totalPages}
+                        inputMode="numeric"
+                        aria-label={t('latestUpdates.pageInputAria', { total: totalPages })}
+                        value={rawPageInput}
+                        onChange={(e) => setRawPageInput(e.target.value)}
+                        className="h-8 w-12 shrink-0 rounded-xl border border-outline-variant/30 bg-surface-container-highest px-1.5 text-center text-xs font-semibold font-mono text-on-surface outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all disabled:opacity-40 shadow-inner"
+                      />
+                      <span className="text-on-surface-variant/70 font-medium">/</span>
+                      <span className="tabular-nums font-semibold text-on-surface-variant min-w-[1.5rem] text-center">
+                        {totalPages}
+                      </span>
+                    </form>
 
-                  {/* Last page button */}
-                  <button
-                    type="button"
-                    data-tooltip={t('latestUpdates.lastPage')}
-                    aria-label={t('latestUpdates.lastPage')}
-                    disabled={page >= totalPages}
-                    onClick={() => {
-                      setPage(totalPages);
-                      setRawPageInput(String(totalPages));
-                      contentScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-                    }}
-                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-outline-variant/30 bg-surface-container-high text-on-surface-variant hover:bg-surface-bright hover:text-on-surface hover:border-outline-variant/60 active:scale-95 disabled:pointer-events-none disabled:opacity-40 transition-all cursor-pointer shadow-2xs"
-                  >
-                    <span className="material-symbols-outlined text-[17px] leading-none">last_page</span>
-                  </button>
-                </div>
-              ) : null}
+                    {/* Next page button */}
+                    <button
+                      type="button"
+                      aria-label={t('latestUpdates.nextPage')}
+                      disabled={page >= totalPages}
+                      onClick={() => {
+                        const next = Math.min(totalPages, page + 1);
+                        setPage(next);
+                        setRawPageInput(String(next));
+                        contentScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className="inline-flex h-8 px-2.5 shrink-0 items-center gap-1 rounded-xl border border-outline-variant/30 bg-surface-container-high text-on-surface-variant hover:bg-surface-bright hover:text-on-surface hover:border-outline-variant/60 active:scale-95 disabled:pointer-events-none disabled:opacity-40 transition-all cursor-pointer shadow-2xs font-medium"
+                    >
+                      <span className="max-sm:hidden">{t('latestUpdates.nextPage')}</span>
+                      <span className="material-symbols-outlined text-[16px] leading-none">chevron_right</span>
+                    </button>
+
+                    {/* Last page button */}
+                    <button
+                      type="button"
+                      data-tooltip={t('latestUpdates.lastPage')}
+                      aria-label={t('latestUpdates.lastPage')}
+                      disabled={page >= totalPages}
+                      onClick={() => {
+                        setPage(totalPages);
+                        setRawPageInput(String(totalPages));
+                        contentScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-outline-variant/30 bg-surface-container-high text-on-surface-variant hover:bg-surface-bright hover:text-on-surface hover:border-outline-variant/60 active:scale-95 disabled:pointer-events-none disabled:opacity-40 transition-all cursor-pointer shadow-2xs"
+                    >
+                      <span className="material-symbols-outlined text-[17px] leading-none">last_page</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </StudioLayout.Content>

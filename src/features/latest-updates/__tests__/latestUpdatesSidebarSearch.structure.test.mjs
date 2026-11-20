@@ -38,4 +38,10 @@ describe('LatestUpdatesPanel Sidebar Search Structure', () => {
     const toolbarCode = code.slice(toolbarStart, toolbarEnd);
     expect(toolbarCode).toContain('leftSlot={subtabsSlot}');
   });
+
+  test('search button and enter key are disabled when searchDraft is empty', () => {
+    const code = fs.readFileSync(panelPath, 'utf8');
+    expect(code).toContain('disabled={busyList || !searchDraft.trim()');
+    expect(code).toContain('if (!searchDraft.trim()) return;');
+  });
 });

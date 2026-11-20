@@ -55,10 +55,12 @@ describe('LatestUpdatesPanel Multi-Source Search Integration', () => {
 
   test('supports client-side pagination for multi-source search results', () => {
     const content = fs.readFileSync(panelPath, 'utf8');
-    expect(content).toContain('MULTI_SEARCH_PAGE_SIZE');
+    expect(content).toContain('const MULTI_SEARCH_PAGE_SIZES = [20, 50, 100];');
+    expect(content).toContain('MULTI_SEARCH_PAGE_SIZE = 20');
     expect(content).toContain('multiSearchTotalPages');
     expect(content).toContain('displayedRows');
     expect(content).toContain('handleMultiPageJumpSubmit');
+    expect(content).toContain('bulkScan.pageSize');
   });
 });
 
