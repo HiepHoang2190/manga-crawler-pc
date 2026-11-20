@@ -147,6 +147,48 @@ function groupStatusKey(g, p) {
   return 'empty';
 }
 
+/** Trọng số ưu tiên trạng thái chapter: lỗi → đang tải → chờ → xong. */
+function chapterStatusWeight(c) {
+  const isErr = c.status === 'error' || c.status === 'failed' || (c.status === 'done' && !!c.downloadError);
+  if (isErr) return 0;
+  if (c.status === 'downloading') return 1;
+  if (c.status === 'waiting') return 2;
+  return 3;
+}
+
+/** Sắp xếp chapter theo ưu tiên trạng thái, giữ thứ tự gốc trong cùng nhóm (stable sort). */
+function sortChaptersByStatusPriority(chapters) {
+  return chapters
+    .map((c, origIdx) => ({ c, origIdx }))
+    .sort((a, b) => chapterStatusWeight(a.c) - chapterStatusWeight(b.c));
+}
+
+/** Trích xuất số chapter từ title (ví dụ: "Chapter 173 - Abc" → "173"). */
+function extractChapterNumber(title) {
+  if (!title) return null;
+  const m = title.match(/(?:Ch(?:apter|\.)?|Chương)\s*(\d+(?:\.\d+)?)/i);
+  return m ? m[1] : null;
+}
+
+/** Đếm tóm tắt trạng thái chapters. */
+function chapterStatusSummary(chapters) {
+  let err = 0, dl = 0, wait = 0, done = 0;
+  for (const c of chapters) {
+    if (c.status === 'error' || c.status === 'failed' || (c.status === 'done' && !!c.downloadError)) err++;
+    else if (c.status === 'downloading') dl++;
+    else if (c.status === 'waiting') wait++;
+    else done++;
+  }
+  return { err, dl, wait, done, total: chapters.length };
+}
+
+/** Kiểm tra tất cả chapters có cùng status không (dùng để ẩn badge khi đồng nhất). */
+function isAllSameStatus(chapters) {
+  if (chapters.length <= 1) return true;
+  const first = chapterStatusWeight(chapters[0]);
+  return chapters.every(c => chapterStatusWeight(c) === first);
+}
+
 /** Hàng đợi — thẻ cho màn hẹp (không cần scroll ngang). */
 function QueueQueueMobileCard({
   item,
@@ -269,12 +311,16 @@ function QueueQueueMobileCard({
               <button
                 type="button"
                 onClick={toggleExpand}
-                className="cursor-pointer rounded p-1 text-on-surface-variant hover:bg-surface-container-high transition-transform"
-                style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                className="w-7 h-7 flex items-center justify-center rounded-lg border border-outline-variant/25 bg-surface-container-highest/60 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high hover:border-outline-variant/40 transition-all active:scale-95 cursor-pointer shrink-0"
                 data-tooltip={t(isExpanded ? 'queue.collapseChapters' : 'queue.expandChapters')}
                 aria-label={t(isExpanded ? 'queue.collapseChapters' : 'queue.expandChapters')}
               >
-                <span className="material-symbols-outlined text-[18px] leading-none">expand_more</span>
+                <span 
+                  className="material-symbols-outlined text-[20px] leading-none transition-transform duration-200"
+                  style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                >
+                  expand_more
+                </span>
               </button>
             </div>
             <div className="min-w-0 flex-1">
@@ -358,9 +404,11 @@ function QueueQueueMobileCard({
               />
               <button
                 type="button"
+                disabled={!(p.done > 0 || p.hasDl)}
                 onClick={() => onOpenMangaFolder?.(item.mangaTitle)}
-                className="cursor-pointer rounded p-1.5 text-primary hover:bg-surface-container-high"
-                data-tooltip={t('queue.openTitle')}
+                className="cursor-pointer rounded p-1.5 text-primary hover:bg-surface-container-high disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors"
+                data-tooltip={p.done > 0 || p.hasDl ? t('queue.openTitle') : t('queue.folderNotReadyTooltip')}
+                aria-label={p.done > 0 || p.hasDl ? t('queue.openTitle') : t('queue.folderNotReadyTooltip')}
               >
                 <span className="material-symbols-outlined text-[18px] leading-none">folder_open</span>
               </button>
@@ -375,81 +423,135 @@ function QueueQueueMobileCard({
               </button>
             </div>
           </div>
-          {isExpanded && (
+          {isExpanded && (() => {
+            const summary = chapterStatusSummary(item.chapters);
+            const allSame = isAllSameStatus(item.chapters);
+            const searchQ = (chapterSearchQuery[item.id] || '').toLowerCase();
+            const sorted = sortChaptersByStatusPriority(item.chapters);
+            const filtered = searchQ ? sorted.filter(({ c }) => (c.chapterTitle || '').toLowerCase().includes(searchQ)) : sorted;
+            return (
             <div className="mt-3 -mx-1 border-t border-outline-variant/10 pt-3">
-              {item.chapters.some(c => c.status === 'done' && !c.downloadError) && (
-                <div className="flex items-center justify-end px-2 mb-2">
-                  <button
-                    type="button"
-                    onClick={() => onClearCompletedInGroup?.(item.id)}
-                    className="flex items-center gap-1 text-[11px] font-medium text-on-surface-variant hover:text-error transition-colors px-2 py-1 rounded bg-surface-container hover:bg-error/10"
-                    aria-label={t('queue.clearCompletedInGroup') || 'Clear completed'}
-                  >
-                    <span className="material-symbols-outlined !text-[14px]">clear_all</span>
-                    {t('queue.clearCompletedInGroup') || 'Clear completed'}
-                  </button>
+              {/* Mini summary bar */}
+              <div className="flex items-center justify-between px-2 mb-2">
+                <div className="flex items-center gap-2 text-[10px] text-on-surface-variant">
+                  <span className="font-semibold text-on-surface">{summary.total}</span>
+                  <span>{t('queue.chapterUnit') || 'chương'}</span>
+                  {summary.err > 0 && <span className="text-error">· {summary.err} {t('queue.status.error') || 'lỗi'}</span>}
+                  {summary.dl > 0 && <span className="text-blue-500">· {summary.dl} {t('queue.status.downloading') || 'đang tải'}</span>}
+                  {summary.done > 0 && <span className="text-green-500">· {summary.done} {t('queue.status.done') || 'xong'}</span>}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {item.chapters.some(c => c.status === 'done' && !c.downloadError) && (
+                    <button
+                      type="button"
+                      onClick={() => onClearCompletedInGroup?.(item.id)}
+                      className="flex items-center gap-1 text-[11px] font-medium text-on-surface-variant hover:text-error transition-colors px-2 py-1 rounded bg-surface-container hover:bg-error/10"
+                      aria-label={t('queue.clearCompletedInGroup') || 'Clear completed'}
+                    >
+                      <span className="material-symbols-outlined !text-[14px]">clear_all</span>
+                      {t('queue.clearCompletedInGroup') || 'Clear completed'}
+                    </button>
+                  )}
+                </div>
+              </div>
+              {/* Search bar - show when > 20 chapters */}
+              {item.chapters.length > 20 && (
+                <div className="px-2 mb-2">
+                  <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-outline-variant/20 bg-surface-container-lowest focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/20 transition-all">
+                    <span className="material-symbols-outlined !text-[16px] text-on-surface-variant shrink-0">search</span>
+                    <input
+                      type="text"
+                      value={chapterSearchQuery[item.id] || ''}
+                      onChange={e => setChapterSearchQuery(prev => ({ ...prev, [item.id]: e.target.value }))}
+                      placeholder={t('queue.searchChapter') || 'Tìm chapter...'}
+                      className="flex-1 min-w-0 bg-transparent text-[12px] text-on-surface placeholder:text-on-surface-variant/50 outline-none"
+                    />
+                    {searchQ && (
+                      <button
+                        type="button"
+                        onClick={() => setChapterSearchQuery(prev => ({ ...prev, [item.id]: '' }))}
+                        className="text-on-surface-variant hover:text-on-surface transition-colors shrink-0"
+                      >
+                        <span className="material-symbols-outlined !text-[14px]">close</span>
+                      </button>
+                    )}
+                  </div>
+                  {searchQ && (
+                    <div className="text-[10px] text-on-surface-variant mt-1 px-1">
+                      {filtered.length}/{summary.total} {t('queue.chapterUnit') || 'chương'}
+                    </div>
+                  )}
                 </div>
               )}
-              <div className="max-h-56 overflow-y-auto custom-scrollbar flex flex-col gap-1.5 px-1">
-                {item.chapters.map((c, idx) => {
+              <div className="max-h-56 overflow-y-auto custom-scrollbar flex flex-col gap-0.5 px-1">
+                {filtered.map(({ c, origIdx }, visualIdx) => {
                   const isDone = c.status === 'done' && !c.downloadError;
                   const isErr = c.status === 'error' || c.status === 'failed' || (c.status === 'done' && !!c.downloadError);
                   const isDl = c.status === 'downloading';
                   const isWait = c.status === 'waiting';
                   const badgeText = isDone ? 'text-green-600 dark:text-green-400' : isErr ? 'text-error' : isDl ? 'text-blue-600 dark:text-blue-400' : 'text-on-surface-variant';
-                  const borderColor = isDone ? 'border-green-500/40' : isErr ? 'border-red-500/40' : isDl ? 'border-blue-500/40' : 'border-outline-variant/30';
+                  const borderColor = isDone ? 'border-green-500/40' : isErr ? 'border-red-500/40' : isDl ? 'border-blue-500/40' : 'border-outline-variant/20';
+                  const chNum = extractChapterNumber(c.chapterTitle);
+                  const stripeBg = visualIdx % 2 === 0 ? 'bg-surface-container-lowest' : 'bg-surface-container/40';
                   
-                  const isDragOver = chapterDragOverInfo?.groupId === item.id && chapterDragOverInfo?.index === idx;
+                  const isDragOver = chapterDragOverInfo?.groupId === item.id && chapterDragOverInfo?.index === origIdx;
 
                   return (
                     <div 
                       key={c.id}
-                      draggable={true}
+                      draggable={!searchQ}
                       onDragStart={(e) => {
-                        chapterDragFromInfoRef.current = { groupId: item.id, index: idx };
+                        chapterDragFromInfoRef.current = { groupId: item.id, index: origIdx };
                         e.dataTransfer.effectAllowed = 'move';
                       }}
-                      onDragOver={(e) => handleChapterDragOver(e, item.id, idx)}
+                      onDragOver={(e) => handleChapterDragOver(e, item.id, origIdx)}
                       onDragLeave={() => setChapterDragOverInfo(null)}
-                      onDrop={(e) => handleChapterDrop(e, item.id, idx)}
-                      className={`flex items-center justify-between py-1.5 px-2.5 border-l-2 ${borderColor} rounded-r-md rounded-l-sm bg-surface-container-lowest hover:bg-surface-container-high transition-colors shadow-sm cursor-move ${isDragOver ? 'ring-2 ring-inset ring-primary/50' : ''}`}
+                      onDrop={(e) => handleChapterDrop(e, item.id, origIdx)}
+                      className={`group/row flex items-center justify-between py-1.5 px-2 border-l-2 ${borderColor} rounded-r-md rounded-l-sm ${stripeBg} hover:bg-surface-container-high transition-colors ${searchQ ? '' : 'cursor-move'} ${isDragOver ? 'ring-2 ring-inset ring-primary/50' : ''}`}
                     >
-                      <div className="flex flex-col min-w-0 pr-2 flex-1">
-                        <span className="text-[12px] truncate text-on-surface font-medium">
+                      <div className="flex items-center gap-2 min-w-0 pr-2 flex-1">
+                        {chNum && (
+                          <span className="text-[10px] font-mono tabular-nums font-semibold text-primary bg-primary/8 px-1.5 py-0.5 rounded shrink-0 min-w-[36px] text-center">
+                            {chNum}
+                          </span>
+                        )}
+                        <span className="text-[12px] truncate text-on-surface font-medium flex-1 min-w-0">
                           {c.chapterTitle}
                         </span>
-                        <span className={`text-[10px] font-bold uppercase tracking-wider mt-0.5 ${badgeText}`}>
-                          {isErr ? (t('queue.status.error') || 'Error') : (t(`queue.status.${c.status}`) || c.status)}
-                        </span>
+                        {!allSame && (
+                          <span className={`text-[10px] font-bold uppercase tracking-wider shrink-0 ${badgeText}`}>
+                            {isErr ? (t('queue.status.error') || 'Error') : (t(`queue.status.${c.status}`) || c.status)}
+                          </span>
+                        )}
                       </div>
-                      <div className="flex items-center gap-1 shrink-0">
+                      <div className="flex items-center gap-0.5 shrink-0">
                         {(isDl || isWait) && (
                           <button
                             type="button"
                             onClick={() => onSkipChapter && onSkipChapter(item.id, c.id, isDl)}
-                            className="text-on-surface-variant hover:text-amber-500 hover:bg-amber-500/10 rounded-full p-1.5 transition-colors"
+                            className="text-on-surface-variant hover:text-amber-500 hover:bg-amber-500/10 rounded-full p-1 transition-colors"
                             data-tooltip={t('queue.skipChapterTitle') || 'Skip'}
                           >
-                            <span className="material-symbols-outlined !text-[16px]">skip_next</span>
+                            <span className="material-symbols-outlined !text-[14px]">skip_next</span>
                           </button>
                         )}
                         {isErr && (
                           <button
                             type="button"
                             onClick={() => onRetryChapter && onRetryChapter(item.id, c.id)}
-                            className="text-on-surface-variant hover:text-green-500 hover:bg-green-500/10 rounded-full p-1.5 transition-colors"
+                            className="text-on-surface-variant hover:text-green-500 hover:bg-green-500/10 rounded-full p-1 transition-colors"
                             data-tooltip={t('queue.retryChapterTitle') || 'Retry'}
                           >
-                            <span className="material-symbols-outlined !text-[16px]">refresh</span>
+                            <span className="material-symbols-outlined !text-[14px]">refresh</span>
                           </button>
                         )}
                         <button
                           type="button"
                           onClick={() => onRemoveChapter && onRemoveChapter(item.id, c.id)}
-                          className="text-on-surface-variant hover:text-error hover:bg-error/10 rounded-full p-1.5 transition-colors"
+                          className="text-on-surface-variant hover:text-error hover:bg-error/10 rounded-full p-1 transition-colors"
                           data-tooltip={t('queue.removeChapterTitle') || 'Remove'}
                         >
-                          <span className="material-symbols-outlined !text-[16px]">close</span>
+                          <span className="material-symbols-outlined !text-[14px]">close</span>
                         </button>
                       </div>
                     </div>
@@ -457,7 +559,8 @@ function QueueQueueMobileCard({
                 })}
               </div>
             </div>
-          )}
+            );
+          })()}
         </div>
       </div>
     </div>
@@ -515,6 +618,7 @@ export default function QueuePanel({
 
   const [chapterDragOverInfo, setChapterDragOverInfo] = useState(null);
   const chapterDragFromInfoRef = useRef(null);
+  const [chapterSearchQuery, setChapterSearchQuery] = useState({});
 
   const handleChapterDragOver = (e, groupId, index) => {
     e.preventDefault();
@@ -856,12 +960,16 @@ export default function QueuePanel({
                         e.stopPropagation();
                         toggleGroupExpand(item.id);
                       }}
-                      className="text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded p-1 shrink-0 transition-transform cursor-pointer"
-                      style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                      className="w-7 h-7 flex items-center justify-center rounded-lg border border-outline-variant/25 bg-surface-container-highest/60 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high hover:border-outline-variant/40 transition-all active:scale-95 shrink-0 cursor-pointer"
                       data-tooltip={t(isExpanded ? 'queue.collapseChapters' : 'queue.expandChapters')}
                       aria-label={t(isExpanded ? 'queue.collapseChapters' : 'queue.expandChapters')}
                     >
-                      <span className="material-symbols-outlined text-[18px] leading-none">expand_more</span>
+                      <span 
+                        className="material-symbols-outlined text-[20px] leading-none transition-transform duration-200"
+                        style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                      >
+                        expand_more
+                      </span>
                     </button>
                   </div>
                 </td>
@@ -987,10 +1095,16 @@ export default function QueuePanel({
                     <button
                       type="button"
                       onClick={() => toggleGroupExpand(item.id)}
-                      className="cursor-pointer rounded p-1.5 text-on-surface-variant hover:bg-surface-container-high md:hidden transition-transform"
-                      style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                      className="w-7 h-7 flex items-center justify-center rounded-lg border border-outline-variant/25 bg-surface-container-highest/60 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high hover:border-outline-variant/40 md:hidden transition-all active:scale-95 shrink-0 cursor-pointer"
+                      data-tooltip={t(isExpanded ? 'queue.collapseChapters' : 'queue.expandChapters')}
+                      aria-label={t(isExpanded ? 'queue.collapseChapters' : 'queue.expandChapters')}
                     >
-                      <span className="material-symbols-outlined text-[18px] leading-none">expand_more</span>
+                      <span 
+                        className="material-symbols-outlined text-[20px] leading-none transition-transform duration-200"
+                        style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                      >
+                        expand_more
+                      </span>
                     </button>
                     <button
                       type="button"
@@ -1010,9 +1124,11 @@ export default function QueuePanel({
                     />
                     <button
                       type="button"
+                      disabled={!(p.done > 0 || p.hasDl)}
                       onClick={() => onOpenMangaFolder?.(item.mangaTitle)}
-                      className="cursor-pointer rounded p-1.5 text-primary hover:bg-surface-container-high"
-                      aria-label={t('queue.openTitle')}
+                      className="cursor-pointer rounded p-1.5 text-primary hover:bg-surface-container-high disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors"
+                      data-tooltip={p.done > 0 || p.hasDl ? t('queue.openTitle') : t('queue.folderNotReadyTooltip')}
+                      aria-label={p.done > 0 || p.hasDl ? t('queue.openTitle') : t('queue.folderNotReadyTooltip')}
                     >
                       <span className="material-symbols-outlined text-[18px] leading-none">folder_open</span>
                     </button>
@@ -1032,64 +1148,115 @@ export default function QueuePanel({
           }}
           renderSubRow={(item) => {
             if (!expandedGroups.has(item.id)) return null;
+            const summary = chapterStatusSummary(item.chapters);
+            const allSame = isAllSameStatus(item.chapters);
+            const searchQ = (chapterSearchQuery[item.id] || '').toLowerCase();
+            const sorted = sortChaptersByStatusPriority(item.chapters);
+            const filtered = searchQ ? sorted.filter(({ c }) => (c.chapterTitle || '').toLowerCase().includes(searchQ)) : sorted;
             return (
               <tr key={`${item.id}-expanded`} className="bg-surface-container-lowest">
                 <td colSpan={7} className="p-0 border-b border-outline-variant/10">
                   <div className="bg-surface-container/30 px-3 py-3 shadow-inner border-y border-outline-variant/5">
-                    {item.chapters.some(c => c.status === 'done' && !c.downloadError) && (
-                      <div className="flex items-center justify-end mb-2">
-                        <button
-                          type="button"
-                          onClick={() => onClearCompletedInGroup?.(item.id)}
-                          className="flex items-center gap-1 text-[12px] font-medium text-on-surface-variant hover:text-error transition-colors px-2 py-1 rounded bg-surface hover:bg-error/10 border border-outline-variant/20 shadow-sm"
-                          aria-label={t('queue.clearCompletedInGroup') || 'Clear completed'}
-                        >
-                          <span className="material-symbols-outlined !text-[16px]">clear_all</span>
-                          {t('queue.clearCompletedInGroup') || 'Clear completed'}
-                        </button>
+                    {/* Mini summary bar + actions */}
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2 text-[11px] text-on-surface-variant">
+                        <span className="font-semibold text-on-surface">{summary.total}</span>
+                        <span>{t('queue.chapterUnit') || 'chương'}</span>
+                        {summary.err > 0 && <span className="text-error">· {summary.err} {t('queue.status.error') || 'lỗi'}</span>}
+                        {summary.dl > 0 && <span className="text-blue-500">· {summary.dl} {t('queue.status.downloading') || 'đang tải'}</span>}
+                        {summary.done > 0 && <span className="text-green-500">· {summary.done} {t('queue.status.done') || 'xong'}</span>}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {/* Search bar - show when > 20 chapters */}
+                        {item.chapters.length > 20 && (
+                          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-outline-variant/20 bg-surface focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/20 transition-all">
+                            <span className="material-symbols-outlined !text-[16px] text-on-surface-variant shrink-0">search</span>
+                            <input
+                              type="text"
+                              value={chapterSearchQuery[item.id] || ''}
+                              onChange={e => setChapterSearchQuery(prev => ({ ...prev, [item.id]: e.target.value }))}
+                              placeholder={t('queue.searchChapter') || 'Tìm chapter...'}
+                              className="w-36 min-w-0 bg-transparent text-[12px] text-on-surface placeholder:text-on-surface-variant/50 outline-none"
+                            />
+                            {searchQ && (
+                              <button
+                                type="button"
+                                onClick={() => setChapterSearchQuery(prev => ({ ...prev, [item.id]: '' }))}
+                                className="text-on-surface-variant hover:text-on-surface transition-colors shrink-0"
+                              >
+                                <span className="material-symbols-outlined !text-[14px]">close</span>
+                              </button>
+                            )}
+                          </div>
+                        )}
+                        {item.chapters.some(c => c.status === 'done' && !c.downloadError) && (
+                          <button
+                            type="button"
+                            onClick={() => onClearCompletedInGroup?.(item.id)}
+                            className="flex items-center gap-1 text-[12px] font-medium text-on-surface-variant hover:text-error transition-colors px-2 py-1 rounded bg-surface hover:bg-error/10 border border-outline-variant/20 shadow-sm"
+                            aria-label={t('queue.clearCompletedInGroup') || 'Clear completed'}
+                          >
+                            <span className="material-symbols-outlined !text-[16px]">clear_all</span>
+                            {t('queue.clearCompletedInGroup') || 'Clear completed'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {searchQ && (
+                      <div className="text-[10px] text-on-surface-variant mb-1.5 px-1">
+                        {filtered.length}/{summary.total} {t('queue.chapterUnit') || 'chương'}
                       </div>
                     )}
-                    <div className="max-h-[300px] overflow-y-auto custom-scrollbar flex flex-col gap-1.5 pr-2">
-                      {item.chapters.map((c, idx) => {
+                    <div className="max-h-[300px] overflow-y-auto custom-scrollbar flex flex-col gap-0.5 pr-2">
+                      {filtered.map(({ c, origIdx }, visualIdx) => {
                         const isDone = c.status === 'done' && !c.downloadError;
                         const isErr = c.status === 'error' || c.status === 'failed' || (c.status === 'done' && !!c.downloadError);
                         const isDl = c.status === 'downloading';
                         const isWait = c.status === 'waiting';
                         const badgeBg = isDone ? 'bg-green-500/10 dark:bg-green-500/20' : isErr ? 'bg-red-500/10 dark:bg-red-500/20' : isDl ? 'bg-blue-500/10 dark:bg-blue-500/20' : 'bg-surface-container-high';
                         const badgeText = isDone ? 'text-green-600 dark:text-green-400' : isErr ? 'text-error' : isDl ? 'text-blue-600 dark:text-blue-400' : 'text-on-surface-variant';
-                        const borderColor = isDone ? 'border-green-500/40' : isErr ? 'border-red-500/40' : isDl ? 'border-blue-500/40' : 'border-outline-variant/30';
+                        const borderColor = isDone ? 'border-green-500/40' : isErr ? 'border-red-500/40' : isDl ? 'border-blue-500/40' : 'border-outline-variant/20';
+                        const chNum = extractChapterNumber(c.chapterTitle);
+                        const stripeBg = visualIdx % 2 === 0 ? 'bg-surface' : 'bg-surface-container/30';
                         
-                        const isDragOver = chapterDragOverInfo?.groupId === item.id && chapterDragOverInfo?.index === idx;
+                        const isDragOver = chapterDragOverInfo?.groupId === item.id && chapterDragOverInfo?.index === origIdx;
                           
                         return (
                           <div 
                             key={c.id}
-                            draggable={true}
+                            draggable={!searchQ}
                             onDragStart={(e) => {
-                              chapterDragFromInfoRef.current = { groupId: item.id, index: idx };
+                              chapterDragFromInfoRef.current = { groupId: item.id, index: origIdx };
                               e.dataTransfer.effectAllowed = 'move';
                             }}
-                            onDragOver={(e) => handleChapterDragOver(e, item.id, idx)}
+                            onDragOver={(e) => handleChapterDragOver(e, item.id, origIdx)}
                             onDragLeave={() => setChapterDragOverInfo(null)}
-                            onDrop={(e) => handleChapterDrop(e, item.id, idx)}
-                            className={`group flex items-center justify-between py-2 px-3 border-l-2 ${borderColor} rounded-r-md rounded-l-sm bg-surface hover:bg-surface-container-high transition-all duration-200 shadow-sm cursor-move ${isDragOver ? 'ring-2 ring-inset ring-primary/50' : ''}`}
+                            onDrop={(e) => handleChapterDrop(e, item.id, origIdx)}
+                            className={`group/row flex items-center justify-between py-1.5 px-3 border-l-2 ${borderColor} rounded-r-md rounded-l-sm ${stripeBg} hover:bg-surface-container-high transition-all duration-150 ${searchQ ? '' : 'cursor-move'} ${isDragOver ? 'ring-2 ring-inset ring-primary/50' : ''}`}
                           >
                             <div className="flex items-center gap-3 min-w-0 flex-1">
+                              {chNum && (
+                                <span className="text-[11px] font-mono tabular-nums font-semibold text-primary bg-primary/8 px-2 py-0.5 rounded shrink-0 min-w-[40px] text-center">
+                                  {chNum}
+                                </span>
+                              )}
                               <div className="flex flex-col min-w-0 flex-1">
                                 <span className="text-[13px] truncate text-on-surface font-medium">
                                   {c.chapterTitle}
                                 </span>
                               </div>
-                              <div className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${badgeBg} ${badgeText} shrink-0`}>
-                                {isErr ? (t('queue.status.error') || 'Error') : (t(`queue.status.${c.status}`) || c.status)}
-                              </div>
+                              {!allSame && (
+                                <div className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${badgeBg} ${badgeText} shrink-0`}>
+                                  {isErr ? (t('queue.status.error') || 'Error') : (t(`queue.status.${c.status}`) || c.status)}
+                                </div>
+                              )}
                             </div>
                             <div className="flex items-center gap-1 shrink-0 ml-3">
                               {(isDl || isWait) && (
                                 <button
                                   type="button"
                                   onClick={() => onSkipChapter && onSkipChapter(item.id, c.id, isDl)}
-                                  className="text-on-surface-variant hover:text-amber-500 hover:bg-amber-500/10 rounded-full w-7 h-7 flex items-center justify-center transition-all focus:opacity-100"
+                                  className="text-on-surface-variant hover:text-amber-500 hover:bg-amber-500/10 rounded-full w-7 h-7 flex items-center justify-center transition-all"
                                   data-tooltip={t('queue.skipChapterTitle') || 'Skip'}
                                 >
                                   <span className="material-symbols-outlined !text-[16px]">skip_next</span>
@@ -1099,7 +1266,7 @@ export default function QueuePanel({
                                 <button
                                   type="button"
                                   onClick={() => onRetryChapter && onRetryChapter(item.id, c.id)}
-                                  className="text-on-surface-variant hover:text-green-500 hover:bg-green-500/10 rounded-full w-7 h-7 flex items-center justify-center transition-all focus:opacity-100"
+                                  className="text-on-surface-variant hover:text-green-500 hover:bg-green-500/10 rounded-full w-7 h-7 flex items-center justify-center transition-all"
                                   data-tooltip={t('queue.retryChapterTitle') || 'Retry'}
                                 >
                                   <span className="material-symbols-outlined !text-[16px]">refresh</span>
@@ -1108,7 +1275,7 @@ export default function QueuePanel({
                               <button
                                 type="button"
                                 onClick={() => onRemoveChapter && onRemoveChapter(item.id, c.id)}
-                                className="text-on-surface-variant hover:text-error hover:bg-error/10 rounded-full w-7 h-7 flex items-center justify-center transition-all focus:opacity-100"
+                                className="text-on-surface-variant hover:text-error hover:bg-error/10 rounded-full w-7 h-7 flex items-center justify-center transition-all"
                                 data-tooltip={t('queue.removeChapterTitle') || 'Remove'}
                               >
                                 <span className="material-symbols-outlined !text-[16px]">close</span>

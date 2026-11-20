@@ -37,10 +37,8 @@ function registerWindowIpc(ipc_context) {
     const title = String(mangaTitle || '').trim();
     if (!base || !title) return { ok: false, error: 'Thiếu đường dẫn hoặc tên truyện.' };
     const dir = resolveMangaDir(base, title);
-    try {
-      fs.mkdirSync(dir, { recursive: true });
-    } catch (e) {
-      return { ok: false, error: String(e?.message || e) };
+    if (!fs.existsSync(dir)) {
+      return { ok: false, error: 'Thư mục truyện chưa tồn tại (chưa có chương nào được tải).' };
     }
     const err = await shell.openPath(dir);
     return err ? { ok: false, error: err } : { ok: true };
