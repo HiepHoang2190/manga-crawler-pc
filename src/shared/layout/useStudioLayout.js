@@ -19,6 +19,21 @@ export function clampBottomDrawerHeight(h, innerHeight, min = 100, max = 550) {
   return Math.max(min, Math.min(h, Math.max(min, maxH)));
 }
 
+export const STUDIOLAYOUT_SYNC_EVENT = 'studiolayout:sync';
+
+/**
+ * Phát sự kiện đồng bộ layout qua CustomEvent cho các component cùng storagePrefix
+ */
+export function broadcastStudioLayoutSync(detail) {
+  if (typeof window !== 'undefined' && detail) {
+    try {
+      window.dispatchEvent(new CustomEvent(STUDIOLAYOUT_SYNC_EVENT, { detail }));
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 /**
  * useStudioLayout — Hook điều phối layout chuẩn Workflow Studio
  * Quản lý trạng thái mở/đóng và co giãn kích thước cho Sidebar Trái, Phải và Drawer Đáy.
@@ -141,6 +156,30 @@ export function useStudioLayout({
     bottomHeightRef.current = bottomHeight;
   }, [bottomHeight]);
 
+  // Synchronize state across instances sharing the same storagePrefix
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleSync = (e) => {
+      const detail = e?.detail;
+      if (!detail || detail.prefix !== storagePrefix) return;
+      if (detail.type === 'leftWidth' && typeof detail.value === 'number') {
+        setLeftWidth(clampLeft(detail.value));
+      } else if (detail.type === 'rightWidth' && typeof detail.value === 'number') {
+        setRightWidth(clampRight(detail.value));
+      } else if (detail.type === 'bottomHeight' && typeof detail.value === 'number') {
+        setBottomHeight(clampBottom(detail.value));
+      } else if (detail.type === 'showLeftSidebar' && typeof detail.value === 'boolean') {
+        setShowLeftSidebar(detail.value);
+      } else if (detail.type === 'showRightSidebar' && typeof detail.value === 'boolean') {
+        setShowRightSidebar(detail.value);
+      } else if (detail.type === 'isBottomOpen' && typeof detail.value === 'boolean') {
+        setIsBottomOpen(detail.value);
+      }
+    };
+    window.addEventListener(STUDIOLAYOUT_SYNC_EVENT, handleSync);
+    return () => window.removeEventListener(STUDIOLAYOUT_SYNC_EVENT, handleSync);
+  }, [storagePrefix, clampLeft, clampRight, clampBottom]);
+
   // Persist open/close toggles
   const toggleLeftSidebar = useCallback(() => {
     setShowLeftSidebar((prev) => {
@@ -148,9 +187,10 @@ export function useStudioLayout({
       try {
         localStorage.setItem(LEFT_OPEN_KEY, String(next));
       } catch { }
+      broadcastStudioLayoutSync({ prefix: storagePrefix, type: 'showLeftSidebar', value: next });
       return next;
     });
-  }, [LEFT_OPEN_KEY]);
+  }, [LEFT_OPEN_KEY, storagePrefix]);
 
   const toggleRightSidebar = useCallback(() => {
     setShowRightSidebar((prev) => {
@@ -158,9 +198,10 @@ export function useStudioLayout({
       try {
         localStorage.setItem(RIGHT_OPEN_KEY, String(next));
       } catch { }
+      broadcastStudioLayoutSync({ prefix: storagePrefix, type: 'showRightSidebar', value: next });
       return next;
     });
-  }, [RIGHT_OPEN_KEY]);
+  }, [RIGHT_OPEN_KEY, storagePrefix]);
 
   const toggleBottom = useCallback(() => {
     setIsBottomOpen((prev) => {
@@ -168,9 +209,10 @@ export function useStudioLayout({
       try {
         localStorage.setItem(BOTTOM_OPEN_KEY, String(next));
       } catch { }
+      broadcastStudioLayoutSync({ prefix: storagePrefix, type: 'isBottomOpen', value: next });
       return next;
     });
-  }, [BOTTOM_OPEN_KEY]);
+  }, [BOTTOM_OPEN_KEY, storagePrefix]);
 
   // --- Left Sidebar Resize Handler ---
   const handleLeftResizeStart = useCallback(
@@ -203,6 +245,7 @@ export function useStudioLayout({
         try {
           localStorage.setItem(LEFT_WIDTH_KEY, String(lastW));
         } catch { }
+        broadcastStudioLayoutSync({ prefix: storagePrefix, type: 'leftWidth', value: lastW });
       };
 
       function onUp() {
@@ -213,7 +256,7 @@ export function useStudioLayout({
       window.addEventListener('pointerup', onUp);
       window.addEventListener('pointercancel', onUp);
     },
-    [clampLeft, LEFT_WIDTH_KEY]
+    [clampLeft, LEFT_WIDTH_KEY, storagePrefix]
   );
 
   // --- Right Sidebar Resize Handler ---
@@ -247,6 +290,7 @@ export function useStudioLayout({
         try {
           localStorage.setItem(RIGHT_WIDTH_KEY, String(lastW));
         } catch { }
+        broadcastStudioLayoutSync({ prefix: storagePrefix, type: 'rightWidth', value: lastW });
       };
 
       function onUp() {
@@ -257,7 +301,7 @@ export function useStudioLayout({
       window.addEventListener('pointerup', onUp);
       window.addEventListener('pointercancel', onUp);
     },
-    [clampRight, RIGHT_WIDTH_KEY]
+    [clampRight, RIGHT_WIDTH_KEY, storagePrefix]
   );
 
   // --- Bottom Drawer Resize Handler ---
@@ -291,6 +335,7 @@ export function useStudioLayout({
         try {
           localStorage.setItem(BOTTOM_HEIGHT_KEY, String(lastH));
         } catch { }
+        broadcastStudioLayoutSync({ prefix: storagePrefix, type: 'bottomHeight', value: lastH });
       };
 
       function onUp() {
@@ -301,7 +346,7 @@ export function useStudioLayout({
       window.addEventListener('pointerup', onUp);
       window.addEventListener('pointercancel', onUp);
     },
-    [clampBottom, BOTTOM_HEIGHT_KEY]
+    [clampBottom, BOTTOM_HEIGHT_KEY, storagePrefix]
   );
 
   return {

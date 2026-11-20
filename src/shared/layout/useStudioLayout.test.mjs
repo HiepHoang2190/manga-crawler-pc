@@ -1,8 +1,11 @@
+import { jest } from '@jest/globals';
 import {
   clampLeftSidebarWidth,
   clampRightSidebarWidth,
   clampBottomDrawerHeight,
   useStudioLayout,
+  STUDIOLAYOUT_SYNC_EVENT,
+  broadcastStudioLayoutSync,
 } from './useStudioLayout.js';
 
 describe('useStudioLayout pure helpers and exports', () => {
@@ -32,5 +35,34 @@ describe('useStudioLayout pure helpers and exports', () => {
 
   test('useStudioLayout is exported as a function', () => {
     expect(typeof useStudioLayout).toBe('function');
+  });
+
+  test('exports STUDIOLAYOUT_SYNC_EVENT constant and broadcastStudioLayoutSync', () => {
+    expect(STUDIOLAYOUT_SYNC_EVENT).toBe('studiolayout:sync');
+    expect(typeof broadcastStudioLayoutSync).toBe('function');
+
+    const origWindow = globalThis.window;
+    const mockWindow = new EventTarget();
+    globalThis.window = mockWindow;
+
+    const listener = jest.fn();
+    mockWindow.addEventListener(STUDIOLAYOUT_SYNC_EVENT, listener);
+
+    broadcastStudioLayoutSync({
+      prefix: 'test_prefix',
+      type: 'leftWidth',
+      value: 320,
+    });
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    const event = listener.mock.calls[0][0];
+    expect(event.detail).toEqual({
+      prefix: 'test_prefix',
+      type: 'leftWidth',
+      value: 320,
+    });
+
+    mockWindow.removeEventListener(STUDIOLAYOUT_SYNC_EVENT, listener);
+    globalThis.window = origWindow;
   });
 });

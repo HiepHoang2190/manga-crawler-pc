@@ -22,5 +22,18 @@ describe('ExplorePanel and ShellLayout persistence structure', () => {
     const latestSrc = fs.readFileSync(latestUpdatesPath, 'utf8');
     expect(latestSrc).toMatch(/latestUpdatesListingCache/);
   });
+
+  test('ShellLayout preserves ExplorePanel subtab preference by passing null when menuView is explore', () => {
+    const shellSrc = fs.readFileSync(shellPath, 'utf8');
+    expect(shellSrc).toMatch(/initialSubtab=\{menuView === 'bulkScan' \? 'bulk' : \(menuView === 'latestUpdates' \? 'latest' : null\)\}/);
+  });
+
+  test('ShellNavProvider persists and restores active menuView via localStorage', () => {
+    const navProviderPath = path.resolve(process.cwd(), 'src/features/shell/ShellNavProvider.jsx');
+    const navSrc = fs.readFileSync(navProviderPath, 'utf8');
+    expect(navSrc).toContain('mangaMenuViewPref_v1');
+    expect(navSrc).toContain('loadInitialMenuView');
+    expect(navSrc).toMatch(/localStorage\.setItem\(MENU_VIEW_STORAGE_KEY,\s*normalized\)/);
+  });
 });
 

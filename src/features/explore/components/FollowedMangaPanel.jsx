@@ -1,6 +1,14 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { useI18n } from '../../../context/I18nContext';
-import { StudioLayout, useStudioLayout, ResizeSplitter, EmptyState, ViewModeToggle, useAppLog } from '../../../shared';
+import {
+  StudioLayout,
+  useStudioLayout,
+  ResizeSplitter,
+  EmptyState,
+  ViewModeToggle,
+  useAppLog,
+  SearchableSelect,
+} from '../../../shared';
 import FollowedMangaCard from './FollowedMangaCard';
 import { ChaptersDrawer } from '../../reader';
 import { dedupeChaptersByNumber } from '../../download';
@@ -18,6 +26,8 @@ import {
 } from '../services/favoriteChecker';
 
 const SYNC_STORAGE_KEY = 'crawler:followed-manga-sync-v1';
+const SORT_STORAGE_KEY = 'mangaFollowedSortPref_v1';
+const FOLLOWED_MANGA_PAGE_SIZE = 24;
 
 function loadStoredSync() {
   if (typeof localStorage === 'undefined') return {};
@@ -65,21 +75,49 @@ export default function FollowedMangaPanel({
 
   // StudioLayout integration
   const {
-    showLeftSidebar,
-    toggleLeftSidebar,
     leftWidth,
     handleLeftResizeStart,
   } = useStudioLayout({
-    storagePrefix: 'explore_followed',
-    defaultLeftWidth: 260,
-    minLeftWidth: 220,
-    maxLeftWidth: 420,
+    storagePrefix: 'explore_subtabs',
+    defaultLeftWidth: 280,
+    minLeftWidth: 240,
+    maxLeftWidth: 460,
   });
 
   // Search & Filter State
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'hasNew' | 'unread'
+  const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'hasNew'
   const [siteFilter, setSiteFilter] = useState('');
+
+  // Sort State with Persistent Storage
+  const [sortBy, setSortBy] = useState(() => {
+    if (typeof localStorage === 'undefined') return 'recentlyAdded';
+    try {
+      const saved = localStorage.getItem(SORT_STORAGE_KEY);
+      if (saved && ['recentlyAdded', 'hasNewFirst', 'titleAsc'].includes(saved)) {
+        return saved;
+      }
+    } catch {
+      /* ignore */
+    }
+    return 'recentlyAdded';
+  });
+
+  // Client-Side Pagination State
+  const [page, setPage] = useState(1);
+  const [rawPageInput, setRawPageInput] = useState('1');
+  const contentScrollRef = useRef(null);
+
+  const handleSortChange = useCallback((nextSort) => {
+    setSortBy(nextSort);
+    setPage(1);
+    setRawPageInput('1');
+    try {
+      localStorage.setItem(SORT_STORAGE_KEY, nextSort);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   // Layout View Mode ('grid' | 'list')
   const [viewMode, setViewMode] = useState(() => {
@@ -147,7 +185,7 @@ export default function FollowedMangaPanel({
     return { labels, icons };
   }, [connectors]);
 
-  // Compute Stats
+  // Compute Global Stats (across all favorites, used for source dropdown options)
   const stats = useMemo(() => {
     return computeFavoritesStats({
       favorites,
@@ -155,14 +193,32 @@ export default function FollowedMangaPanel({
     });
   }, [favorites, activeSyncById]);
 
-  // Compute total pending chapters count
-  const totalPendingChaptersCount = useMemo(() => {
-    return favorites.reduce((sum, f) => {
+  // Compute Active Stats (scoped to currently selected siteFilter)
+  const activeStats = useMemo(() => {
+    if (!siteFilter) {
+      return {
+        total: stats.total,
+        hasNewCount: stats.hasNewCount,
+      };
+    }
+    const currentSite = stats.siteBreakdown.find((s) => s.siteId === siteFilter);
+    return {
+      total: currentSite?.count || 0,
+      hasNewCount: currentSite?.hasNewCount || 0,
+    };
+  }, [siteFilter, stats]);
+
+  // Compute active pending chapters count (scoped to siteFilter)
+  const activePendingChaptersCount = useMemo(() => {
+    const targets = siteFilter
+      ? favorites.filter((f) => String(f.siteId || '') === siteFilter)
+      : favorites;
+    return targets.reduce((sum, f) => {
       const sync = activeSyncById[f.id];
       if (!sync?.hasNew) return sum;
       return sum + (typeof sync.pendingNewCount === 'number' && sync.pendingNewCount > 0 ? sync.pendingNewCount : 1);
     }, 0);
-  }, [favorites, activeSyncById]);
+  }, [favorites, activeSyncById, siteFilter]);
 
   // Map queue items to manga URL and Title for O(1) matching
   const queueGroupByMangaKey = useMemo(() => {
@@ -233,6 +289,98 @@ export default function FollowedMangaPanel({
       siteFilter,
     });
   }, [favorites, activeSyncById, searchTerm, statusFilter, siteFilter]);
+
+  // Sorted List
+  const sortedFavorites = useMemo(() => {
+    const list = [...filteredList];
+    if (sortBy === 'titleAsc') {
+      list.sort((a, b) =>
+        String(a?.title || '').localeCompare(String(b?.title || ''), undefined, { sensitivity: 'base' })
+      );
+    } else if (sortBy === 'recentlyAdded') {
+      list.sort((a, b) => {
+        const timeA = a?.followedAt || a?.updatedAt || a?.createdAt || 0;
+        const timeB = b?.followedAt || b?.updatedAt || b?.createdAt || 0;
+        return timeB - timeA;
+      });
+    } else {
+      // 'hasNewFirst' (default): prioritize items with new chapters, then alphabetical
+      list.sort((a, b) => {
+        const syncA = activeSyncById[a.id];
+        const syncB = activeSyncById[b.id];
+        const hasNewA = syncA?.hasNew ? 1 : 0;
+        const hasNewB = syncB?.hasNew ? 1 : 0;
+        if (hasNewB !== hasNewA) return hasNewB - hasNewA;
+        return String(a?.title || '').localeCompare(String(b?.title || ''), undefined, { sensitivity: 'base' });
+      });
+    }
+    return list;
+  }, [filteredList, sortBy, activeSyncById]);
+
+  // Total pages based on FOLLOWED_MANGA_PAGE_SIZE
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(sortedFavorites.length / FOLLOWED_MANGA_PAGE_SIZE)),
+    [sortedFavorites.length]
+  );
+
+  // Clamp page if totalPages shrinks
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+      setRawPageInput(String(totalPages));
+    }
+  }, [page, totalPages]);
+
+  // In-memory sliced items for current page
+  const displayedFavorites = useMemo(() => {
+    const start = (page - 1) * FOLLOWED_MANGA_PAGE_SIZE;
+    return sortedFavorites.slice(start, start + FOLLOWED_MANGA_PAGE_SIZE);
+  }, [sortedFavorites, page]);
+
+  // Jump page submit
+  const handlePageJumpSubmit = useCallback(() => {
+    const raw = String(rawPageInput || '').trim();
+    const parsed = parseInt(raw, 10);
+    if (!Number.isFinite(parsed)) {
+      setRawPageInput(String(page));
+      return;
+    }
+    const clamped = Math.min(totalPages, Math.max(1, parsed));
+    setPage(clamped);
+    setRawPageInput(String(clamped));
+    contentScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [rawPageInput, page, totalPages]);
+
+  // Dropdown options for Web Sources
+  const siteOptions = useMemo(() => {
+    const list = [
+      {
+        value: '',
+        label: `${t('followedManga.filter.allSources')} (${stats.total})`,
+        icon: 'public',
+      },
+    ];
+    stats.siteBreakdown.forEach((s) => {
+      const label = siteMap.labels.get(s.siteId) || s.siteId;
+      const icon = siteMap.icons.get(s.siteId);
+      list.push({
+        value: s.siteId,
+        label: `${label} (${s.count})`,
+        icon: icon || 'language',
+      });
+    });
+    return list;
+  }, [stats.siteBreakdown, stats.total, siteMap, t]);
+
+  // Dropdown options for Sorting
+  const sortOptions = useMemo(
+    () => [
+      { value: 'recentlyAdded', label: t('followedManga.sort.recentlyAdded'), icon: 'schedule' },
+      { value: 'hasNewFirst', label: t('followedManga.sort.hasNewFirst'), icon: 'update' },
+      { value: 'titleAsc', label: t('followedManga.sort.titleAsc'), icon: 'sort_by_alpha' },
+    ],
+    [t]
+  );
 
   // Helper to compute chapter frontier sync against local downloads and save state
   const computeAndSaveSync = useCallback(
@@ -692,23 +840,7 @@ export default function FollowedMangaPanel({
     <StudioLayout>
       {/* Top Toolbar */}
       <StudioLayout.Toolbar
-        showLeftSidebar={showLeftSidebar}
-        onToggleLeftSidebar={toggleLeftSidebar}
-        leftSidebarTooltip={showLeftSidebar ? t('sidebar.hidePanel') : t('sidebar.showPanel')}
-        leftSlot={
-          <div className="flex items-center gap-3">
-            {/* Subtabs Navigation Slot */}
-            {subtabsSlot}
-
-            {/* Quick summary */}
-            <span className="text-xs text-on-surface-variant/80 hidden sm:inline-block tabular-nums font-medium pl-2 border-l border-outline-variant/20">
-              {t('followedManga.stats.summary', {
-                total: stats.total,
-                hasNew: stats.hasNewCount,
-              })}
-            </span>
-          </div>
-        }
+        leftSlot={subtabsSlot}
         rightSlot={
           <div className="flex items-center gap-2">
             {queueProcessing ? (
@@ -737,19 +869,19 @@ export default function FollowedMangaPanel({
                 </span>
                 <span>{t('followedManga.actions.resumeQueue', { count: unfinishedQueueCount })}</span>
               </button>
-            ) : stats.hasNewCount > 0 ? (
+            ) : activeStats.hasNewCount > 0 ? (
               <button
                 type="button"
                 disabled={isEnqueuingAll || isCheckingAll}
                 onClick={handleEnqueueAllNew}
                 className="inline-flex items-center justify-center gap-1.5 h-7 px-3 rounded-lg text-xs font-semibold bg-emerald-600 dark:bg-emerald-500 text-white hover:opacity-95 shadow-2xs transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none cursor-pointer shrink-0"
                 data-tooltip={t('followedManga.actions.enqueueAllTooltip', {
-                  mangaCount: stats.hasNewCount,
-                  chapterCount: totalPendingChaptersCount,
+                  mangaCount: activeStats.hasNewCount,
+                  chapterCount: activePendingChaptersCount,
                 })}
                 aria-label={t('followedManga.actions.enqueueAllTooltip', {
-                  mangaCount: stats.hasNewCount,
-                  chapterCount: totalPendingChaptersCount,
+                  mangaCount: activeStats.hasNewCount,
+                  chapterCount: activePendingChaptersCount,
                 })}
               >
                 <span
@@ -763,7 +895,7 @@ export default function FollowedMangaPanel({
                   {isEnqueuingAll
                     ? t('followedManga.actions.enqueuingAll')
                     : t('followedManga.actions.enqueueAll', {
-                        count: stats.hasNewCount,
+                        count: activeStats.hasNewCount,
                       })}
                 </span>
               </button>
@@ -832,174 +964,149 @@ export default function FollowedMangaPanel({
       <StudioLayout.Body>
         {/* Left Sidebar: Filters & Connectors */}
         <StudioLayout.LeftSidebar
-          open={showLeftSidebar}
+          open={true}
           width={leftWidth}
           onResizeStart={handleLeftResizeStart}
           className="bg-surface-container-low/50 relative border-r border-outline-variant/20 flex flex-col overflow-visible"
         >
-          {/* Search Box */}
-          <div className="p-3 border-b border-outline-variant/15">
-            <div className="relative">
-              <span className="material-symbols-outlined absolute left-2.5 top-2 text-[18px] text-on-surface-variant/60 pointer-events-none">
-                search
-              </span>
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder={t('followedManga.searchPlaceholder')}
-                className="w-full h-8 pl-8 pr-3 rounded-lg text-xs bg-surface-container-highest border border-outline-variant/20 focus:outline-none focus:border-primary text-on-surface placeholder:text-on-surface-variant/50 transition-colors"
-              />
-            </div>
-          </div>
-
-          {/* Filter Groups & Connectors List */}
-          <div className="p-3 space-y-4 flex-1 flex flex-col">
-            {/* Status Filter Group */}
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/60 mb-1.5 px-1">
-                {t('followedManga.filter.status')}
-              </div>
-              <div className="space-y-0.5 text-xs">
-                {/* All */}
-                <button
-                  type="button"
-                  onClick={() => setStatusFilter('all')}
-                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                    statusFilter === 'all'
-                      ? 'bg-primary/15 text-primary font-semibold'
-                      : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
-                  }`}
-                >
-                  <span className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-[16px]">menu</span>
-                    <span>{t('followedManga.filter.all')}</span>
-                  </span>
-                  <span className="px-1.5 py-0.5 rounded-md bg-surface-container-highest text-[10px] tabular-nums font-semibold">
-                    {stats.total}
-                  </span>
-                </button>
-
-                {/* Has New */}
-                <button
-                  type="button"
-                  onClick={() => setStatusFilter('hasNew')}
-                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                    statusFilter === 'hasNew'
-                      ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-semibold'
-                      : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
-                  }`}
-                >
-                  <span className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-                    <span>{t('followedManga.filter.hasNew')}</span>
-                  </span>
-                  <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold text-[10px] tabular-nums">
-                    {stats.hasNewCount}
-                  </span>
-                </button>
-
-                {/* Unread */}
-                <button
-                  type="button"
-                  onClick={() => setStatusFilter('unread')}
-                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                    statusFilter === 'unread'
-                      ? 'bg-primary/15 text-primary font-semibold'
-                      : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
-                  }`}
-                >
-                  <span className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-[16px]">auto_stories</span>
-                    <span>{t('followedManga.filter.unread')}</span>
-                  </span>
-                </button>
-              </div>
-            </div>
-
-            {/* Divider */}
-            <div className="border-t border-outline-variant/15 -mx-1" />
-
-            {/* Web Sources Filter Group */}
+          <div className="custom-scrollbar flex-1 overflow-y-auto p-3 space-y-3.5 mr-1.5 flex flex-col min-h-0">
+            {/* 1. Nguồn web (Source dropdown) */}
             <div>
               <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/60 mb-1.5 px-1">
                 {t('followedManga.filter.bySource')}
               </div>
-              <div className="space-y-0.5 text-xs">
-                {/* All Sources */}
+              <SearchableSelect
+                value={siteFilter}
+                onChange={(val) => {
+                  setSiteFilter(val);
+                  setPage(1);
+                  setRawPageInput('1');
+                }}
+                options={siteOptions}
+                size="sm"
+                className="w-full"
+                showPlaceholderOption={false}
+              />
+            </div>
+
+            {/* 2. Trạng thái (Segmented pill grid) */}
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/60 mb-1.5 px-1">
+                {t('followedManga.filter.status')}
+              </div>
+              <div className="grid grid-cols-2 gap-1.5 bg-surface-container-highest/60 p-1 rounded-xl border border-outline-variant/20 text-xs">
+                {/* Tất cả */}
                 <button
                   type="button"
-                  onClick={() => setSiteFilter('')}
-                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                    siteFilter === ''
-                      ? 'bg-primary/15 text-primary font-semibold'
+                  onClick={() => {
+                    setStatusFilter('all');
+                    setPage(1);
+                    setRawPageInput('1');
+                  }}
+                  className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg font-medium transition-all cursor-pointer ${
+                    statusFilter === 'all'
+                      ? 'bg-primary text-on-primary font-semibold shadow-2xs'
                       : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
                   }`}
+                  aria-label={`${t('followedManga.filter.all')} (${activeStats.total})`}
                 >
-                  <span className="flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
-                    <span>{t('followedManga.filter.allSources')}</span>
-                  </span>
-                  <span className="px-1.5 py-0.5 rounded-md bg-surface-container-highest text-[10px] tabular-nums font-semibold opacity-75">
-                    {stats.total}
-                  </span>
+                  <span className="truncate">{t('followedManga.filter.all')}</span>
+                  <span className="text-[10px] opacity-80 tabular-nums">({activeStats.total})</span>
                 </button>
 
-                {/* Breakdown by connector */}
-                {stats.siteBreakdown.map((s) => {
-                  const label = siteMap.labels.get(s.siteId) || s.siteId;
-                  const icon = siteMap.icons.get(s.siteId);
-                  const isSelected = siteFilter === s.siteId;
-                  return (
-                    <button
-                      key={s.siteId}
-                      type="button"
-                      onClick={() => setSiteFilter(s.siteId)}
-                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                        isSelected
-                          ? 'bg-primary/15 text-primary font-semibold'
-                          : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
-                      }`}
-                    >
-                      <span className="flex items-center gap-1.5 truncate pr-2">
-                        {icon ? (
-                          <img src={icon} alt="" className="w-3.5 h-3.5 rounded shrink-0" />
-                        ) : (
-                          <span className="w-1.5 h-1.5 rounded-full bg-outline-variant shrink-0" />
-                        )}
-                        <span className="truncate">{label}</span>
-                      </span>
-                      <span className="flex items-center gap-1 shrink-0">
-                        {s.hasNewCount > 0 && (
-                          <span className="px-1 rounded bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold tabular-nums">
-                            +{s.hasNewCount}
-                          </span>
-                        )}
-                        <span className="text-[10px] tabular-nums opacity-75">{s.count}</span>
-                      </span>
-                    </button>
-                  );
-                })}
+                {/* Có chương mới */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStatusFilter('hasNew');
+                    setPage(1);
+                    setRawPageInput('1');
+                  }}
+                  className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg font-medium transition-all cursor-pointer ${
+                    statusFilter === 'hasNew'
+                      ? 'bg-emerald-600 dark:bg-emerald-500 text-white font-semibold shadow-2xs'
+                      : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
+                  }`}
+                  aria-label={`${t('followedManga.filter.hasNew')} (${activeStats.hasNewCount})`}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                  <span className="truncate">{t('followedManga.filter.hasNew')}</span>
+                  {activeStats.hasNewCount > 0 && (
+                    <span className="text-[10px] font-bold tabular-nums">({activeStats.hasNewCount})</span>
+                  )}
+                </button>
               </div>
             </div>
 
-            {/* Stats Card — Quick summary at bottom */}
-            {stats.total > 0 && (
+            {/* 3. Sắp xếp (Sorting dropdown) */}
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/60 mb-1.5 px-1">
+                {t('followedManga.sort.title')}
+              </div>
+              <SearchableSelect
+                value={sortBy}
+                onChange={handleSortChange}
+                options={sortOptions}
+                size="sm"
+                className="w-full"
+                showPlaceholderOption={false}
+              />
+            </div>
+
+            {/* 4. Tìm kiếm (Search Box with Clear button) */}
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/60 mb-1.5 px-1">
+                {t('followedManga.searchTitle')}
+              </div>
+              <div className="relative flex items-center">
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setPage(1);
+                    setRawPageInput('1');
+                  }}
+                  placeholder={t('followedManga.searchPlaceholder')}
+                  aria-label={t('followedManga.searchPlaceholder')}
+                  className="h-8.5 w-full rounded-xl border border-outline-variant/25 bg-surface-container-high/60 px-3 pr-7 text-xs text-on-surface placeholder:text-on-surface-variant/50 outline-none transition-colors focus:border-primary/50 focus:ring-1 focus:ring-primary/30"
+                  autoComplete="off"
+                />
+                {searchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchTerm('');
+                      setPage(1);
+                      setRawPageInput('1');
+                    }}
+                    data-tooltip={t('followedManga.searchClear')}
+                    aria-label={t('followedManga.searchClear')}
+                    className="absolute right-2 text-on-surface-variant/60 hover:text-on-surface cursor-pointer p-0.5 rounded"
+                  >
+                    <span className="material-symbols-outlined text-[15px] leading-none">close</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* 5. Thẻ thống kê tổng quan (Stats Card) */}
+            {activeStats.total > 0 && (
               <div className="mt-auto pt-2">
                 <div className="rounded-xl border border-primary/15 bg-primary/5 p-2.5">
                   <div className="text-[10px] font-bold text-primary mb-2 flex items-center gap-1.5">
                     <span className="material-symbols-outlined text-[13px]">bar_chart</span>
-                    {t('followedManga.stats.overviewTitle') || 'Tổng quan'}
+                    <span>{t('followedManga.stats.overviewTitle')}</span>
                   </div>
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
-                    <span className="text-on-surface-variant">{t('followedManga.stats.total') || 'Đang theo dõi'}</span>
-                    <span className="font-bold text-on-surface text-right tabular-nums">{stats.total}</span>
-                    <span className="text-on-surface-variant">{t('followedManga.stats.hasNew') || 'Có chương mới'}</span>
-                    <span className="font-bold text-emerald-600 dark:text-emerald-400 text-right tabular-nums">{stats.hasNewCount}</span>
-                    {totalPendingChaptersCount > 0 && (
+                    <span className="text-on-surface-variant">{t('followedManga.stats.total')}</span>
+                    <span className="font-bold text-on-surface text-right tabular-nums">{activeStats.total}</span>
+                    <span className="text-on-surface-variant">{t('followedManga.stats.hasNew')}</span>
+                    <span className="font-bold text-emerald-600 dark:text-emerald-400 text-right tabular-nums">{activeStats.hasNewCount}</span>
+                    {activePendingChaptersCount > 0 && (
                       <>
-                        <span className="text-on-surface-variant">{t('followedManga.stats.pendingChapters') || 'Chờ tải'}</span>
-                        <span className="font-bold text-amber-600 dark:text-amber-400 text-right tabular-nums">{totalPendingChaptersCount} ch.</span>
+                        <span className="text-on-surface-variant">{t('followedManga.stats.pendingChapters')}</span>
+                        <span className="font-bold text-amber-600 dark:text-amber-400 text-right tabular-nums">{activePendingChaptersCount} ch.</span>
                       </>
                     )}
                   </div>
@@ -1017,23 +1124,24 @@ export default function FollowedMangaPanel({
           />
         </StudioLayout.LeftSidebar>
 
-        {/* Central Content: Cards Grid */}
-        <StudioLayout.Content className="overflow-y-auto custom-scrollbar p-4 sm:p-6 bg-surface">
-          {favorites.length === 0 ? (
-            <EmptyState
-              icon="bookmarks"
-              title={t('followedManga.empty.title')}
-              description={t('followedManga.empty.description')}
-            />
-          ) : filteredList.length === 0 ? (
-            <EmptyState
-              icon="search_off"
-              title={t('followedManga.empty.noMatchTitle')}
-              description={t('followedManga.empty.noMatchDescription')}
-            />
-          ) : viewMode === 'list' ? (
-            <ul className="flex flex-col gap-2">
-              {filteredList.map((item) => {
+        {/* Central Content: Cards Grid & List with In-Memory Pagination */}
+        <StudioLayout.Content>
+          <div ref={contentScrollRef} className="custom-scrollbar flex-1 min-h-0 overflow-auto p-4 sm:p-6 bg-surface">
+            {favorites.length === 0 ? (
+              <EmptyState
+                icon="bookmarks"
+                title={t('followedManga.empty.title')}
+                description={t('followedManga.empty.description')}
+              />
+            ) : sortedFavorites.length === 0 ? (
+              <EmptyState
+                icon="search_off"
+                title={t('followedManga.empty.noMatchTitle')}
+                description={t('followedManga.empty.noMatchDescription')}
+              />
+            ) : viewMode === 'list' ? (
+              <ul className="flex flex-col gap-2">
+                {displayedFavorites.map((item) => {
                 const sync = activeSyncById[item.id];
                 const hasNew = Boolean(sync?.hasNew);
                 const pendingNewCount = typeof sync?.pendingNewCount === 'number' ? sync.pendingNewCount : 0;
@@ -1253,7 +1361,7 @@ export default function FollowedMangaPanel({
             </ul>
           ) : (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
-              {filteredList.map((item) => (
+              {displayedFavorites.map((item) => (
                 <FollowedMangaCard
                   key={item.id}
                   item={item}
@@ -1273,6 +1381,124 @@ export default function FollowedMangaPanel({
                   onRemove={handleRemove}
                 />
               ))}
+            </div>
+          )}
+          </div>
+
+          {/* Bottom In-Memory Pagination Bar */}
+          {favorites.length > 0 && sortedFavorites.length > 0 && (
+            <div
+              className="shrink-0 border-t border-outline-variant/20 bg-surface-container-low/80 backdrop-blur-md px-4 py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 select-none"
+              role="region"
+              aria-label={t('followedManga.pagination.summary', { count: sortedFavorites.length })}
+            >
+              {/* Left: Summary & page badge */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary tabular-nums shadow-2xs">
+                  <span className="material-symbols-outlined text-[15px]">bookmarks</span>
+                  <span>{t('followedManga.pagination.summary', { count: sortedFavorites.length })}</span>
+                </span>
+                {totalPages > 1 && (
+                  <span className="text-xs text-on-surface-variant/80 font-medium tabular-nums max-sm:hidden">
+                    ({t('latestUpdates.pageOf', { page, total: totalPages })})
+                  </span>
+                )}
+              </div>
+
+              {/* Right: Client-side Page Navigation Controls */}
+              {totalPages > 1 ? (
+                <div className="flex items-center gap-1 text-xs text-on-surface-variant sm:ml-auto">
+                  {/* First page button */}
+                  <button
+                    type="button"
+                    data-tooltip={t('latestUpdates.firstPage')}
+                    aria-label={t('latestUpdates.firstPage')}
+                    disabled={page <= 1}
+                    onClick={() => {
+                      setPage(1);
+                      setRawPageInput('1');
+                      contentScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-outline-variant/30 bg-surface-container-high text-on-surface-variant hover:bg-surface-bright hover:text-on-surface hover:border-outline-variant/60 active:scale-95 disabled:pointer-events-none disabled:opacity-40 transition-all cursor-pointer shadow-2xs"
+                  >
+                    <span className="material-symbols-outlined text-[17px] leading-none">first_page</span>
+                  </button>
+
+                  {/* Previous page button */}
+                  <button
+                    type="button"
+                    aria-label={t('latestUpdates.prevPage')}
+                    disabled={page <= 1}
+                    onClick={() => {
+                      const next = Math.max(1, page - 1);
+                      setPage(next);
+                      setRawPageInput(String(next));
+                      contentScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    className="inline-flex h-8 px-2.5 shrink-0 items-center gap-1 rounded-xl border border-outline-variant/30 bg-surface-container-high text-on-surface-variant hover:bg-surface-bright hover:text-on-surface hover:border-outline-variant/60 active:scale-95 disabled:pointer-events-none disabled:opacity-40 transition-all cursor-pointer shadow-2xs font-medium"
+                  >
+                    <span className="material-symbols-outlined text-[16px] leading-none">chevron_left</span>
+                    <span className="max-sm:hidden">{t('latestUpdates.prevPage')}</span>
+                  </button>
+
+                  {/* Quick jump page input */}
+                  <form
+                    className="flex min-w-0 items-center gap-1.5 px-1"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      handlePageJumpSubmit();
+                    }}
+                  >
+                    <input
+                      type="number"
+                      min={1}
+                      max={totalPages}
+                      inputMode="numeric"
+                      aria-label={t('latestUpdates.pageInputAria', { total: totalPages })}
+                      value={rawPageInput}
+                      onChange={(e) => setRawPageInput(e.target.value)}
+                      className="h-8 w-12 shrink-0 rounded-xl border border-outline-variant/30 bg-surface-container-highest px-1.5 text-center text-xs font-semibold font-mono text-on-surface outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all disabled:opacity-40 shadow-inner"
+                    />
+                    <span className="text-on-surface-variant/70 font-medium">/</span>
+                    <span className="tabular-nums font-semibold text-on-surface-variant min-w-[1.5rem] text-center">
+                      {totalPages}
+                    </span>
+                  </form>
+
+                  {/* Next page button */}
+                  <button
+                    type="button"
+                    aria-label={t('latestUpdates.nextPage')}
+                    disabled={page >= totalPages}
+                    onClick={() => {
+                      const next = Math.min(totalPages, page + 1);
+                      setPage(next);
+                      setRawPageInput(String(next));
+                      contentScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    className="inline-flex h-8 px-2.5 shrink-0 items-center gap-1 rounded-xl border border-outline-variant/30 bg-surface-container-high text-on-surface-variant hover:bg-surface-bright hover:text-on-surface hover:border-outline-variant/60 active:scale-95 disabled:pointer-events-none disabled:opacity-40 transition-all cursor-pointer shadow-2xs font-medium"
+                  >
+                    <span className="max-sm:hidden">{t('latestUpdates.nextPage')}</span>
+                    <span className="material-symbols-outlined text-[16px] leading-none">chevron_right</span>
+                  </button>
+
+                  {/* Last page button */}
+                  <button
+                    type="button"
+                    data-tooltip={t('latestUpdates.lastPage')}
+                    aria-label={t('latestUpdates.lastPage')}
+                    disabled={page >= totalPages}
+                    onClick={() => {
+                      setPage(totalPages);
+                      setRawPageInput(String(totalPages));
+                      contentScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-outline-variant/30 bg-surface-container-high text-on-surface-variant hover:bg-surface-bright hover:text-on-surface hover:border-outline-variant/60 active:scale-95 disabled:pointer-events-none disabled:opacity-40 transition-all cursor-pointer shadow-2xs"
+                  >
+                    <span className="material-symbols-outlined text-[17px] leading-none">last_page</span>
+                  </button>
+                </div>
+              ) : null}
             </div>
           )}
         </StudioLayout.Content>

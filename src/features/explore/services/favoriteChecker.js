@@ -8,7 +8,7 @@
  * @param {Array} [params.favorites]
  * @param {object} [params.favoriteSyncById]
  * @param {string} [params.query]
- * @param {'all'|'hasNew'|'unread'} [params.statusFilter]
+ * @param {'all'|'hasNew'} [params.statusFilter]
  * @param {string} [params.siteFilter]
  * @returns {Array}
  */
@@ -43,10 +43,6 @@ export function filterFavorites({
 
     if (statusFilter === 'hasNew') {
       return hasNew;
-    }
-    if (statusFilter === 'unread') {
-      // Unread: has new chapters or has not finished reading
-      return hasNew || Boolean(sync?.unreadCount > 0);
     }
 
     return true;

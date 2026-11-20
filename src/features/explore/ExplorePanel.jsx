@@ -99,11 +99,6 @@ export default function ExplorePanel({
       >
         <span className="material-symbols-outlined text-[16px] leading-none">bookmarks</span>
         <span>{t('explore.subtab.followed')}</span>
-        {favorites.length > 0 && (
-          <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-white/20 text-current tabular-nums">
-            {favorites.length}
-          </span>
-        )}
       </button>
       <button
         type="button"

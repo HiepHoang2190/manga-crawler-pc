@@ -53,4 +53,18 @@ describe('Explore Subtabs Layout Consistency Standards', () => {
       expect(content).toContain('viewMode');
     }
   });
+
+  test('all 3 subtabs share unified storagePrefix explore_subtabs for synchronized sidebar resizing', () => {
+    for (const f of files) {
+      const content = fs.readFileSync(f.path, 'utf8');
+      expect(content).toMatch(/storagePrefix:\s*['"]explore_subtabs['"]/);
+    }
+  });
+
+  test('userDataBackup whitelists explore_subtabs_left_width_v1 and explore_subtabs_left_open_v1', () => {
+    const backupPath = path.resolve(process.cwd(), 'src/utils/userDataBackup.js');
+    const content = fs.readFileSync(backupPath, 'utf8');
+    expect(content).toContain("'explore_subtabs_left_width_v1'");
+    expect(content).toContain("'explore_subtabs_left_open_v1'");
+  });
 });

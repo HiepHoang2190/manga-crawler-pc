@@ -62,15 +62,13 @@ export default function BulkScanPanel({
 }) {
   const { t } = useI18n();
   const {
-    showLeftSidebar,
-    toggleLeftSidebar,
     leftWidth,
     handleLeftResizeStart,
   } = useStudioLayout({
-    storagePrefix: 'bulk_scan',
-    defaultLeftWidth: 300,
-    minLeftWidth: 260,
-    maxLeftWidth: 480,
+    storagePrefix: 'explore_subtabs',
+    defaultLeftWidth: 280,
+    minLeftWidth: 240,
+    maxLeftWidth: 460,
   });
   const supported = useMemo(
     () =>
@@ -659,9 +657,6 @@ export default function BulkScanPanel({
   return (
     <StudioLayout className="w-full h-full">
       <StudioLayout.Toolbar
-        showLeftSidebar={showLeftSidebar}
-        onToggleLeftSidebar={toggleLeftSidebar}
-        leftSidebarTooltip={showLeftSidebar ? t('sidebar.hidePanel') : t('sidebar.showPanel')}
         leftSlot={
           <div className="flex items-center gap-3">
             {subtabsSlot}
@@ -769,7 +764,7 @@ export default function BulkScanPanel({
 
       <StudioLayout.Body>
         <StudioLayout.LeftSidebar
-          open={showLeftSidebar}
+          open={true}
           width={leftWidth}
           onResizeStart={handleLeftResizeStart}
         >

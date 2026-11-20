@@ -12,6 +12,7 @@ import {
 const ShellNavContext = createContext(null);
 
 const MENU_HIDDEN_IDS_KEY = 'mangaMenuHiddenIds';
+export const MENU_VIEW_STORAGE_KEY = 'mangaMenuViewPref_v1';
 /** All 10 menu tabs can be hidden, as long as at least 1 tab remains visible. */
 const HIDABLE_MENU_IDS = [
   'explore',
@@ -25,6 +26,22 @@ const HIDABLE_MENU_IDS = [
   'settings',
   'dashboard',
 ];
+
+function loadInitialMenuView(hiddenIds = []) {
+  if (typeof window === 'undefined') return 'home';
+  try {
+    const saved = localStorage.getItem(MENU_VIEW_STORAGE_KEY);
+    if (saved && (HIDABLE_MENU_IDS.includes(saved) || saved === 'latestUpdates' || saved === 'bulkScan')) {
+      const normalized = saved === 'latestUpdates' || saved === 'bulkScan' ? 'explore' : saved;
+      if (!hiddenIds.includes(normalized)) {
+        return normalized;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return 'home';
+}
 
 function loadMenuHiddenIds() {
   if (typeof window === 'undefined') return [];
@@ -56,10 +73,21 @@ function loadMenuHiddenIds() {
 
 export function ShellNavProvider({ children }) {
   const { authBootstrapped, authSession } = useAuth();
-  const [menuView, setMenuView] = useState('home');
   /** Hidden menu tabs (latestUpdates, help, ...) — persisted in localStorage. */
   const [hiddenMenuIds, setHiddenMenuIds] = useState(() => loadMenuHiddenIds());
+  const [menuView, setMenuView] = useState(() => loadInitialMenuView(hiddenMenuIds));
   const [menuOrder, setMenuOrder] = useState(() => loadMenuOrder());
+
+  useEffect(() => {
+    try {
+      if (menuView && (HIDABLE_MENU_IDS.includes(menuView) || menuView === 'latestUpdates' || menuView === 'bulkScan')) {
+        const normalized = menuView === 'latestUpdates' || menuView === 'bulkScan' ? 'explore' : menuView;
+        localStorage.setItem(MENU_VIEW_STORAGE_KEY, normalized);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [menuView]);
 
   useEffect(() => {
     try {
@@ -88,6 +116,7 @@ export function ShellNavProvider({ children }) {
     setHiddenMenuIds([]);
     try {
       localStorage.removeItem(MENU_HIDDEN_IDS_KEY);
+      localStorage.removeItem(MENU_VIEW_STORAGE_KEY);
     } catch {
       /* ignore */
     }

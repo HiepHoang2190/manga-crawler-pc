@@ -1094,7 +1094,7 @@ export default function ShellLayout() {
           aria-hidden={!isExploreView}
         >
           <ExplorePanel
-            initialSubtab={menuView === 'bulkScan' ? 'bulk' : 'latest'}
+            initialSubtab={menuView === 'bulkScan' ? 'bulk' : (menuView === 'latestUpdates' ? 'latest' : null)}
             connectors={connectorList}
             mangaLoadOpts={latestMangaLoadOpts}
             onEnqueueLoadedManga={handleEnqueueLoadedMangaFromLatest}

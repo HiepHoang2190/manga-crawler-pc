@@ -32,12 +32,20 @@ describe('FollowedMangaPanel structure and standards', () => {
     expect(content).toContain('runFavoriteCheckQueue');
   });
 
-  test('calls i18n interpolation properly and uses balanced responsive grid columns matching LatestUpdatesPanel', () => {
+  test('uses balanced responsive grid columns matching LatestUpdatesPanel and clean leftSlot without text clutter', () => {
     const content = fs.readFileSync(panelPath, 'utf8');
-    expect(content).toMatch(/t\(\s*['"]followedManga\.stats\.summary['"]\s*,\s*\{\s*total:\s*stats\.total/);
+    expect(content).toContain('leftSlot={subtabsSlot}');
     expect(content).toContain('grid-cols-2');
     expect(content).toContain('sm:grid-cols-3');
     expect(content).toContain('xl:grid-cols-5');
+  });
+
+  test('scopes status filter counts and overview to active siteFilter via activeStats', () => {
+    const content = fs.readFileSync(panelPath, 'utf8');
+    expect(content).toContain('activeStats');
+    expect(content).toContain('activePendingChaptersCount');
+    expect(content).toMatch(/activeStats\.total/);
+    expect(content).toMatch(/activeStats\.hasNewCount/);
   });
 
   test('action icon buttons have surrounding borders and do not use border-transparent', () => {
@@ -139,5 +147,53 @@ describe('FollowedMangaPanel structure and standards', () => {
   test('left sidebar does not render static performance tip callout', () => {
     const content = fs.readFileSync(panelPath, 'utf8');
     expect(content).not.toContain('followedManga.perfTip');
+  });
+
+  test('left sidebar uses SearchableSelect for web sources and sort order', () => {
+    const content = fs.readFileSync(panelPath, 'utf8');
+    expect(content).toContain('SearchableSelect');
+    expect(content).toContain('siteOptions');
+    expect(content).toContain('sortOptions');
+    expect(content).toContain('mangaFollowedSortPref_v1');
+    expect(content).toContain('followedManga.sort.title');
+    expect(content).toContain('followedManga.sort.hasNewFirst');
+    expect(content).toContain('followedManga.sort.titleAsc');
+    expect(content).toContain('followedManga.sort.recentlyAdded');
+  });
+
+  test('left sidebar provides 2-column segmented pill grid for status filter', () => {
+    const content = fs.readFileSync(panelPath, 'utf8');
+    expect(content).toContain('grid grid-cols-2 gap-1.5');
+    expect(content).toContain('followedManga.filter.status');
+    expect(content).toContain('followedManga.filter.all');
+    expect(content).toContain('followedManga.filter.hasNew');
+  });
+
+  test('search input is standardized with clear button and no inner search icon', () => {
+    const content = fs.readFileSync(panelPath, 'utf8');
+    expect(content).toContain('followedManga.searchPlaceholder');
+    expect(content).toContain('followedManga.searchClear');
+    expect(content).toMatch(/setSearchTerm\(''\)/);
+    // Check search input wrapper does not contain inner search icon before input
+    expect(content).not.toMatch(/<div className="relative flex items-center">\s*<span className="material-symbols-outlined[^"]*">\s*search\s*<\/span>/);
+  });
+
+  test('implements in-memory pagination with page size 24 and bottom pagination bar', () => {
+    const content = fs.readFileSync(panelPath, 'utf8');
+    expect(content).toContain('FOLLOWED_MANGA_PAGE_SIZE = 24');
+    expect(content).toContain('displayedFavorites');
+    expect(content).toContain('contentScrollRef');
+    expect(content).toContain('handlePageJumpSubmit');
+    expect(content).toContain('followedManga.pagination.summary');
+    expect(content).toContain('latestUpdates.firstPage');
+    expect(content).toContain('latestUpdates.lastPage');
+    expect(content).toContain('latestUpdates.prevPage');
+    expect(content).toContain('latestUpdates.nextPage');
+  });
+
+  test('userDataBackup whitelists mangaFollowedSortPref_v1', () => {
+    const backupPath = path.resolve(process.cwd(), 'src/utils/userDataBackup.js');
+    const content = fs.readFileSync(backupPath, 'utf8');
+    expect(content).toContain("'mangaFollowedSortPref_v1'");
   });
 });

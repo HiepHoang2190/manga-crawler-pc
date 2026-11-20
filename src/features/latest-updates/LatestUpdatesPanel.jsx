@@ -303,12 +303,10 @@ export default function LatestUpdatesPanel({
 }) {
   const { t } = useI18n();
   const {
-    showLeftSidebar,
-    toggleLeftSidebar,
     leftWidth,
     handleLeftResizeStart,
   } = useStudioLayout({
-    storagePrefix: 'latest_updates',
+    storagePrefix: 'explore_subtabs',
     defaultLeftWidth: 280,
     minLeftWidth: 240,
     maxLeftWidth: 460,
@@ -435,14 +433,9 @@ export default function LatestUpdatesPanel({
   const [noChapterRowKeys, setNoChapterRowKeys] = useState(() => new Set());
 
   const focusSearchInput = useCallback(() => {
-    if (!showLeftSidebar) {
-      toggleLeftSidebar();
-    }
-    setTimeout(() => {
-      searchInputRef.current?.focus();
-      searchInputRef.current?.select();
-    }, 60);
-  }, [showLeftSidebar, toggleLeftSidebar]);
+    searchInputRef.current?.focus();
+    searchInputRef.current?.select();
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -1493,9 +1486,6 @@ export default function LatestUpdatesPanel({
   return (
     <StudioLayout>
       <StudioLayout.Toolbar
-        showLeftSidebar={showLeftSidebar}
-        onToggleLeftSidebar={toggleLeftSidebar}
-        leftSidebarTooltip={showLeftSidebar ? t('sidebar.hidePanel') : t('sidebar.showPanel')}
         leftSlot={subtabsSlot}
         rightSlot={
           <div className="flex items-center gap-2">
@@ -1555,7 +1545,7 @@ export default function LatestUpdatesPanel({
 
       <StudioLayout.Body>
         <StudioLayout.LeftSidebar
-          open={showLeftSidebar}
+          open={true}
           width={leftWidth}
           onResizeStart={handleLeftResizeStart}
         >
