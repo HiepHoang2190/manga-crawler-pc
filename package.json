@@ -1,6 +1,6 @@
 {
   "name": "manga-crawler",
-  "version": "3.0.53",
+  "version": "3.0.54",
   "description": "Sưu Tầm Ebook Truyện Tranh — tải truyện tranh",
   "main": "electron/main.js",
   "scripts": {
