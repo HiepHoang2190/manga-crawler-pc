@@ -34,6 +34,14 @@ import {
   renderPageToDataUrl,
 } from './studio/mangaStudioCanvasRender';
 import {
+  extractLayersSnapshot,
+  applyLayersSnapshot,
+  pushHistoryStack,
+  applyTypographyStyleToPages,
+  nudgeLayerBbox,
+  batchReplaceLayerTexts,
+} from './studio/mangaStudioEditingUtils.mjs';
+import {
   MangaStudioProjectsModal,
   MangaStudioAutoModal,
   MangaStudioComparisonModal,
@@ -836,6 +844,70 @@ function MangaStudioEditor({
 
   // Bảng đối chiếu dịch thuật & Live Terminal Console
   const [showComparisonModal, setShowComparisonModal] = useState(false);
+  const [isComparingOriginal, setIsComparingOriginal] = useState(false);
+  const [undoStack, setUndoStack] = useState([]);
+  const [redoStack, setRedoStack] = useState([]);
+  const undoStackRef = useRef([]);
+  undoStackRef.current = undoStack;
+  const redoStackRef = useRef([]);
+  redoStackRef.current = redoStack;
+  const pagesRef = useRef(pages);
+  pagesRef.current = pages;
+  const lastCoalescedHistoryRef = useRef({ key: '', time: 0 });
+
+  useEffect(() => {
+    setUndoStack([]);
+    setRedoStack([]);
+    lastCoalescedHistoryRef.current = { key: '', time: 0 };
+  }, [currentProject?.id]);
+
+  const recordHistorySnapshot = useCallback((pagesSource = pagesRef.current, coalesceKey = '') => {
+    const now = Date.now();
+    if (
+      coalesceKey &&
+      lastCoalescedHistoryRef.current.key === coalesceKey &&
+      now - lastCoalescedHistoryRef.current.time < 800
+    ) {
+      lastCoalescedHistoryRef.current.time = now;
+      return;
+    }
+    lastCoalescedHistoryRef.current = { key: coalesceKey, time: now };
+    const snapshot = extractLayersSnapshot(pagesSource);
+    setUndoStack((prev) => pushHistoryStack(prev, snapshot));
+    setRedoStack([]);
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    const stack = undoStackRef.current;
+    if (!stack.length) return;
+    const targetSnapshot = stack[stack.length - 1];
+    const currentSnapshot = extractLayersSnapshot(pagesRef.current);
+    setUndoStack((prev) => prev.slice(0, -1));
+    setRedoStack((prev) => pushHistoryStack(prev, currentSnapshot));
+    lastCoalescedHistoryRef.current = { key: '', time: 0 };
+    setPages((prev) => {
+      const next = applyLayersSnapshot(prev, targetSnapshot);
+      onUpdatePages?.(next);
+      return next;
+    });
+    setStatusMessage({ text: t('translate.studio.undoToast'), type: 'info' });
+  }, [onUpdatePages, t]);
+
+  const handleRedo = useCallback(() => {
+    const stack = redoStackRef.current;
+    if (!stack.length) return;
+    const targetSnapshot = stack[stack.length - 1];
+    const currentSnapshot = extractLayersSnapshot(pagesRef.current);
+    setRedoStack((prev) => prev.slice(0, -1));
+    setUndoStack((prev) => pushHistoryStack(prev, currentSnapshot));
+    lastCoalescedHistoryRef.current = { key: '', time: 0 };
+    setPages((prev) => {
+      const next = applyLayersSnapshot(prev, targetSnapshot);
+      onUpdatePages?.(next);
+      return next;
+    });
+    setStatusMessage({ text: t('translate.studio.redoToast'), type: 'info' });
+  }, [onUpdatePages, t]);
   const [showLogConsole, setShowLogConsole] = useState(true);
   const [isProgressHudCollapsed, setIsProgressHudCollapsed] = useState(false);
   const [comparisonSearchQuery, setComparisonSearchQuery] = useState('');
@@ -1183,6 +1255,12 @@ function MangaStudioEditor({
   // Update a property of the selected layer
   const updateSelectedLayer = useCallback((updates) => {
     if (!selectedLayerId) return;
+    const opKind = 'bbox' in updates || 'textBbox' in updates
+      ? 'box'
+      : 'text' in updates
+        ? 'text'
+        : 'style';
+    recordHistorySnapshot(pagesRef.current, `${opKind}:${activePageIndex}:${selectedLayerId}`);
     setPages((prev) => {
       const next = prev.map((p, pIdx) => {
         if (pIdx !== activePageIndex) return p;
@@ -1203,7 +1281,7 @@ function MangaStudioEditor({
       onUpdatePages?.(next);
       return next;
     });
-  }, [selectedLayerId, activePageIndex, onUpdatePages, JAPANESE_CHAR_REGEX]);
+  }, [selectedLayerId, activePageIndex, onUpdatePages, JAPANESE_CHAR_REGEX, recordHistorySnapshot]);
 
   // Canvas Viewport & Mouse Interactions Hook (Zoom, Pan, Layer Drag, 8 Handles Resize, Viewport Fit)
   const {
@@ -1624,6 +1702,7 @@ function MangaStudioEditor({
     if (selectedLayerId) {
       updateSelectedLayer({ fontFamily: newFontValue });
     } else {
+      recordHistorySnapshot(pagesRef.current);
       setPages((prev) => {
         const next = prev.map((p, pIdx) => {
           if (pIdx !== activePageIndex) return p;
@@ -1641,10 +1720,11 @@ function MangaStudioEditor({
         type: 'success',
       });
     }
-  }, [selectedLayerId, activePageIndex, updateSelectedLayer, onUpdatePages, t]);
+  }, [selectedLayerId, activePageIndex, updateSelectedLayer, onUpdatePages, t, recordHistorySnapshot]);
 
   // Toggle visibility of a specific layer
   const toggleLayerVisibility = useCallback((layerId) => {
+    recordHistorySnapshot(pagesRef.current);
     setPages((prev) => {
       const next = prev.map((p, pIdx) => {
         if (pIdx !== activePageIndex) return p;
@@ -1659,10 +1739,13 @@ function MangaStudioEditor({
       onUpdatePages?.(next);
       return next;
     });
-  }, [activePageIndex, onUpdatePages]);
+  }, [activePageIndex, onUpdatePages, recordHistorySnapshot]);
 
   // Toggle visibility của toàn bộ text layers trên trang hiện tại
   const toggleAllTextLayersVisibility = useCallback(() => {
+    const currentLayers = pagesRef.current[activePageIndex]?.layers;
+    if (!Array.isArray(currentLayers) || currentLayers.length === 0) return;
+    recordHistorySnapshot(pagesRef.current);
     setPages((prev) => {
       const currentPage = prev[activePageIndex];
       const pageLayers = Array.isArray(currentPage?.layers) ? currentPage.layers : [];
@@ -1684,12 +1767,13 @@ function MangaStudioEditor({
       onUpdatePages?.(next);
       return next;
     });
-  }, [activePageIndex, onUpdatePages]);
+  }, [activePageIndex, onUpdatePages, recordHistorySnapshot]);
 
   // Delete selected layer
   const deleteLayer = useCallback((idToDelete) => {
     const targetId = idToDelete || selectedLayerId;
     if (!targetId) return;
+    recordHistorySnapshot(pagesRef.current);
     setPages((prev) => {
       const next = prev.map((p, pIdx) => {
         if (pIdx !== activePageIndex) return p;
@@ -1704,7 +1788,7 @@ function MangaStudioEditor({
     });
     setExpandedLayerId((prev) => (prev === targetId ? null : prev));
     if (targetId === selectedLayerId) setSelectedLayerId(null);
-  }, [selectedLayerId, activePageIndex, onUpdatePages]);
+  }, [selectedLayerId, activePageIndex, onUpdatePages, recordHistorySnapshot]);
 
   // Xóa một trang khỏi danh sách Pages
   const handleRemovePage = useCallback((targetPageOrIndex) => {
@@ -1807,6 +1891,7 @@ function MangaStudioEditor({
   // Duplicate layer
   const handleDuplicateLayer = useCallback(() => {
     if (!selectedLayer || !activePage) return;
+    recordHistorySnapshot(pagesRef.current);
     const [x, y, w, h] = selectedLayer.bbox;
     const [tx, ty, tw, th] = selectedLayer.textBbox || [x, y, w, h];
     const duplicated = {
@@ -1824,11 +1909,13 @@ function MangaStudioEditor({
       return next;
     });
     setSelectedLayerId(duplicated.id);
-  }, [selectedLayer, activePage, activePageIndex, onUpdatePages]);
+    setStatusMessage({ text: t('translate.studio.duplicatedLayerToast'), type: 'info' });
+  }, [selectedLayer, activePage, activePageIndex, onUpdatePages, recordHistorySnapshot, t]);
 
   // Add new blank text layer
   const handleAddTextLayer = useCallback(() => {
     if (!activePage) return;
+    recordHistorySnapshot(pagesRef.current);
     const w = Math.round((activePage.width || 800) * 0.25);
     const h = Math.round((activePage.height || 1200) * 0.15);
     const x = Math.round(((activePage.width || 800) - w) / 2);
@@ -1874,12 +1961,106 @@ function MangaStudioEditor({
       layerTextareaRef.current?.focus();
       layerTextareaRef.current?.select();
     }, 50);
-  }, [activePage, activePageIndex, onUpdatePages]);
+  }, [activePage, activePageIndex, onUpdatePages, recordHistorySnapshot, t]);
+
+  const handleApplyStyleToScope = useCallback((scope) => {
+    if (!selectedLayer) return;
+    const { nextPages, affectedLayers, changedLayers, affectedPages } = applyTypographyStyleToPages(
+      pagesRef.current,
+      selectedLayer,
+      { scope, activePageIndex }
+    );
+    if (changedLayers <= 0) return;
+    recordHistorySnapshot(pagesRef.current);
+    setPages(nextPages);
+    onUpdatePages?.(nextPages);
+    setStatusMessage({
+      text:
+        scope === 'all'
+          ? t('translate.studio.applyStyleChapterToast', { count: affectedLayers, pages: affectedPages })
+          : t('translate.studio.applyStylePageToast', { count: affectedLayers }),
+      type: 'success',
+    });
+  }, [selectedLayer, activePageIndex, onUpdatePages, recordHistorySnapshot, t]);
+
+  const handleBatchFindReplace = useCallback(({ findText, replaceText, scope, caseSensitive }) => {
+    if (!findText) return;
+    const { nextPages, totalMatches, replacedLayers } = batchReplaceLayerTexts(pagesRef.current, {
+      findText,
+      replaceText,
+      scope,
+      activePageIndex,
+      caseSensitive,
+    });
+    if (totalMatches <= 0) return;
+    recordHistorySnapshot(pagesRef.current);
+    setPages(nextPages);
+    onUpdatePages?.(nextPages);
+    setStatusMessage({
+      text: t('translate.compare.replaceDoneToast', { matches: totalMatches, layers: replacedLayers }),
+      type: 'success',
+    });
+  }, [activePageIndex, onUpdatePages, recordHistorySnapshot, t]);
+
+  const handleNudgeSelectedLayer = useCallback((dx, dy) => {
+    if (!selectedLayerId) return;
+    recordHistorySnapshot(pagesRef.current, `nudge:${activePageIndex}:${selectedLayerId}`);
+    setPages((prev) => {
+      const next = prev.map((p, pIdx) => {
+        if (pIdx !== activePageIndex) return p;
+        const pageLayers = Array.isArray(p.layers) ? p.layers : [];
+        return {
+          ...p,
+          layers: pageLayers.map((l) =>
+            l.id === selectedLayerId ? nudgeLayerBbox(l, dx, dy, { width: containerW, height: containerH }) : l
+          ),
+        };
+      });
+      onUpdatePages?.(next);
+      return next;
+    });
+  }, [selectedLayerId, activePageIndex, containerW, containerH, onUpdatePages, recordHistorySnapshot]);
 
   // Keyboard navigation & shortcuts
   useEffect(() => {
+    const hasBlockingModalOpen =
+      showProjectModal ||
+      showAutoModal ||
+      showGuideModal ||
+      Boolean(errorModal) ||
+      Boolean(exportConfirmModal) ||
+      Boolean(completionModal) ||
+      Boolean(resumePromptModal) ||
+      Boolean(pageToDelete);
+
     const handleKeyDown = (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (!canvasRef.current || canvasRef.current.offsetParent === null) return;
+      if (hasBlockingModalOpen) return;
+
+      const tag = e.target?.tagName;
+      const isEditable = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || Boolean(e.target?.isContentEditable);
+
+      if (showComparisonModal) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          setShowComparisonModal(false);
+          return;
+        }
+        if (!isEditable && (e.ctrlKey || e.metaKey) && !e.altKey) {
+          const lower = String(e.key || '').toLowerCase();
+          if (lower === 'z') {
+            e.preventDefault();
+            if (e.shiftKey) handleRedo();
+            else handleUndo();
+          } else if (lower === 'y') {
+            e.preventDefault();
+            handleRedo();
+          }
+        }
+        return;
+      }
+
+      if (isEditable) return;
 
       // Spacebar hold for temporary hand pan tool (Photoshop/Figma standard)
       if (e.code === 'Space' && !spacePressedRef.current) {
@@ -1889,16 +2070,60 @@ function MangaStudioEditor({
         return;
       }
 
+      if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+        const lower = String(e.key || '').toLowerCase();
+        if (lower === 'z') {
+          e.preventDefault();
+          if (e.shiftKey) handleRedo();
+          else handleUndo();
+          return;
+        }
+        if (lower === 'y') {
+          e.preventDefault();
+          handleRedo();
+          return;
+        }
+        if (lower === 'd' && !e.shiftKey && selectedLayerId) {
+          e.preventDefault();
+          handleDuplicateLayer();
+          return;
+        }
+      }
+
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (selectedLayerId) {
           deleteLayer(selectedLayerId);
         }
       } else if (e.key === 'Escape') {
-        if (selectedLayerId) {
+        if (isComparingOriginal) {
+          setIsComparingOriginal(false);
+        } else if (selectedLayerId) {
           setSelectedLayerId(null);
         } else if (onClose) {
           onClose();
         }
+      } else if (!e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'o' || e.key === 'O')) {
+        e.preventDefault();
+        setIsComparingOriginal((prev) => !prev);
+      } else if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key === '[') {
+        e.preventDefault();
+        setActivePageIndex((prev) => Math.max(0, prev - 1));
+      } else if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key === ']') {
+        e.preventDefault();
+        setActivePageIndex((prev) => Math.min(Math.max(0, pagesRef.current.length - 1), prev + 1));
+      } else if (
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey &&
+        selectedLayerId &&
+        !showComparisonModal &&
+        (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight')
+      ) {
+        e.preventDefault();
+        const step = e.shiftKey ? 10 : 1;
+        const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
+        const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
+        handleNudgeSelectedLayer(dx, dy);
       } else if (e.key === 'v' || e.key === 'V') {
         setActiveTool('select');
       } else if (e.key === 't' || e.key === 'T') {
@@ -1934,7 +2159,30 @@ function MangaStudioEditor({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [selectedLayerId, deleteLayer, handleFitToScreen, handleAddTextLayer, onClose, toggleRightSidebar, toggleLeftSidebar]);
+  }, [
+    selectedLayerId,
+    isComparingOriginal,
+    showComparisonModal,
+    showProjectModal,
+    showAutoModal,
+    showGuideModal,
+    errorModal,
+    exportConfirmModal,
+    completionModal,
+    resumePromptModal,
+    pageToDelete,
+    deleteLayer,
+    handleFitToScreen,
+    handleResetZoom,
+    handleAddTextLayer,
+    handleDuplicateLayer,
+    handleUndo,
+    handleRedo,
+    handleNudgeSelectedLayer,
+    onClose,
+    toggleRightSidebar,
+    toggleLeftSidebar,
+  ]);
 
   // Import image files (multi-file selection)
   const handleImportFiles = async () => {
@@ -2390,7 +2638,23 @@ function MangaStudioEditor({
             activeTool={activeTool}
             setActiveTool={setActiveTool}
             handleAddTextLayer={handleAddTextLayer}
+            isComparingOriginal={isComparingOriginal}
+            onToggleCompareOriginal={() => setIsComparingOriginal((prev) => !prev)}
+            canUndo={undoStack.length > 0}
+            canRedo={redoStack.length > 0}
+            onUndo={handleUndo}
+            onRedo={handleRedo}
+            undoShortcut={typeof navigator !== 'undefined' && /mac/i.test(navigator.platform || navigator.userAgent || '') ? '⌘Z' : 'Ctrl+Z'}
+            redoShortcut={typeof navigator !== 'undefined' && /mac/i.test(navigator.platform || navigator.userAgent || '') ? '⌘⇧Z' : 'Ctrl+Y'}
           />
+
+          {/* Original Image Peek Banner */}
+          {isComparingOriginal && activePage ? (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 px-3.5 py-1.5 rounded-full border border-amber-500/40 bg-amber-950/90 text-amber-200 text-xs font-semibold shadow-lg backdrop-blur-md flex items-center gap-2 select-none pointer-events-none">
+              <span className="material-symbols-outlined text-[15px] text-amber-400">compare</span>
+              <span>{t('translate.studio.compareOriginalBanner')}</span>
+            </div>
+          ) : null}
 
           {/* Canvas Scroll & Viewport Area */}
           <div
@@ -2417,12 +2681,12 @@ function MangaStudioEditor({
                 }}
                 className="relative shadow-2xl bg-white select-none shrink-0 ring-1 ring-black/5 dark:ring-white/10"
               >
-                {/* Layer 0: Original Manga Artwork (Hiện ảnh clean khi bật Cleanup, hoặc ảnh gốc khi tắt) */}
+                {/* Layer 0: Original Manga Artwork (Hiện ảnh clean khi bật Cleanup, hoặc ảnh gốc khi tắt / đang đối chiếu) */}
                 {showArtworkLayer && (
                   <img
                     ref={imageRef}
                     src={
-                      showCleanupLayer && activePage.cleanDataUrl
+                      !isComparingOriginal && showCleanupLayer && activePage.cleanDataUrl
                         ? activePage.cleanDataUrl
                         : (activePage.originalDataUrl || activePage.dataUrl || activePage.translatedImageDataUrl)
                     }
@@ -2434,18 +2698,20 @@ function MangaStudioEditor({
                 )}
 
                 {/* Layer Overlays: Speech Bubble & Text Box chuẩn Koharu */}
-                <MangaStudioCanvasLayers
-                  layers={layers}
-                  zoom={zoom}
-                  selectedLayerId={selectedLayerId}
-                  activeTool={activeTool}
-                  isSpacePressed={isSpacePressed}
-                  isTranslating={isTranslating}
-                  isLayerResidual={isLayerResidual}
-                  handleMouseDownOnLayer={handleMouseDownOnLayer}
-                  handleDoubleClickOnLayer={handleDoubleClickOnLayer}
-                  handleMouseDownOnHandle={handleMouseDownOnHandle}
-                />
+                {!isComparingOriginal && (
+                  <MangaStudioCanvasLayers
+                    layers={layers}
+                    zoom={zoom}
+                    selectedLayerId={selectedLayerId}
+                    activeTool={activeTool}
+                    isSpacePressed={isSpacePressed}
+                    isTranslating={isTranslating}
+                    isLayerResidual={isLayerResidual}
+                    handleMouseDownOnLayer={handleMouseDownOnLayer}
+                    handleDoubleClickOnLayer={handleDoubleClickOnLayer}
+                    handleMouseDownOnHandle={handleMouseDownOnHandle}
+                  />
+                )}
               </div>
             ) : pages.length === 0 ? (
               <div className="flex flex-col items-center justify-center text-center p-8 max-w-md mx-auto select-none animate-fadeIn">
@@ -2547,6 +2813,9 @@ function MangaStudioEditor({
               handleUpdateSetting={handleUpdateSetting}
               detectedEngines={detectedEngines}
               localEngines={localEngines}
+              pagesCount={pages.length}
+              onApplyStyleToPage={() => handleApplyStyleToScope('page')}
+              onApplyStyleToChapter={() => handleApplyStyleToScope('all')}
             />
           </div>
         )}
@@ -2895,6 +3164,7 @@ function MangaStudioEditor({
         retryingSingleLayerId={retryingSingleLayerId}
         handleRetryResidualBubbles={handleRetryResidualBubbles}
         isRetryingResidual={isRetryingResidual}
+        onBatchFindReplace={handleBatchFindReplace}
         onViewLayerOnCanvas={(pIdx, layerId) => {
           setActivePageIndex(pIdx);
           setSelectedLayerId(layerId);

@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useI18n } from '../../../../context/I18nContext';
 import { SearchableSelect } from '../../../../shared';
+import { countBatchFindMatches } from './mangaStudioEditingUtils.mjs';
 
 /**
  * Modal bảng đối chiếu dịch thuật & soát lỗi toàn diện (So sánh chữ gốc, bản dịch, residual Japanese)
@@ -34,8 +35,24 @@ export function MangaStudioComparisonModal({
   handleRetryResidualBubbles,
   isRetryingResidual = false,
   onViewLayerOnCanvas,
+  onBatchFindReplace,
 }) {
   const { t } = useI18n();
+  const [showFindReplace, setShowFindReplace] = useState(false);
+  const [findText, setFindText] = useState('');
+  const [replaceText, setReplaceText] = useState('');
+  const [caseSensitive, setCaseSensitive] = useState(false);
+
+  const matchStats = useMemo(
+    () =>
+      countBatchFindMatches(pages, {
+        findText,
+        scope: comparisonScope,
+        activePageIndex,
+        caseSensitive,
+      }),
+    [pages, findText, comparisonScope, activePageIndex, caseSensitive]
+  );
 
   if (!isOpen || typeof document === 'undefined') return null;
 
@@ -258,20 +275,92 @@ export function MangaStudioComparisonModal({
             </div>
           )}
 
-          {/* Search Query Input */}
-          <div className="relative w-56 sm:w-64 max-w-full">
-            <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-[15px] text-on-surface-variant/60">
-              search
-            </span>
-            <input
-              type="text"
-              value={comparisonSearchQuery}
-              onChange={(e) => setComparisonSearchQuery?.(e.target.value)}
-              placeholder={t('translate.compare.searchPlaceholder')}
-              className="w-full pl-8 pr-3 py-1 rounded-xl border border-outline-variant/30 bg-surface-container-lowest text-xs text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:border-primary"
-            />
+          {/* Search Query Input + Find & Replace Toggle */}
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="relative w-48 sm:w-56 max-w-full">
+              <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-[15px] text-on-surface-variant/60">
+                search
+              </span>
+              <input
+                type="text"
+                value={comparisonSearchQuery}
+                onChange={(e) => setComparisonSearchQuery?.(e.target.value)}
+                placeholder={t('translate.compare.searchPlaceholder')}
+                className="w-full pl-8 pr-3 py-1 rounded-xl border border-outline-variant/30 bg-surface-container-lowest text-xs text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:border-primary"
+              />
+            </div>
+
+            {typeof onBatchFindReplace === 'function' ? (
+              <button
+                type="button"
+                aria-pressed={showFindReplace}
+                onClick={() => setShowFindReplace((prev) => !prev)}
+                className={`h-7 px-2.5 rounded-xl border text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${showFindReplace
+                  ? 'border-primary/40 bg-primary/15 text-primary'
+                  : 'border-outline-variant/25 bg-surface-container text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
+                  }`}
+                data-tooltip={t('translate.compare.findReplaceToggle')}
+              >
+                <span className="material-symbols-outlined text-[15px]">find_replace</span>
+                <span className="hidden md:inline">{t('translate.compare.findReplaceToggle')}</span>
+              </button>
+            ) : null}
           </div>
         </div>
+
+        {/* Collapsible Batch Find & Replace Bar */}
+        {showFindReplace && typeof onBatchFindReplace === 'function' ? (
+          <div className="flex flex-wrap items-center gap-2 py-2 px-3 rounded-xl border border-outline-variant/20 bg-surface-container/60 my-1.5 shrink-0">
+            <input
+              type="text"
+              value={findText}
+              onChange={(e) => setFindText(e.target.value)}
+              placeholder={t('translate.compare.findPlaceholder')}
+              className="h-7 flex-1 min-w-[160px] px-2.5 rounded-lg border border-outline-variant/30 bg-surface-container-lowest text-xs text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:border-primary"
+            />
+            <input
+              type="text"
+              value={replaceText}
+              onChange={(e) => setReplaceText(e.target.value)}
+              placeholder={t('translate.compare.replacePlaceholder')}
+              className="h-7 flex-1 min-w-[160px] px-2.5 rounded-lg border border-outline-variant/30 bg-surface-container-lowest text-xs text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:border-primary"
+            />
+            <button
+              type="button"
+              aria-pressed={caseSensitive}
+              onClick={() => setCaseSensitive((prev) => !prev)}
+              data-tooltip={t('translate.compare.caseSensitive')}
+              aria-label={t('translate.compare.caseSensitive')}
+              className={`h-7 w-8 rounded-lg border text-xs font-mono font-bold transition-colors cursor-pointer ${caseSensitive
+                ? 'border-primary/40 bg-primary/15 text-primary'
+                : 'border-outline-variant/25 bg-surface-container-lowest text-on-surface-variant hover:text-on-surface'
+                }`}
+            >
+              Aa
+            </button>
+            <span className="text-[11px] font-mono text-on-surface-variant px-1.5 tabular-nums">
+              {t('translate.compare.matchesCount', {
+                matches: matchStats.totalMatches,
+                layers: matchStats.matchedLayers,
+              })}
+            </span>
+            <button
+              type="button"
+              disabled={!findText || matchStats.totalMatches === 0}
+              onClick={() => {
+                onBatchFindReplace({
+                  findText,
+                  replaceText,
+                  scope: comparisonScope,
+                  caseSensitive,
+                });
+              }}
+              className="h-7 px-3 rounded-lg bg-primary text-on-primary text-xs font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+            >
+              {t('translate.compare.replaceAllBtn')}
+            </button>
+          </div>
+        ) : null}
 
         {/* Main Content Area: Table + Optional Image Preview side-by-side */}
         <div className="flex-1 min-h-0 flex gap-3 overflow-hidden py-1">

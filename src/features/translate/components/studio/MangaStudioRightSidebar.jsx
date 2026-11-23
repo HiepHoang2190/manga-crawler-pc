@@ -54,6 +54,9 @@ export function MangaStudioRightSidebar({
   handleUpdateSetting,
   detectedEngines,
   localEngines,
+  pagesCount = 0,
+  onApplyStyleToPage,
+  onApplyStyleToChapter,
 }) {
   const { t } = useI18n();
 
@@ -312,6 +315,35 @@ export function MangaStudioRightSidebar({
                     +
                   </button>
                 </div>
+              </div>
+            </div>
+
+            {/* Row 5: Batch Apply Style */}
+            <div className="pt-1">
+              <label className="text-[10px] font-bold tracking-wider text-on-surface-variant uppercase block mb-1 select-none">
+                {t('translate.studio.applyStyleLabel')}
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  disabled={!selectedLayer || layers.length <= 1 || isTranslating}
+                  onClick={() => onApplyStyleToPage?.()}
+                  data-tooltip={t('translate.studio.applyStylePageTooltip')}
+                  className="h-7 px-2 rounded-lg border border-outline-variant/25 bg-surface-container-highest/60 text-[11px] font-medium text-on-surface-variant hover:border-primary/40 hover:text-primary hover:bg-primary/5 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer flex items-center justify-center gap-1"
+                >
+                  <span className="material-symbols-outlined text-[14px]">auto_fix_high</span>
+                  <span className="truncate">{t('translate.studio.applyStylePage')}</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={!selectedLayer || pagesCount === 0 || isTranslating}
+                  onClick={() => onApplyStyleToChapter?.()}
+                  data-tooltip={t('translate.studio.applyStyleChapterTooltip')}
+                  className="h-7 px-2 rounded-lg border border-outline-variant/25 bg-surface-container-highest/60 text-[11px] font-medium text-on-surface-variant hover:border-primary/40 hover:text-primary hover:bg-primary/5 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer flex items-center justify-center gap-1"
+                >
+                  <span className="material-symbols-outlined text-[14px]">library_books</span>
+                  <span className="truncate">{t('translate.studio.applyStyleChapter')}</span>
+                </button>
               </div>
             </div>
           </div>

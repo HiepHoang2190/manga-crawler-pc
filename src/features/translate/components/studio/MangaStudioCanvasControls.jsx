@@ -63,6 +63,14 @@ export function MangaStudioToolPalette({
   activeTool = 'select',
   setActiveTool,
   handleAddTextLayer,
+  isComparingOriginal = false,
+  onToggleCompareOriginal,
+  canUndo = false,
+  canRedo = false,
+  onUndo,
+  onRedo,
+  undoShortcut = '⌘Z',
+  redoShortcut = '⌘⇧Z',
 }) {
   const { t } = useI18n();
 
@@ -85,15 +93,55 @@ export function MangaStudioToolPalette({
               else setActiveTool?.(tool.id);
             }}
             data-tooltip={tool.label}
-            className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all cursor-pointer ${isActive
-              ? 'bg-primary/15 text-primary font-bold shadow-2xs border border-primary/30'
-              : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
+            aria-label={tool.label}
+            aria-pressed={isActive}
+            className={`w-8 h-8 rounded-xl border flex items-center justify-center transition-all cursor-pointer ${isActive
+              ? 'bg-primary/15 text-primary font-bold shadow-2xs border-primary/30'
+              : 'border-outline-variant/20 bg-surface-container-highest/40 text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
               }`}
           >
             <span className="material-symbols-outlined text-[17px]">{tool.icon}</span>
           </button>
         );
       })}
+
+      <div className="h-px bg-outline-variant/20 mx-1 my-0.5" aria-hidden="true" />
+
+      <button
+        type="button"
+        onClick={() => onToggleCompareOriginal?.()}
+        data-tooltip={t('translate.studio.compareOriginalTooltip')}
+        aria-label={t('translate.studio.compareOriginalTooltip')}
+        aria-pressed={isComparingOriginal}
+        className={`w-8 h-8 rounded-xl border flex items-center justify-center transition-all cursor-pointer ${isComparingOriginal
+          ? 'bg-amber-500/20 text-amber-400 border-amber-500/40 shadow-2xs'
+          : 'border-outline-variant/20 bg-surface-container-highest/40 text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
+          }`}
+      >
+        <span className="material-symbols-outlined text-[17px]">compare</span>
+      </button>
+
+      <button
+        type="button"
+        disabled={!canUndo}
+        onClick={() => onUndo?.()}
+        data-tooltip={t('translate.studio.undoTooltip', { shortcut: undoShortcut })}
+        aria-label={t('translate.studio.undoTooltip', { shortcut: undoShortcut })}
+        className="w-8 h-8 rounded-xl border border-outline-variant/20 bg-surface-container-highest/40 text-on-surface-variant hover:bg-surface-container hover:text-on-surface disabled:opacity-35 disabled:cursor-not-allowed flex items-center justify-center transition-all cursor-pointer"
+      >
+        <span className="material-symbols-outlined text-[17px]">undo</span>
+      </button>
+
+      <button
+        type="button"
+        disabled={!canRedo}
+        onClick={() => onRedo?.()}
+        data-tooltip={t('translate.studio.redoTooltip', { shortcut: redoShortcut })}
+        aria-label={t('translate.studio.redoTooltip', { shortcut: redoShortcut })}
+        className="w-8 h-8 rounded-xl border border-outline-variant/20 bg-surface-container-highest/40 text-on-surface-variant hover:bg-surface-container hover:text-on-surface disabled:opacity-35 disabled:cursor-not-allowed flex items-center justify-center transition-all cursor-pointer"
+      >
+        <span className="material-symbols-outlined text-[17px]">redo</span>
+      </button>
     </div>
   );
 }
