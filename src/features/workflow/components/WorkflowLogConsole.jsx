@@ -2,18 +2,34 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useI18n } from '../../../context/I18nContext';
 import { NODE_DEFINITIONS } from '../engine/nodeDefinitions';
 import { getTopologicallyOrderedNodes } from '../engine/workflowGraph';
+import { formatDurationMs } from '../engine/workflowEditingUtils';
+
+const STEP_GRID_COLS = {
+  1: 'grid-cols-1',
+  2: 'grid-cols-2',
+  3: 'grid-cols-3',
+  4: 'grid-cols-4',
+};
 
 const STEP_BADGE_MAP = {
+  manga_crawler: 'CRAWL',
+  folder_trigger: 'FOLDER',
   manual_trigger: 'TRIGGER',
   trigger: 'TRIGGER',
   chapter_selector: 'FILTER',
   filter: 'FILTER',
   downloader: 'DOWNLOAD',
   download: 'DOWNLOAD',
+  duplicate_cleaner: 'CLEAN',
+  image_upscale: 'UPSCALE',
+  image_compress: 'COMPRESS',
   export_cbz: 'CBZ',
   cbz: 'CBZ',
   export_pdf: 'PDF',
   pdf: 'PDF',
+  export_epub: 'EPUB',
+  export_mobi: 'MOBI',
+  convert_book: 'CONVERT',
   trash_cleanup: 'CLEANUP',
   cleanup: 'CLEANUP',
   split_double_page: 'SPLIT',
@@ -41,10 +57,12 @@ export default function WorkflowLogConsole({
   onClearLogs,
   onStop,
   onClose,
+  onSelectStep,
 }) {
   const { t } = useI18n();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showTerminalLogs, setShowTerminalLogs] = useState(true);
+  const [logFilter, setLogFilter] = useState('all'); // 'all' | 'error'
   const [autoScroll, setAutoScroll] = useState(true);
   const [copied, setCopied] = useState(false);
   const logConsoleRef = useRef(null);
@@ -98,6 +116,7 @@ export default function WorkflowLogConsole({
       const isDone = state.status === 'completed';
       const isCurrent = state.status === 'running';
       const isErr = state.status === 'failed';
+      const isSkipped = state.status === 'skipped';
       return {
         id: n.id,
         stepNum: idx + 1,
@@ -105,9 +124,11 @@ export default function WorkflowLogConsole({
         label: n.data?.mangaTitle || t(`workflow.nodeDef.${n.type}.title`, def.title) || n.type,
         icon: def.icon || 'settings',
         status: state.status,
+        durationLabel: formatDurationMs(state.durationMs),
         isDone,
         isCurrent,
         isErr,
+        isSkipped,
       };
     });
   }, [orderedNodes, nodeStates, t]);
@@ -116,7 +137,7 @@ export default function WorkflowLogConsole({
   const percent = useMemo(() => {
     if (isCompleted) return 100;
     if (!steps.length) return 0;
-    const completedCount = steps.filter((s) => s.isDone).length;
+    const completedCount = steps.filter((s) => s.isDone || s.isSkipped).length;
     const activeStep = steps.find((s) => s.isCurrent);
     let subPercent = 0;
     if (activeStep && nodeStates[activeStep.id]?.progressData?.percent) {
@@ -124,6 +145,18 @@ export default function WorkflowLogConsole({
     }
     return Math.min(99, Math.round(((completedCount + subPercent) / steps.length) * 100));
   }, [isCompleted, steps, nodeStates]);
+
+  const errorLogCount = useMemo(
+    () => (logs || []).filter((l) => l.type === 'error' || l.type === 'warn').length,
+    [logs]
+  );
+
+  const visibleLogs = useMemo(() => {
+    if (logFilter === 'error') {
+      return (logs || []).filter((l) => l.type === 'error' || l.type === 'warn');
+    }
+    return logs || [];
+  }, [logs, logFilter]);
 
   // Current active step & detail message
   const activeStep = steps.find((s) => s.isCurrent);
@@ -303,35 +336,45 @@ export default function WorkflowLogConsole({
             {steps.length > 0 && (
               <div
                 className={`grid gap-1.5 ${
-                  steps.length <= 4
-                    ? `grid-cols-${steps.length}`
-                    : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-5'
+                  STEP_GRID_COLS[steps.length] || 'grid-cols-2 sm:grid-cols-3 md:grid-cols-5'
                 }`}
               >
                 {steps.map((s) => (
-                  <div
+                  <button
                     key={s.id}
-                    className={`flex items-center gap-1.5 p-1.5 rounded-xl border text-[11px] transition-all ${
+                    type="button"
+                    onClick={() => onSelectStep?.(s.id)}
+                    data-tooltip={t('workflow.console.focusStepTooltip')}
+                    className={`cursor-pointer flex items-center justify-between gap-1.5 p-1.5 rounded-xl border text-[11px] transition-all text-left min-w-0 ${
                       s.isDone
-                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-semibold'
+                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-semibold hover:bg-emerald-500/15'
                         : s.isCurrent
                         ? 'bg-primary/15 border-primary/50 text-primary font-bold shadow-2xs'
                         : s.isErr
-                        ? 'bg-rose-500/10 border-rose-500/30 text-rose-400 font-semibold'
-                        : 'border-outline-variant/15 bg-surface-container/50 text-on-surface-variant/70'
+                        ? 'bg-rose-500/10 border-rose-500/30 text-rose-400 font-semibold hover:bg-rose-500/15'
+                        : s.isSkipped
+                        ? 'border-dashed border-outline-variant/30 bg-surface-container/30 text-on-surface-variant/60'
+                        : 'border-outline-variant/15 bg-surface-container/50 text-on-surface-variant/70 hover:bg-surface-container'
                     }`}
                   >
-                    <span className="material-symbols-outlined text-[15px] shrink-0">
-                      {s.isDone
-                        ? 'check_circle'
-                        : s.isCurrent
-                        ? 'progress_activity'
-                        : s.isErr
-                        ? 'error'
-                        : s.icon}
-                    </span>
-                    <span className="truncate">{s.label}</span>
-                  </div>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="material-symbols-outlined text-[15px] shrink-0">
+                        {s.isDone
+                          ? 'check_circle'
+                          : s.isCurrent
+                          ? 'progress_activity'
+                          : s.isErr
+                          ? 'error'
+                          : s.isSkipped
+                          ? 'skip_next'
+                          : s.icon}
+                      </span>
+                      <span className="truncate">{s.label}</span>
+                    </div>
+                    {s.durationLabel && !s.isSkipped && (
+                      <span className="text-[9px] font-mono opacity-75 shrink-0">{s.durationLabel}</span>
+                    )}
+                  </button>
                 ))}
               </div>
             )}
@@ -378,10 +421,37 @@ export default function WorkflowLogConsole({
             {showTerminalLogs && (
               <div className="flex flex-col gap-1.5 pt-2 border-t border-outline-variant/20">
                 <div className="flex items-center justify-between text-[11px] font-mono text-on-surface-variant">
-                  <span className="flex items-center gap-1 font-semibold text-on-surface">
-                    <span className="material-symbols-outlined text-[14px] text-primary">terminal</span>
-                    <span>{t('workflow.console.detailedLogs', { count: logs.length })}</span>
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="flex items-center gap-1 font-semibold text-on-surface">
+                      <span className="material-symbols-outlined text-[14px] text-primary">terminal</span>
+                      <span>{t('workflow.console.detailedLogs', { count: logs.length })}</span>
+                    </span>
+                    <div className="inline-flex items-center gap-0.5 rounded-lg bg-surface-container p-0.5 border border-outline-variant/20 font-sans">
+                      <button
+                        type="button"
+                        onClick={() => setLogFilter('all')}
+                        className={`cursor-pointer px-1.5 py-0.5 rounded-md text-[10px] font-medium transition-colors ${
+                          logFilter === 'all'
+                            ? 'bg-surface-container-lowest text-primary shadow-2xs font-semibold'
+                            : 'text-on-surface-variant hover:text-on-surface'
+                        }`}
+                      >
+                        {t('workflow.console.filterAll')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLogFilter('error')}
+                        className={`cursor-pointer px-1.5 py-0.5 rounded-md text-[10px] font-medium transition-colors ${
+                          logFilter === 'error'
+                            ? 'bg-error/15 text-error shadow-2xs font-semibold'
+                            : 'text-on-surface-variant hover:text-on-surface'
+                        }`}
+                      >
+                        {t('workflow.console.filterErrors')}
+                        {errorLogCount > 0 ? ` (${errorLogCount})` : ''}
+                      </button>
+                    </div>
+                  </div>
 
                   <div className="flex items-center gap-2">
                     <label className="inline-flex items-center gap-1 text-[10px] text-on-surface-variant cursor-pointer select-none">
@@ -430,8 +500,12 @@ export default function WorkflowLogConsole({
                     <div className="text-on-surface-variant/50 text-center py-3 italic text-[11px]">
                       {t('workflow.console.noEvents')}
                     </div>
+                  ) : visibleLogs.length === 0 ? (
+                    <div className="text-on-surface-variant/50 text-center py-3 italic text-[11px]">
+                      {t('workflow.console.noMatchingLogs')}
+                    </div>
                   ) : (
-                    logs.map((log) => {
+                    visibleLogs.map((log) => {
                       const isWarn = log.type === 'warn';
                       const isErr = log.type === 'error';
                       const isSuccess = log.type === 'success';

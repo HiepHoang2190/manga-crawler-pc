@@ -1937,20 +1937,39 @@ export default function WorkflowInspector({
           </div>
         )}
 
-        {/* ── Common Settings: Continue on Error ── */}
-        <div className="pt-3 border-t border-outline-variant/20 space-y-2">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={!!data.continueOnError}
-              onChange={(e) => handleChange('continueOnError', e.target.checked)}
-              className="w-4 h-4 rounded bg-surface-container-low border-outline-variant/40 text-primary focus:ring-0 cursor-pointer"
-            />
-            <span className="text-xs text-on-surface font-medium">Bỏ qua khi gặp lỗi</span>
-          </label>
-          <p className="text-[10px] text-on-surface-variant leading-relaxed">
-            Nếu kích hoạt, quy trình vẫn tiếp tục chạy các bước sau ngay cả khi bước này gặp sự cố.
-          </p>
+        {/* ── Common Settings: Bypass & Continue on Error ── */}
+        <div className="pt-3 border-t border-outline-variant/20 space-y-3">
+          <div className="space-y-1.5">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!data.disabled}
+                onChange={(e) => handleChange('disabled', e.target.checked)}
+                className="w-4 h-4 rounded bg-surface-container-low border-outline-variant/40 accent-amber-500 focus:ring-0 cursor-pointer"
+              />
+              <span className="text-xs text-on-surface font-medium">
+                {t('workflow.inspector.bypassNode')}
+              </span>
+            </label>
+            <p className="text-[10px] text-on-surface-variant leading-relaxed">
+              {t('workflow.inspector.bypassNodeDesc')}
+            </p>
+          </div>
+
+          <div className="space-y-1.5 pt-2 border-t border-outline-variant/15">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!data.continueOnError}
+                onChange={(e) => handleChange('continueOnError', e.target.checked)}
+                className="w-4 h-4 rounded bg-surface-container-low border-outline-variant/40 text-primary focus:ring-0 cursor-pointer"
+              />
+              <span className="text-xs text-on-surface font-medium">Bỏ qua khi gặp lỗi</span>
+            </label>
+            <p className="text-[10px] text-on-surface-variant leading-relaxed">
+              Nếu kích hoạt, quy trình vẫn tiếp tục chạy các bước sau ngay cả khi bước này gặp sự cố.
+            </p>
+          </div>
         </div>
       </div>
     </aside>

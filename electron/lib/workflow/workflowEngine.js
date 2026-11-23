@@ -164,8 +164,8 @@ class WorkflowEngine {
       }
 
       const state = runContext.nodeStates[nodeId];
-      if (state && state.status === 'completed') {
-        // Node already completed in previous run / checkpoint
+      if (state && (state.status === 'completed' || state.status === 'skipped')) {
+        // Node already completed or skipped in previous run / checkpoint
         continue;
       }
 
@@ -200,6 +200,25 @@ class WorkflowEngine {
             if (!inputs.mangaUrl && out.mangaUrl) inputs.mangaUrl = out.mangaUrl;
           }
         }
+      }
+
+      if (node.data?.disabled) {
+        const now = Date.now();
+        state.status = 'skipped';
+        state.startedAt = now;
+        state.completedAt = now;
+        state.outputData = { ...inputs };
+        onEvent({
+          runId: runContext.runId,
+          nodeId,
+          event: 'skipped',
+          data: {
+            ...inputs,
+            message: `Đã bỏ qua khối "${node.data?.mangaTitle || node.type}"`,
+          },
+          timestamp: now,
+        });
+        continue;
       }
 
       state.status = 'running';

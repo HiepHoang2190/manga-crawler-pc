@@ -110,4 +110,82 @@ describe('WorkflowEngine', () => {
     expect(events.some((e) => e.event === 'failed' && e.nodeId === 'n1')).toBe(true);
     expect(events.some((e) => e.event === 'run_error' && e.nodeId === 'n1')).toBe(true);
   });
+
+  test('skips disabled node, emits skipped event, and passes upstream inputs downstream', async () => {
+    let middleCalled = false;
+    const mockAdapters = {
+      step1: async () => ({ images_dir: '/tmp/manga/chap1', mangaTitle: 'Test Manga' }),
+      step2: async () => {
+        middleCalled = true;
+        return { images_dir: '/tmp/mutated' };
+      },
+      step3: async (node, inputs) => ({
+        book_file: { path: `${inputs.images_dir}/out.cbz` },
+        titleSeen: inputs.mangaTitle,
+      }),
+    };
+
+    const engine = new WorkflowEngine({ adapters: mockAdapters });
+    const events = [];
+    const graph = {
+      nodes: [
+        { id: 'n1', type: 'step1', data: {} },
+        { id: 'n2', type: 'step2', data: { disabled: true } },
+        { id: 'n3', type: 'step3', data: {} },
+      ],
+      edges: [
+        { id: 'e1', source: 'n1', sourceHandle: 'images_dir', target: 'n2', targetHandle: 'images_dir' },
+        { id: 'e2', source: 'n2', sourceHandle: 'images_dir', target: 'n3', targetHandle: 'images_dir' },
+      ],
+    };
+
+    const res = await engine.run('run_skip_test', graph, (evt) => events.push(evt));
+    expect(middleCalled).toBe(false);
+    expect(res.status).toBe('completed');
+    expect(res.nodeStates.n2.status).toBe('skipped');
+    expect(res.nodeStates.n3.status).toBe('completed');
+    expect(res.nodeStates.n3.outputData.book_file.path).toBe('/tmp/manga/chap1/out.cbz');
+    expect(res.nodeStates.n3.outputData.titleSeen).toBe('Test Manga');
+    expect(events.some((e) => e.event === 'skipped' && e.nodeId === 'n2')).toBe(true);
+  });
+
+  test('does not re-execute already skipped upstream node when resuming downstream node', async () => {
+    let failStep3 = true;
+    let skippedNodeCalls = 0;
+    const mockAdapters = {
+      step1: async () => ({ images_dir: '/tmp/manga/chap1' }),
+      step2: async () => {
+        skippedNodeCalls += 1;
+        return { images_dir: '/tmp/unexpected' };
+      },
+      step3: async (node, inputs) => {
+        if (failStep3) throw new Error('Transient error');
+        return { done: true, dir: inputs.images_dir };
+      },
+    };
+
+    const engine = new WorkflowEngine({ adapters: mockAdapters });
+    const graph = {
+      nodes: [
+        { id: 'n1', type: 'step1', data: {} },
+        { id: 'n2', type: 'step2', data: { disabled: true } },
+        { id: 'n3', type: 'step3', data: {} },
+      ],
+      edges: [
+        { id: 'e1', source: 'n1', sourceHandle: 'images_dir', target: 'n2', targetHandle: 'images_dir' },
+        { id: 'e2', source: 'n2', sourceHandle: 'images_dir', target: 'n3', targetHandle: 'images_dir' },
+      ],
+    };
+
+    const res1 = await engine.run('run_skip_resume', graph, () => {});
+    expect(res1.status).toBe('failed');
+    expect(res1.nodeStates.n2.status).toBe('skipped');
+
+    failStep3 = false;
+    const res2 = await engine.resume('run_skip_resume', graph, 'n3', () => {});
+    expect(skippedNodeCalls).toBe(0);
+    expect(res2.status).toBe('completed');
+    expect(res2.nodeStates.n2.status).toBe('skipped');
+    expect(res2.nodeStates.n3.outputData.dir).toBe('/tmp/manga/chap1');
+  });
 });

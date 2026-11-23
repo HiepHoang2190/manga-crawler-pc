@@ -91,13 +91,29 @@ export default function WorkflowPalette({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={t('workflow.palette.searchPlaceholder')}
-            className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-surface-container-low border border-outline-variant/30 text-xs text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:border-primary/50 transition-colors"
+            className="w-full pl-8 pr-7 py-1.5 rounded-lg bg-surface-container-low border border-outline-variant/30 text-xs text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:border-primary/50 transition-colors"
           />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              data-tooltip={t('workflow.palette.clearSearch')}
+              aria-label={t('workflow.palette.clearSearch')}
+              className="cursor-pointer absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-surface-container-highest text-on-surface-variant hover:text-on-surface flex items-center justify-center text-[10px] transition-colors"
+            >
+              ✕
+            </button>
+          )}
         </div>
       </div>
 
       {/* Categorized List */}
       <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden custom-scrollbar mr-1.5 p-2 space-y-3">
+        {filteredItems.length === 0 && (
+          <div className="py-8 px-3 text-center text-[11px] text-on-surface-variant/70">
+            {t('workflow.palette.noSearchResults')}
+          </div>
+        )}
         {CATEGORIES.map((cat) => {
           const items = filteredItems.filter((i) => i.category === cat.id);
           if (items.length === 0) return null;
@@ -118,6 +134,7 @@ export default function WorkflowPalette({
                     data-node-type={item.type}
                     draggable
                     onDragStart={(e) => handleDragStart(e, item.type)}
+                    onDoubleClick={() => onAddNode?.(item.type)}
                     className="p-2 rounded-xl bg-surface-container/60 hover:bg-surface-container-high border border-outline-variant/20 hover:border-primary/40 transition-all cursor-grab active:cursor-grabbing group shadow-2xs flex items-start gap-2.5"
                   >
                     <div className="w-6 h-6 rounded-lg bg-surface-container-highest flex items-center justify-center text-on-surface-variant group-hover:text-primary transition-colors shrink-0 mt-0.5">
@@ -133,6 +150,20 @@ export default function WorkflowPalette({
                         {t(`workflow.nodeDef.${item.type}.desc`, item.description)}
                       </div>
                     </div>
+                    {onAddNode && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onAddNode(item.type);
+                        }}
+                        data-tooltip={t('workflow.palette.quickAdd')}
+                        aria-label={t('workflow.palette.quickAdd')}
+                        className="cursor-pointer w-6 h-6 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-primary hover:bg-primary/15 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all shrink-0 self-center"
+                      >
+                        <span className="material-symbols-outlined text-[15px]">add</span>
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>

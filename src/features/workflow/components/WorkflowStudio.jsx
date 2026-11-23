@@ -55,6 +55,8 @@ export default function WorkflowStudio() {
   const [currentRunId, setCurrentRunId] = useState(null);
   const [nodeStates, setNodeStates] = useState({});
   const [toastMessage, setToastMessage] = useState(null);
+  const studioRootRef = useRef(null);
+  const canvasViewportRef = useRef(null);
 
   // If built-in templates are removed and active workflow is a legacy template, auto-switch to clean workflow
   useEffect(() => {
@@ -105,7 +107,7 @@ export default function WorkflowStudio() {
     if (!systemDownloadsDir) return;
     canvas.nodes.forEach((n) => {
       if (n.type === 'folder_trigger' && !n.data?.folderPath) {
-        canvas.updateNodeData(n.id, { folderPath: systemDownloadsDir });
+        canvas.updateNodeData(n.id, { folderPath: systemDownloadsDir }, { skipHistory: true });
       }
     });
   }, [systemDownloadsDir, canvas.nodes, canvas.updateNodeData]);
@@ -333,15 +335,30 @@ export default function WorkflowStudio() {
       const timeStr = now.toLocaleTimeString();
 
       if (evt.nodeId) {
-        setNodeStates((prev) => ({
-          ...prev,
-          [evt.nodeId]: {
-            status: evt.event === 'progress' ? (prev[evt.nodeId]?.status || 'running') : evt.event,
-            outputData: evt.data,
-            error: evt.error,
-            progressData: evt.event === 'progress' ? evt.data : prev[evt.nodeId]?.progressData,
-          },
-        }));
+        setNodeStates((prev) => {
+          const prevState = prev[evt.nodeId] || {};
+          const evtTs = evt.timestamp || Date.now();
+          let startedAt = prevState.startedAt || null;
+          let durationMs = prevState.durationMs ?? null;
+          if (evt.event === 'running') {
+            startedAt = evtTs;
+            durationMs = null;
+          } else if (evt.event === 'completed' || evt.event === 'failed' || evt.event === 'skipped') {
+            durationMs = startedAt ? Math.max(0, evtTs - startedAt) : 0;
+          }
+
+          return {
+            ...prev,
+            [evt.nodeId]: {
+              status: evt.event === 'progress' ? (prevState.status || 'running') : evt.event,
+              outputData: evt.data,
+              error: evt.error,
+              progressData: evt.event === 'progress' ? evt.data : prevState.progressData,
+              startedAt,
+              durationMs,
+            },
+          };
+        });
 
         if (evt.event === 'failed') {
           const targetNode = canvas.nodes.find((n) => n.id === evt.nodeId);
@@ -455,6 +472,7 @@ export default function WorkflowStudio() {
     const api = window.electronAPI || window.electron;
     if (api?.validateSaveDir) {
       for (const node of canvas.nodes) {
+        if (node.data?.disabled) continue;
         const outDir = String(node.data?.outputDir || '').trim();
         if (outDir) {
           try {
@@ -799,7 +817,7 @@ export default function WorkflowStudio() {
 
   // Clear Canvas
   const handleClear = () => {
-    canvas.setWorkflow({ nodes: [], edges: [] });
+    canvas.clearCanvas();
     setNodeStates({});
     showToast(t('workflow.studio.clearedCanvasToast'), 'info');
   };
@@ -814,10 +832,164 @@ export default function WorkflowStudio() {
     }
   };
 
+  const handleFitView = useCallback(() => {
+    const el = canvasViewportRef.current;
+    canvas.fitView(el?.clientWidth || 1000, el?.clientHeight || 600);
+  }, [canvas.fitView]);
+
+  const handleFocusNode = useCallback(
+    (nodeId) => {
+      if (!nodeId) return;
+      canvas.setSelectedNodeId(nodeId);
+      setShowRightSidebar(true);
+      const el = canvasViewportRef.current;
+      canvas.focusNode(nodeId, el?.clientWidth || 1000, el?.clientHeight || 600);
+    },
+    [canvas.setSelectedNodeId, canvas.focusNode]
+  );
+
+  const handleFocusFirstError = useCallback(() => {
+    const firstId = Object.keys(preflight.nodeErrors || {})[0];
+    if (firstId) {
+      handleFocusNode(firstId);
+    }
+  }, [preflight.nodeErrors, handleFocusNode]);
+
+  const handleDuplicateNode = useCallback(
+    (nodeId) => {
+      if (!nodeId) return;
+      const dup = canvas.duplicateNode(nodeId);
+      if (dup) {
+        showToast(t('workflow.studio.duplicatedNodeToast'), 'success');
+      }
+    },
+    [canvas.duplicateNode, t]
+  );
+
+  const handleToggleNodeDisabled = useCallback(
+    (nodeId) => {
+      if (!nodeId) return;
+      const nextDisabled = canvas.toggleNodeDisabled(nodeId);
+      if (nextDisabled !== null) {
+        showToast(
+          t(nextDisabled ? 'workflow.studio.nodeBypassedToast' : 'workflow.studio.nodeEnabledToast'),
+          'info'
+        );
+      }
+    },
+    [canvas.toggleNodeDisabled, t]
+  );
+
+  const handleSaveRef = useRef(null);
+  handleSaveRef.current = handleSave;
+
+  // Global keyboard shortcuts when Workflow tab is visible and no modal/input is focused
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (!studioRootRef.current || studioRootRef.current.offsetParent === null) return;
+      if (isManagerModalOpen || saveDirErrorModal) return;
+      if (typeof document !== 'undefined' && document.querySelector('[role="dialog"]')) return;
+
+      const target = e.target;
+      const tag = target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) {
+        return;
+      }
+
+      const mod = e.metaKey || e.ctrlKey;
+      const lowerKey = typeof e.key === 'string' ? e.key.toLowerCase() : '';
+
+      if (mod && lowerKey === 's') {
+        e.preventDefault();
+        handleSaveRef.current?.();
+        return;
+      }
+
+      if (!mod && !e.altKey && lowerKey === 'f') {
+        e.preventDefault();
+        handleFitView();
+        return;
+      }
+
+      // Block graph-mutating shortcuts while workflow execution is running
+      if (isRunning) return;
+
+      if (mod && lowerKey === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          canvas.redo();
+        } else {
+          canvas.undo();
+        }
+        return;
+      }
+
+      if (e.ctrlKey && !e.metaKey && lowerKey === 'y') {
+        e.preventDefault();
+        canvas.redo();
+        return;
+      }
+
+      if (mod && lowerKey === 'd') {
+        if (canvas.selectedNodeId) {
+          e.preventDefault();
+          handleDuplicateNode(canvas.selectedNodeId);
+        }
+        return;
+      }
+
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (canvas.selectedNodeId) {
+          e.preventDefault();
+          canvas.removeNode(canvas.selectedNodeId);
+        } else if (canvas.selectedEdgeId) {
+          e.preventDefault();
+          canvas.removeEdge(canvas.selectedEdgeId);
+        }
+        return;
+      }
+
+      if (!mod && !e.altKey && lowerKey === 'b' && canvas.selectedNodeId) {
+        e.preventDefault();
+        handleToggleNodeDisabled(canvas.selectedNodeId);
+        return;
+      }
+
+      if (!mod && !e.altKey && canvas.selectedNodeId) {
+        const step = e.shiftKey ? 40 : 10;
+        if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          canvas.nudgeNode(canvas.selectedNodeId, -step, 0);
+        } else if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          canvas.nudgeNode(canvas.selectedNodeId, step, 0);
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          canvas.nudgeNode(canvas.selectedNodeId, 0, -step);
+        } else if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          canvas.nudgeNode(canvas.selectedNodeId, 0, step);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [
+    isRunning,
+    isManagerModalOpen,
+    saveDirErrorModal,
+    canvas,
+    handleDuplicateNode,
+    handleToggleNodeDisabled,
+    handleFitView,
+  ]);
+
   const selectedNode = canvas.nodes.find((n) => n.id === canvas.selectedNodeId);
+  const errorCount = Object.keys(preflight.nodeErrors || {}).length;
 
   return (
-    <div className="flex flex-col h-full w-full bg-surface text-on-surface overflow-hidden select-none font-sans">
+    <div ref={studioRootRef} className="flex flex-col h-full w-full bg-surface text-on-surface overflow-hidden select-none font-sans">
       {/* Top Toolbar */}
       <WorkflowToolbar
         workflowName={workflowName}
@@ -825,6 +997,8 @@ export default function WorkflowStudio() {
         isRunning={isRunning}
         canRun={preflight.isValid}
         blockingReason={preflight.blockingReason}
+        errorCount={errorCount}
+        onFocusFirstError={handleFocusFirstError}
         onRun={handleRun}
         onStop={handleStop}
         onOpenWorkflowManager={() => {
@@ -871,12 +1045,20 @@ export default function WorkflowStudio() {
             connecting={canvas.connecting}
             nodeStates={nodeStates}
             nodeErrors={preflight.nodeErrors}
+            isRunning={isRunning}
+            canUndo={canvas.canUndo}
+            canRedo={canvas.canRedo}
+            onUndo={canvas.undo}
+            onRedo={canvas.redo}
             onSelectNode={handleSelectNode}
             onSelectEdge={canvas.setSelectedEdgeId}
             onRemoveNode={canvas.removeNode}
+            onDuplicateNode={handleDuplicateNode}
+            onToggleNodeDisabled={handleToggleNodeDisabled}
             onRemoveEdge={canvas.removeEdge}
             onUpdateNodePosition={canvas.updateNodePosition}
             onSetNodePosition={canvas.setNodePosition}
+            onCommitNodeDrag={(snap) => canvas.commitHistorySnapshot(snap)}
             onAddEdge={canvas.addEdge}
             onStartConnect={canvas.setConnecting}
             onCompleteConnect={(edge) => {
@@ -890,13 +1072,16 @@ export default function WorkflowStudio() {
             startCanvasDrag={canvas.startCanvasDrag}
             onCanvasMouseMove={canvas.onCanvasMouseMove}
             onCanvasMouseUp={canvas.onCanvasMouseUp}
+            onSetPan={canvas.setPan}
             handleWheel={canvas.handleWheel}
             zoomIn={canvas.zoomIn}
             zoomOut={canvas.zoomOut}
             resetView={canvas.resetView}
+            onFitView={canvas.fitView}
             onAutoLayout={canvas.autoLayout}
             onAutoConnect={handleAutoConnect}
             onDropNewNode={handleAddNode}
+            viewportRef={canvasViewportRef}
           />
 
           {/* Floating Manga Translate-style HUD & Log Console */}
@@ -915,6 +1100,7 @@ export default function WorkflowStudio() {
               onClearLogs={() => setLogs([])}
               onStop={handleStop}
               onClose={() => setIsConsoleOpen(false)}
+              onSelectStep={handleFocusNode}
             />
           )}
 

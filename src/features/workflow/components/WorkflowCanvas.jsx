@@ -1,9 +1,18 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import WorkflowNodeCard from './WorkflowNodeCard';
 import WorkflowEdge from './WorkflowEdge';
 import { useI18n } from '../../../context/I18nContext';
 import { NODE_DEFINITIONS, PORT_COLORS, PORT_TYPE_LABELS } from '../engine/nodeDefinitions';
 import { isPortCompatible, getNodeOutputs } from '../engine/workflowGraph';
+import {
+  createGraphSnapshot,
+  computeMinimapLayout,
+  minimapPointToPan,
+} from '../engine/workflowEditingUtils';
+
+const MINIMAP_STORAGE_KEY = 'workflow_canvas_minimap_v1';
+const MINIMAP_WIDTH = 176;
+const MINIMAP_HEIGHT = 112;
 
 export default function WorkflowCanvas({
   nodes,
@@ -15,12 +24,20 @@ export default function WorkflowCanvas({
   connecting,
   nodeStates = {},
   nodeErrors = {},
+  isRunning = false,
+  canUndo = false,
+  canRedo = false,
+  onUndo,
+  onRedo,
   onSelectNode,
   onSelectEdge,
   onRemoveNode,
+  onDuplicateNode,
+  onToggleNodeDisabled,
   onRemoveEdge,
   onUpdateNodePosition,
   onSetNodePosition,
+  onCommitNodeDrag,
   onAddEdge,
   onStartConnect,
   onCompleteConnect,
@@ -31,17 +48,83 @@ export default function WorkflowCanvas({
   startCanvasDrag,
   onCanvasMouseMove,
   onCanvasMouseUp,
+  onSetPan,
   handleWheel,
   zoomIn,
   zoomOut,
   resetView,
+  onFitView,
   onAutoLayout,
   onAutoConnect,
   onDropNewNode,
+  viewportRef,
 }) {
   const { t } = useI18n();
   const containerRef = useRef(null);
+  const minimapSvgRef = useRef(null);
   const [draggingNode, setDraggingNode] = useState(null);
+  const [isDraggingMinimap, setIsDraggingMinimap] = useState(false);
+  const [viewportSize, setViewportSize] = useState({ width: 1000, height: 600 });
+  const [showMinimap, setShowMinimap] = useState(() => {
+    try {
+      const saved = localStorage.getItem(MINIMAP_STORAGE_KEY);
+      if (saved === 'false' || saved === '0') return false;
+    } catch { }
+    return true;
+  });
+
+  const setContainerRefs = useCallback(
+    (el) => {
+      containerRef.current = el;
+      if (viewportRef) {
+        viewportRef.current = el;
+      }
+    },
+    [viewportRef]
+  );
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const updateSize = () => {
+      setViewportSize({
+        width: el.clientWidth || 1000,
+        height: el.clientHeight || 600,
+      });
+    };
+    updateSize();
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(updateSize);
+      ro.observe(el);
+      return () => ro.disconnect();
+    }
+    window.addEventListener('resize', updateSize);
+    return () => window.removeEventListener('resize', updateSize);
+  }, []);
+
+  const handleWheelRef = useRef(handleWheel);
+  handleWheelRef.current = handleWheel;
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onNativeWheel = (e) => {
+      if (e.target?.closest?.('[data-workflow-minimap]')) return;
+      handleWheelRef.current?.(e, el.getBoundingClientRect());
+    };
+    el.addEventListener('wheel', onNativeWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onNativeWheel);
+  }, []);
+
+  const handleToggleMinimap = useCallback(() => {
+    setShowMinimap((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(MINIMAP_STORAGE_KEY, String(next));
+      } catch { }
+      return next;
+    });
+  }, []);
 
   // Calculate approximate port coordinates for edges
   const getPortCoordinates = useCallback((nodeId, portId, isOutput) => {
@@ -73,6 +156,7 @@ export default function WorkflowCanvas({
       startMouseY: clientY,
       startNodeX: node.x,
       startNodeY: node.y,
+      snapshotBeforeDrag: createGraphSnapshot(nodes, edges),
     });
   };
 
@@ -96,6 +180,13 @@ export default function WorkflowCanvas({
 
     const handleGlobalMouseUp = (e) => {
       if (draggingNode) {
+        const dragged = nodes.find((n) => n.id === draggingNode.id);
+        if (
+          dragged &&
+          (dragged.x !== draggingNode.startNodeX || dragged.y !== draggingNode.startNodeY)
+        ) {
+          onCommitNodeDrag && onCommitNodeDrag(draggingNode.snapshotBeforeDrag);
+        }
         setDraggingNode(null);
       }
 
@@ -228,7 +319,54 @@ export default function WorkflowCanvas({
       window.removeEventListener('mouseup', handleGlobalMouseUp);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [draggingNode, zoom, onSetNodePosition, onUpdateNodePosition, onCanvasMouseMove, onCanvasMouseUp, connecting, onCancelConnect, onCompleteConnect, onConnectError, nodes, t]);
+  }, [draggingNode, zoom, onSetNodePosition, onUpdateNodePosition, onCommitNodeDrag, onCanvasMouseMove, onCanvasMouseUp, connecting, onCancelConnect, onCompleteConnect, onConnectError, onSelectNode, onSelectEdge, nodes, t]);
+
+  // Minimap layout & drag-to-pan navigation
+  const minimapLayout = useMemo(() => {
+    if (!showMinimap || nodes.length === 0) return null;
+    return computeMinimapLayout({
+      nodes,
+      pan,
+      zoom,
+      viewportWidth: viewportSize.width,
+      viewportHeight: viewportSize.height,
+      minimapWidth: MINIMAP_WIDTH,
+      minimapHeight: MINIMAP_HEIGHT,
+    });
+  }, [showMinimap, nodes, pan, zoom, viewportSize]);
+
+  const panFromMinimapPointer = useCallback(
+    (clientX, clientY) => {
+      if (!minimapSvgRef.current || !minimapLayout || !onSetPan) return;
+      const rect = minimapSvgRef.current.getBoundingClientRect();
+      const miniX = clientX - rect.left;
+      const miniY = clientY - rect.top;
+      const nextPan = minimapPointToPan({
+        miniX,
+        miniY,
+        layout: minimapLayout,
+        zoom,
+        viewportWidth: viewportSize.width,
+        viewportHeight: viewportSize.height,
+      });
+      onSetPan(nextPan);
+    },
+    [minimapLayout, onSetPan, zoom, viewportSize]
+  );
+
+  useEffect(() => {
+    if (!isDraggingMinimap) return;
+    const onMove = (e) => panFromMinimapPointer(e.clientX, e.clientY);
+    const onUp = () => setIsDraggingMinimap(false);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+  }, [isDraggingMinimap, panFromMinimapPointer]);
 
   // Handle canvas mouse down
   const handleCanvasMouseDown = (e) => {
@@ -260,9 +398,8 @@ export default function WorkflowCanvas({
 
   return (
     <div
-      ref={containerRef}
+      ref={setContainerRefs}
       onMouseDown={handleCanvasMouseDown}
-      onWheel={handleWheel}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
       className="relative w-full h-full overflow-hidden bg-surface-container-low/40 select-none cursor-grab active:cursor-grabbing text-outline-variant/30"
@@ -360,6 +497,8 @@ export default function WorkflowCanvas({
               connecting={connecting}
               onSelect={onSelectNode}
               onRemove={onRemoveNode}
+              onDuplicate={onDuplicateNode}
+              onToggleDisabled={onToggleNodeDisabled}
               onDragStart={handleNodeDragStart}
               onStartConnect={onStartConnect}
               onCompleteConnect={onCompleteConnect}
@@ -426,7 +565,38 @@ export default function WorkflowCanvas({
       )}
 
       {/* Floating Canvas Controls (Bottom Left) */}
-      <div className="absolute bottom-5 left-5 flex items-center gap-1 p-1.5 rounded-xl bg-surface-container-lowest/90 border border-outline-variant/30 backdrop-blur-md shadow-md z-20 text-on-surface">
+      <div
+        onMouseDown={(e) => e.stopPropagation()}
+        className="absolute bottom-5 left-5 flex items-center gap-1 p-1.5 rounded-xl bg-surface-container-lowest/90 border border-outline-variant/30 backdrop-blur-md shadow-md z-20 text-on-surface"
+      >
+        {onUndo && (
+          <button
+            type="button"
+            onClick={onUndo}
+            disabled={!canUndo || isRunning}
+            data-tooltip={t('workflow.canvas.undo')}
+            aria-label={t('workflow.canvas.undo')}
+            className="cursor-pointer w-7 h-7 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors disabled:opacity-35 disabled:cursor-not-allowed"
+          >
+            <span className="material-symbols-outlined text-sm">undo</span>
+          </button>
+        )}
+
+        {onRedo && (
+          <button
+            type="button"
+            onClick={onRedo}
+            disabled={!canRedo || isRunning}
+            data-tooltip={t('workflow.canvas.redo')}
+            aria-label={t('workflow.canvas.redo')}
+            className="cursor-pointer w-7 h-7 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors disabled:opacity-35 disabled:cursor-not-allowed"
+          >
+            <span className="material-symbols-outlined text-sm">redo</span>
+          </button>
+        )}
+
+        {(onUndo || onRedo) && <div className="w-px h-4 bg-outline-variant/30 my-auto mx-0.5" />}
+
         <button
           type="button"
           onClick={zoomOut}
@@ -455,10 +625,16 @@ export default function WorkflowCanvas({
 
         <button
           type="button"
-          onClick={resetView}
-          data-tooltip={t('workflow.canvas.resetZoom')}
-          aria-label={t('workflow.canvas.resetZoom')}
-          className="cursor-pointer w-7 h-7 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors"
+          onClick={() => {
+            if (onFitView) {
+              onFitView(containerRef.current?.clientWidth, containerRef.current?.clientHeight);
+            } else {
+              resetView();
+            }
+          }}
+          data-tooltip={t('workflow.canvas.fitView')}
+          aria-label={t('workflow.canvas.fitView')}
+          className="cursor-pointer w-7 h-7 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-primary hover:bg-primary/10 transition-colors"
         >
           <span className="material-symbols-outlined text-sm">center_focus_strong</span>
         </button>
@@ -487,7 +663,126 @@ export default function WorkflowCanvas({
             <span className="material-symbols-outlined text-sm">hub</span>
           </button>
         )}
+
+        <div className="w-px h-4 bg-outline-variant/30 my-auto mx-0.5" />
+
+        <button
+          type="button"
+          onClick={handleToggleMinimap}
+          data-tooltip={showMinimap ? t('workflow.canvas.hideMinimap') : t('workflow.canvas.showMinimap')}
+          aria-label={showMinimap ? t('workflow.canvas.hideMinimap') : t('workflow.canvas.showMinimap')}
+          className={`cursor-pointer w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
+            showMinimap
+              ? 'text-primary bg-primary/15 hover:bg-primary/25'
+              : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container'
+          }`}
+        >
+          <span className="material-symbols-outlined text-sm">map</span>
+        </button>
       </div>
+
+      {/* Interactive SVG Minimap (Bottom Right) */}
+      {showMinimap && minimapLayout && (() => {
+        const rectByNodeId = new Map(minimapLayout.nodeRects.map((r) => [r.id, r]));
+        return (
+          <div
+            data-workflow-minimap="true"
+            onMouseDown={(e) => e.stopPropagation()}
+            onWheel={(e) => e.stopPropagation()}
+            data-tooltip={t('workflow.canvas.minimapTitle')}
+            className="absolute bottom-5 right-5 z-20 rounded-xl bg-surface-container-lowest/90 border border-outline-variant/30 backdrop-blur-md shadow-lg overflow-hidden select-none"
+          >
+            <svg
+              ref={minimapSvgRef}
+              width={MINIMAP_WIDTH}
+              height={MINIMAP_HEIGHT}
+              onPointerDown={(e) => {
+                if (e.button !== 0) return;
+                e.stopPropagation();
+                setIsDraggingMinimap(true);
+                panFromMinimapPointer(e.clientX, e.clientY);
+              }}
+              className="block cursor-crosshair"
+            >
+              {/* Connecting Edge Lines */}
+              {edges.map((edge) => {
+                const src = rectByNodeId.get(edge.source);
+                const tgt = rectByNodeId.get(edge.target);
+                if (!src || !tgt) return null;
+                return (
+                  <line
+                    key={edge.id}
+                    x1={src.x + src.width}
+                    y1={src.y + src.height / 2}
+                    x2={tgt.x}
+                    y2={tgt.y + tgt.height / 2}
+                    stroke="rgba(148, 163, 184, 0.45)"
+                    strokeWidth={0.8}
+                  />
+                );
+              })}
+
+              {/* Node Rectangles */}
+              {minimapLayout.nodeRects.map((item) => {
+                const st = nodeStates[item.id]?.status || 'idle';
+                const hasErr = Boolean(nodeErrors[item.id]);
+                const isNodeDisabled = Boolean(item.node?.data?.disabled);
+                const isSel = selectedNodeId === item.id;
+
+                let fill = 'rgba(148, 163, 184, 0.35)';
+                let stroke = 'rgba(148, 163, 184, 0.65)';
+                if (isNodeDisabled) {
+                  fill = 'rgba(148, 163, 184, 0.16)';
+                  stroke = 'rgba(148, 163, 184, 0.45)';
+                } else if (st === 'running') {
+                  fill = 'rgba(34, 211, 238, 0.45)';
+                  stroke = '#22d3ee';
+                } else if (st === 'completed') {
+                  fill = 'rgba(16, 185, 129, 0.4)';
+                  stroke = '#10b981';
+                } else if (st === 'failed') {
+                  fill = 'rgba(239, 68, 68, 0.45)';
+                  stroke = '#ef4444';
+                } else if (hasErr) {
+                  fill = 'rgba(245, 158, 11, 0.4)';
+                  stroke = '#f59e0b';
+                } else if (isSel) {
+                  fill = 'rgba(139, 92, 246, 0.45)';
+                  stroke = '#8b5cf6';
+                }
+
+                return (
+                  <rect
+                    key={item.id}
+                    x={item.x}
+                    y={item.y}
+                    width={item.width}
+                    height={item.height}
+                    rx={2}
+                    fill={fill}
+                    stroke={isSel ? '#a855f7' : stroke}
+                    strokeWidth={isSel ? 1.4 : 0.9}
+                    strokeDasharray={isNodeDisabled ? '2 2' : undefined}
+                  />
+                );
+              })}
+
+              {/* Current Viewport Indicator */}
+              <rect
+                x={minimapLayout.viewportRect.x}
+                y={minimapLayout.viewportRect.y}
+                width={minimapLayout.viewportRect.width}
+                height={minimapLayout.viewportRect.height}
+                rx={2}
+                fill="rgba(168, 85, 247, 0.08)"
+                stroke="rgba(168, 85, 247, 0.65)"
+                strokeWidth={1}
+                className="pointer-events-none"
+              />
+            </svg>
+          </div>
+        );
+      })()}
     </div>
   );
 }

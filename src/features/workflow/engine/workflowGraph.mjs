@@ -360,12 +360,33 @@ export function getTopologicallyOrderedNodes(nodes = [], edges = []) {
  * - nodeErrors: Record<nodeId, string> (specific error per node)
  * - blockingReason: string | null (user-facing message for the Run button)
  */
+function hasActiveUpstreamSource(nodeId, incomingEdges, nodeMap, visited = new Set()) {
+  if (visited.has(nodeId)) return false;
+  visited.add(nodeId);
+  const inEdges = incomingEdges.get(nodeId) || [];
+  for (const edge of inEdges) {
+    const srcNode = nodeMap.get(edge.source);
+    if (!srcNode) continue;
+    if (!srcNode.data?.disabled) return true;
+    if (hasActiveUpstreamSource(srcNode.id, incomingEdges, nodeMap, visited)) return true;
+  }
+  return false;
+}
+
 export function validateWorkflowPreflight(nodes = [], edges = [], options = {}) {
   if (!Array.isArray(nodes) || nodes.length === 0) {
     return {
       isValid: false,
       nodeErrors: {},
       blockingReason: 'Bảng vẽ chưa có khối nào',
+    };
+  }
+
+  if (nodes.every((n) => n.data?.disabled)) {
+    return {
+      isValid: false,
+      nodeErrors: {},
+      blockingReason: 'Tất cả các khối đang ở trạng thái Bỏ qua',
     };
   }
 
@@ -394,6 +415,7 @@ export function validateWorkflowPreflight(nodes = [], edges = [], options = {}) 
 
   // 2. Validate each node's required configuration and required incoming connections
   for (const node of nodes) {
+    if (node.data?.disabled) continue;
     const def = NODE_DEFINITIONS[node.type] || {};
     const inEdges = incomingEdges.get(node.id) || [];
 
@@ -409,10 +431,12 @@ export function validateWorkflowPreflight(nodes = [], edges = [], options = {}) 
         nodeErrors[node.id] = 'Chưa chọn thư mục truyện nguồn';
       }
     } else {
-      // Downstream processing/export nodes: must have required incoming connections
+      // Downstream processing/export nodes: must have required incoming connections & active source
       const requiredInputs = (def.inputs || []).filter((p) => p.type !== 'signal');
       if (requiredInputs.length > 0 && inEdges.length === 0) {
         nodeErrors[node.id] = 'Chưa được kết nối dây đầu vào';
+      } else if (requiredInputs.length > 0 && !hasActiveUpstreamSource(node.id, incomingEdges, nodeMap)) {
+        nodeErrors[node.id] = 'Khối nguồn đầu vào đang bị Bỏ qua';
       } else if (node.type === 'send_to_kindle' && options?.isKindleLoggedIn === false) {
         nodeErrors[node.id] = 'Chưa kết nối tài khoản Amazon Send to Kindle';
       } else if (node.type === 'upload_google_drive') {

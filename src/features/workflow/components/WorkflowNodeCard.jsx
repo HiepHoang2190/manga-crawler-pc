@@ -2,6 +2,7 @@ import React, { useRef } from 'react';
 import { useI18n } from '../../../context/I18nContext';
 import { NODE_DEFINITIONS } from '../engine/nodeDefinitions';
 import { isPortCompatible, getNodeOutputs } from '../engine/workflowGraph';
+import { formatDurationMs } from '../engine/workflowEditingUtils';
 import WorkflowPort from './WorkflowPort';
 
 function getFolderDisplayName(fullPath) {
@@ -10,6 +11,34 @@ function getFolderDisplayName(fullPath) {
   return parts.length ? parts[parts.length - 1] : fullPath;
 }
 
+const EXPORT_PREVIEW_META = {
+  export_cbz: { icon: 'archive', label: 'CBZ' },
+  export_pdf: { icon: 'picture_as_pdf', label: 'PDF' },
+  export_epub: { icon: 'menu_book', label: 'EPUB' },
+  export_mobi: { icon: 'tablet_android', label: 'MOBI' },
+};
+
+const KNOWN_PREVIEW_TYPES = new Set([
+  'manga_crawler',
+  'manual_trigger',
+  'folder_trigger',
+  'chapter_selector',
+  'downloader',
+  'export_cbz',
+  'export_pdf',
+  'export_epub',
+  'export_mobi',
+  'upload_google_drive',
+  'duplicate_cleaner',
+  'send_to_kindle',
+  'image_upscale',
+  'image_compress',
+  'translate',
+  'convert_book',
+  'split_double_page',
+  'rename_folder',
+]);
+
 export default function WorkflowNodeCard({
   node,
   isSelected = false,
@@ -17,6 +46,8 @@ export default function WorkflowNodeCard({
   edges = [],
   onSelect,
   onRemove,
+  onDuplicate,
+  onToggleDisabled,
   onDragStart,
   onStartConnect,
   onCompleteConnect,
@@ -37,6 +68,8 @@ export default function WorkflowNodeCard({
   };
 
   const status = nodeState?.status || 'idle';
+  const durationLabel = formatDurationMs(nodeState?.durationMs);
+  const isDisabled = Boolean(node.data?.disabled);
   const cardRef = useRef(null);
 
   // Check relationship to active connecting wire
@@ -58,7 +91,7 @@ export default function WorkflowNodeCard({
   const isDimmedWhenConnecting = Boolean(connecting && !isOriginNode && !hasCompatiblePort);
 
   const handleMouseDown = (e) => {
-    // Ignore click on delete button or retry
+    // Ignore click on delete/action buttons or ports
     if (e.target.closest('button') || e.target.closest('[data-port-id]')) return;
     if (e.button !== 0) return;
     e.stopPropagation();
@@ -77,10 +110,14 @@ export default function WorkflowNodeCard({
   // Status visual configurations
   let statusBorder = 'border-outline-variant/30 hover:border-outline-variant/50';
   let statusGlow = '';
-  if (isSelected) {
+  if (isDisabled) {
+    statusBorder = isSelected
+      ? 'border-dashed border-primary ring-2 ring-primary/30'
+      : 'border-dashed border-outline-variant/40';
+  } else if (isSelected) {
     statusBorder = 'border-primary ring-2 ring-primary/30';
   }
-  if (validationError && status === 'idle') {
+  if (validationError && status === 'idle' && !isDisabled) {
     statusBorder = isSelected
       ? 'border-amber-500 ring-2 ring-amber-500/60'
       : 'border-amber-500/80 ring-2 ring-amber-500/30';
@@ -99,9 +136,12 @@ export default function WorkflowNodeCard({
     statusBorder = 'border-emerald-500/80';
   } else if (status === 'failed') {
     statusBorder = 'border-error ring-2 ring-error/30';
+  } else if (status === 'skipped') {
+    statusBorder = 'border-dashed border-outline-variant/50';
   }
 
   const nodeTitle = t(`workflow.nodeDef.${node.type}.title`, def.title);
+  const exportMeta = EXPORT_PREVIEW_META[node.type];
 
   return (
     <div
@@ -116,28 +156,33 @@ export default function WorkflowNodeCard({
       }}
       onMouseDown={handleMouseDown}
       className={`w-64 rounded-2xl bg-surface-container-lowest/95 backdrop-blur-md border ${statusBorder} ${statusGlow} shadow-md transition-all select-none group cursor-grab active:cursor-grabbing z-10 text-on-surface ${
-        isDimmedWhenConnecting ? 'opacity-35' : ''
+        isDimmedWhenConnecting ? 'opacity-35' : isDisabled ? 'opacity-65 saturate-50' : ''
       }`}
     >
       {/* Node Header */}
-      <div className={`px-3.5 py-2.5 rounded-t-2xl bg-gradient-to-r ${def.color} flex items-center justify-between border-b border-outline-variant/20`}>
-        <div className="flex items-center gap-2 overflow-hidden">
+      <div className={`px-3.5 py-2.5 rounded-t-2xl bg-gradient-to-r ${def.color} flex items-center justify-between gap-1.5 border-b border-outline-variant/20`}>
+        <div className="flex items-center gap-2 overflow-hidden min-w-0">
           <span className="material-symbols-outlined text-lg text-on-surface shrink-0">
             {def.icon}
           </span>
-          <span className="text-xs font-semibold text-on-surface truncate">
+          <span className={`text-xs font-semibold text-on-surface truncate ${isDisabled ? 'line-through opacity-75' : ''}`}>
             {nodeTitle}
           </span>
         </div>
 
-        <div className="flex items-center gap-1.5 shrink-0">
-          {validationError && status === 'idle' && (
+        <div className="flex items-center gap-1 shrink-0">
+          {isDisabled && (
+            <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-surface-container-highest/90 text-on-surface-variant border border-outline-variant/40 shrink-0">
+              {t('workflow.node.bypassedBadge')}
+            </span>
+          )}
+          {validationError && status === 'idle' && !isDisabled && (
             <span
               className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center gap-0.5 shrink-0"
               data-tooltip={validationError}
             >
               <span className="material-symbols-outlined text-[11px]">warning</span>
-              <span className="truncate max-w-[85px]">{validationError}</span>
+              <span className="truncate max-w-[70px]">{validationError}</span>
             </span>
           )}
           {hasCompatiblePort && (
@@ -149,6 +194,44 @@ export default function WorkflowNodeCard({
             <span className="px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-primary/20 text-primary border border-primary/40">
               {t('workflow.node.connectingOrigin')}
             </span>
+          )}
+
+          {onToggleDisabled && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleDisabled(node.id);
+              }}
+              data-tooltip={isDisabled ? t('workflow.node.enableTooltip') : t('workflow.node.bypassTooltip')}
+              aria-label={isDisabled ? t('workflow.node.enableTooltip') : t('workflow.node.bypassTooltip')}
+              className={`cursor-pointer w-5 h-5 rounded-md flex items-center justify-center transition-colors ${
+                isDisabled
+                  ? 'text-amber-500 bg-amber-500/15 hover:bg-amber-500/25'
+                  : `text-on-surface-variant/60 hover:text-amber-500 hover:bg-amber-500/10 ${
+                      isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus:opacity-100'
+                    }`
+              }`}
+            >
+              <span className="material-symbols-outlined text-xs">block</span>
+            </button>
+          )}
+
+          {onDuplicate && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDuplicate(node.id);
+              }}
+              data-tooltip={t('workflow.node.duplicateNode')}
+              aria-label={t('workflow.node.duplicateNode')}
+              className={`cursor-pointer w-5 h-5 rounded-md flex items-center justify-center text-on-surface-variant/60 hover:text-primary hover:bg-primary/15 transition-all ${
+                isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus:opacity-100'
+              }`}
+            >
+              <span className="material-symbols-outlined text-xs">content_copy</span>
+            </button>
           )}
 
           {onRemove && (
@@ -223,7 +306,7 @@ export default function WorkflowNodeCard({
           </div>
         </div>
 
-        {/* Node preview summary (URL, strategy, folder, etc.) */}
+        {/* Node preview summary (URL, strategy, folder, format, AI settings, etc.) */}
         {node.type === 'manga_crawler' && (
           <div className="space-y-1">
             <div className="text-[10px] text-on-surface-variant truncate bg-surface-container px-2 py-1 rounded-md border border-outline-variant/20 flex items-center gap-1">
@@ -242,7 +325,7 @@ export default function WorkflowNodeCard({
                   : node.data?.strategy === 'range'
                   ? t('workflow.node.rangeChapters', { range: node.data?.rangeValue || t('workflow.node.allChapters') })
                   : node.data?.strategy === 'custom'
-                  ? `Đã chọn ${node.data?.selectedChapterIds?.length || 0} chap`
+                  ? `${node.data?.selectedChapterIds?.length || 0} chap`
                   : t('workflow.node.allChapters')}
               </span>
             </div>
@@ -301,16 +384,76 @@ export default function WorkflowNodeCard({
           </div>
         )}
 
-        {(node.type === 'export_cbz' || node.type === 'export_pdf') && (
+        {exportMeta && (
           <div
             className="text-[10px] text-on-surface-variant truncate bg-surface-container px-2 py-1 rounded-md border border-outline-variant/20 flex items-center gap-1"
             data-tooltip={node.data?.outputDir || t('workflow.node.sameAsMangaDir')}
           >
             <span className="material-symbols-outlined text-xs shrink-0 text-amber-500">
-              {node.type === 'export_cbz' ? 'archive' : 'picture_as_pdf'}
+              {exportMeta.icon}
             </span>
             <span className="truncate">
-              {node.data?.outputDir ? getFolderDisplayName(node.data.outputDir) : t('workflow.node.exportFormat', { ext: node.type === 'export_cbz' ? 'cbz' : 'pdf' })}
+              {node.data?.outputDir
+                ? getFolderDisplayName(node.data.outputDir)
+                : t('workflow.node.exportFormat', { format: exportMeta.label })}
+            </span>
+          </div>
+        )}
+
+        {node.type === 'image_upscale' && (
+          <div className="text-[10px] text-on-surface-variant truncate bg-surface-container px-2 py-1 rounded-md border border-outline-variant/20 flex items-center gap-1 font-mono">
+            <span className="material-symbols-outlined text-xs shrink-0 text-violet-400">auto_fix_high</span>
+            <span className="truncate">
+              {(node.data?.engine || 'mangajanai')} • {node.data?.scale || 2}x
+            </span>
+          </div>
+        )}
+
+        {node.type === 'image_compress' && (
+          <div className="text-[10px] text-on-surface-variant truncate bg-surface-container px-2 py-1 rounded-md border border-outline-variant/20 flex items-center gap-1 font-mono">
+            <span className="material-symbols-outlined text-xs shrink-0 text-sky-400">tune</span>
+            <span className="truncate">
+              {String(node.data?.format || 'original').toUpperCase()} • Q{node.data?.quality ?? 85}
+            </span>
+          </div>
+        )}
+
+        {node.type === 'translate' && (
+          <div className="text-[10px] text-on-surface-variant truncate bg-surface-container px-2 py-1 rounded-md border border-outline-variant/20 flex items-center gap-1 font-mono">
+            <span className="material-symbols-outlined text-xs shrink-0 text-pink-400">translate</span>
+            <span className="truncate">
+              {String(node.data?.sourceLang || 'ja').toUpperCase()} ➔ {String(node.data?.targetLang || 'vi').toUpperCase()}
+            </span>
+          </div>
+        )}
+
+        {node.type === 'convert_book' && (
+          <div className="text-[10px] text-on-surface-variant truncate bg-surface-container px-2 py-1 rounded-md border border-outline-variant/20 flex items-center gap-1 font-mono">
+            <span className="material-symbols-outlined text-xs shrink-0 text-teal-400">sync_alt</span>
+            <span className="truncate">
+              ➔ {String(node.data?.targetFormat || 'epub').toUpperCase()}
+            </span>
+          </div>
+        )}
+
+        {node.type === 'split_double_page' && (
+          <div className="text-[10px] text-on-surface-variant truncate bg-surface-container px-2 py-1 rounded-md border border-outline-variant/20 flex items-center gap-1 font-mono">
+            <span className="material-symbols-outlined text-xs shrink-0 text-orange-400">vertical_split</span>
+            <span className="truncate">
+              {String(node.data?.readingDirection || 'rtl').toUpperCase()}
+            </span>
+          </div>
+        )}
+
+        {node.type === 'rename_folder' && (
+          <div className="text-[10px] text-on-surface-variant truncate bg-surface-container px-2 py-1 rounded-md border border-outline-variant/20 flex items-center gap-1 font-mono">
+            <span className="material-symbols-outlined text-xs shrink-0 text-emerald-400">drive_file_rename_outline</span>
+            <span className="truncate">
+              {node.data?.mode === 'customPattern' && node.data?.pattern
+                ? node.data.pattern
+                : node.data?.mode === 'findReplace' && node.data?.find
+                ? `${node.data.find} ➔ ${node.data.replace || ''}`
+                : 'autoNormalize'}
             </span>
           </div>
         )}
@@ -318,13 +461,21 @@ export default function WorkflowNodeCard({
         {node.type === 'upload_google_drive' && (
           <div
             className="text-[10px] text-on-surface-variant truncate bg-surface-container px-2 py-1 rounded-md border border-outline-variant/20 flex items-center gap-1"
-            data-tooltip={node.data?.uploadMode === 'api_token' ? 'Google Drive REST API' : (node.data?.syncFolderPath || 'Google Drive Desktop')}
+            data-tooltip={
+              node.data?.uploadMode === 'api_token'
+                ? 'Google Drive REST API'
+                : node.data?.syncFolderPath || t('workflow.node.gdriveDesktop')
+            }
           >
             <span className="material-symbols-outlined text-xs shrink-0 text-blue-400">cloud_upload</span>
             <span className="truncate">
               {node.data?.uploadMode === 'api_token'
-                ? 'Google Drive API'
-                : (node.data?.syncFolderPath ? getFolderDisplayName(node.data.syncFolderPath) : 'Drive Desktop Sync')}
+                ? node.data?.accessToken
+                  ? 'Google Drive API'
+                  : t('workflow.node.gdriveNoToken')
+                : node.data?.syncFolderPath
+                ? getFolderDisplayName(node.data.syncFolderPath)
+                : t('workflow.node.gdriveDesktop')}
             </span>
           </div>
         )}
@@ -349,43 +500,16 @@ export default function WorkflowNodeCard({
           </div>
         )}
 
-        {node.type === 'upload_google_drive' && (
-          <div
-            className="text-[10px] text-on-surface-variant truncate bg-surface-container px-2 py-1 rounded-md border border-outline-variant/20 flex items-center gap-1"
-            data-tooltip={
-              node.data?.uploadMode === 'api_token'
-                ? 'Google Drive API'
-                : node.data?.syncFolderPath || 'Google Drive for Desktop'
-            }
-          >
-            <span className="material-symbols-outlined text-xs shrink-0 text-blue-400">cloud_upload</span>
-            <span className="truncate">
-              {node.data?.uploadMode === 'api_token'
-                ? (node.data?.accessToken ? 'Drive API' : 'Chưa có Token')
-                : (node.data?.syncFolderPath ? getFolderDisplayName(node.data.syncFolderPath) : 'Google Drive Máy Tính')}
-            </span>
+        {!KNOWN_PREVIEW_TYPES.has(node.type) && node.data?.defaultUrl && (
+          <div className="text-[10px] text-on-surface-variant truncate bg-surface-container px-2 py-1 rounded-md border border-outline-variant/20">
+            {node.data.defaultUrl}
           </div>
         )}
-
-        {node.type !== 'manual_trigger' &&
-          node.type !== 'folder_trigger' &&
-          node.type !== 'chapter_selector' &&
-          node.type !== 'downloader' &&
-          node.type !== 'export_cbz' &&
-          node.type !== 'export_pdf' &&
-          node.type !== 'upload_google_drive' &&
-          node.type !== 'duplicate_cleaner' &&
-          node.type !== 'send_to_kindle' &&
-          node.data?.defaultUrl && (
-            <div className="text-[10px] text-on-surface-variant truncate bg-surface-container px-2 py-1 rounded-md border border-outline-variant/20">
-              {node.data.defaultUrl}
-            </div>
-          )}
       </div>
 
-      {/* Node Status Footer (if running, completed, or failed) */}
+      {/* Node Status Footer (if running, completed, failed, or skipped) */}
       {status !== 'idle' && (
-        <div className="px-3 py-1.5 rounded-b-2xl border-t border-outline-variant/20 bg-surface-container-low/60 flex items-center justify-between text-[11px] text-on-surface">
+        <div className="px-3 py-1.5 rounded-b-2xl border-t border-outline-variant/20 bg-surface-container-low/60 flex items-center justify-between text-[11px] text-on-surface gap-2">
           {status === 'running' && (
             <div
               className="flex items-center gap-1.5 text-cyan-400 font-medium truncate min-w-0"
@@ -397,31 +521,52 @@ export default function WorkflowNodeCard({
           )}
 
           {status === 'completed' && (
-            <div className="flex items-center gap-1.5 text-emerald-500 font-medium">
-              <span className="material-symbols-outlined text-sm">check_circle</span>
-              <span>{t('workflow.node.statusCompleted')}</span>
+            <>
+              <div className="flex items-center gap-1.5 text-emerald-500 font-medium">
+                <span className="material-symbols-outlined text-sm">check_circle</span>
+                <span>{t('workflow.node.statusCompleted')}</span>
+              </div>
+              {durationLabel && (
+                <span className="text-[10px] font-mono text-on-surface-variant/80 shrink-0">
+                  {durationLabel}
+                </span>
+              )}
+            </>
+          )}
+
+          {status === 'skipped' && (
+            <div className="flex items-center gap-1.5 text-on-surface-variant font-medium">
+              <span className="material-symbols-outlined text-sm">skip_next</span>
+              <span>{t('workflow.node.statusSkipped')}</span>
             </div>
           )}
 
           {status === 'failed' && (
-            <div className="flex items-center justify-between w-full">
+            <div className="flex items-center justify-between w-full gap-1.5">
               <div
-                className="flex items-center gap-1 text-error truncate max-w-[130px]"
+                className="flex items-center gap-1 text-error truncate max-w-[120px]"
                 data-tooltip={nodeState?.error || t('workflow.node.statusFailed')}
               >
                 <span className="material-symbols-outlined text-sm">error</span>
                 <span className="truncate text-[10px]">{nodeState?.error || t('workflow.node.statusFailed')}</span>
               </div>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRetryNode && onRetryNode(node.id);
-                }}
-                className="cursor-pointer px-2 py-0.5 rounded bg-error/15 hover:bg-error/25 text-error text-[10px] font-medium transition-colors"
-              >
-                {t('workflow.node.retry')}
-              </button>
+              <div className="flex items-center gap-1 shrink-0">
+                {durationLabel && (
+                  <span className="text-[10px] font-mono text-on-surface-variant/80">
+                    {durationLabel}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRetryNode && onRetryNode(node.id);
+                  }}
+                  className="cursor-pointer px-2 py-0.5 rounded bg-error/15 hover:bg-error/25 text-error text-[10px] font-medium transition-colors"
+                >
+                  {t('workflow.node.retry')}
+                </button>
+              </div>
             </div>
           )}
         </div>

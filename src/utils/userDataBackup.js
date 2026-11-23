@@ -57,6 +57,7 @@ export const BACKUP_SECTIONS = {
       'format_converter_col1_width_v1',
       'workflow_studio_left_sidebar_width_v1',
       'workflow_studio_right_sidebar_width_v1',
+      'workflow_canvas_minimap_v1',
       'tools_studio_left_width_v1',
       'tools_studio_right_width_v1',
       'tools_studio_bottom_height_v1',

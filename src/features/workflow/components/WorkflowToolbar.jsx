@@ -8,6 +8,8 @@ export default function WorkflowToolbar({
   isRunning,
   canRun = true,
   blockingReason = null,
+  errorCount = 0,
+  onFocusFirstError,
   onRun,
   onStop,
   onOpenWorkflowManager,
@@ -148,8 +150,19 @@ export default function WorkflowToolbar({
         </button>
       </div>
 
-      {/* Center: Primary Run / Stop Controls */}
+      {/* Center: Primary Run / Stop Controls & Preflight Issues Pill */}
       <div className="flex items-center gap-2">
+        {!isRunning && nodeCount > 0 && !canRun && errorCount > 0 && onFocusFirstError && (
+          <button
+            type="button"
+            onClick={onFocusFirstError}
+            data-tooltip={blockingReason || undefined}
+            className="cursor-pointer h-8 px-2.5 rounded-full bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/35 text-amber-600 dark:text-amber-400 text-xs font-semibold flex items-center gap-1 transition-colors shrink-0"
+          >
+            <span className="material-symbols-outlined text-[15px]">warning</span>
+            <span>{t('workflow.toolbar.issuesCount', { count: errorCount })}</span>
+          </button>
+        )}
         {!isRunning ? (
           <button
             type="button"

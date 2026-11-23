@@ -507,6 +507,60 @@ describe('workflowGraph engine', () => {
       expect(result.isValid).toBe(false);
       expect(result.blockingReason).toMatch(/chu trình|cycle/i);
     });
+
+    test('skips validation for disabled (bypassed) nodes', () => {
+      const nodes = [
+        { id: 'mc_1', type: 'manga_crawler', data: { defaultUrl: 'https://example.com/manga' } },
+        { id: 'up_1', type: 'image_upscale', data: { disabled: true } },
+        { id: 'gd_1', type: 'upload_google_drive', data: { uploadMode: 'api_token', accessToken: '', disabled: true } },
+      ];
+      // up_1 and gd_1 have disabled: true and missing connections/tokens, yet shouldn't fail preflight
+      const result = validateWorkflowPreflight(nodes, []);
+      expect(result.isValid).toBe(true);
+      expect(result.nodeErrors).toEqual({});
+      expect(result.blockingReason).toBeNull();
+    });
+
+    test('blocks workflow if all nodes are disabled', () => {
+      const nodes = [
+        { id: 'mc_1', type: 'manga_crawler', data: { defaultUrl: 'https://example.com/manga', disabled: true } },
+        { id: 'exp_1', type: 'export_cbz', data: { disabled: true } },
+      ];
+      const edges = [
+        { source: 'mc_1', sourceHandle: 'images_dir', target: 'exp_1', targetHandle: 'images_dir' },
+      ];
+      const result = validateWorkflowPreflight(nodes, edges);
+      expect(result.isValid).toBe(false);
+      expect(result.blockingReason).toBe('Tất cả các khối đang ở trạng thái Bỏ qua');
+    });
+
+    test('flags enabled downstream node when its entire upstream source chain is disabled', () => {
+      const nodes = [
+        { id: 'ft_1', type: 'folder_trigger', data: { folderPath: '/tmp/manga', disabled: true } },
+        { id: 'exp_1', type: 'export_cbz', data: {} },
+      ];
+      const edges = [
+        { source: 'ft_1', sourceHandle: 'images_dir', target: 'exp_1', targetHandle: 'images_dir' },
+      ];
+      const result = validateWorkflowPreflight(nodes, edges);
+      expect(result.isValid).toBe(false);
+      expect(result.nodeErrors['exp_1']).toBe('Khối nguồn đầu vào đang bị Bỏ qua');
+    });
+
+    test('allows enabled downstream node when an active source reaches it through a bypassed middle node', () => {
+      const nodes = [
+        { id: 'ft_1', type: 'folder_trigger', data: { folderPath: '/tmp/manga' } },
+        { id: 'cln_1', type: 'duplicate_cleaner', data: { disabled: true } },
+        { id: 'exp_1', type: 'export_cbz', data: {} },
+      ];
+      const edges = [
+        { source: 'ft_1', sourceHandle: 'images_dir', target: 'cln_1', targetHandle: 'images_dir' },
+        { source: 'cln_1', sourceHandle: 'images_dir', target: 'exp_1', targetHandle: 'images_dir' },
+      ];
+      const result = validateWorkflowPreflight(nodes, edges);
+      expect(result.isValid).toBe(true);
+      expect(result.nodeErrors).toEqual({});
+    });
   });
 
   describe('getDownloadsFolder', () => {
