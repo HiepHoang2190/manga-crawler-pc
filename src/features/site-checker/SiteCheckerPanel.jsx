@@ -21,8 +21,6 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
 
   // StudioLayout integration
   const {
-    showLeftSidebar,
-    toggleLeftSidebar,
     leftWidth,
     handleLeftResizeStart,
   } = useStudioLayout({
@@ -553,9 +551,6 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
     <StudioLayout>
       {/* Top Header Bar */}
       <StudioLayout.Toolbar
-        showLeftSidebar={showLeftSidebar}
-        onToggleLeftSidebar={toggleLeftSidebar}
-        leftSidebarTooltip={showLeftSidebar ? t('sidebar.hidePanel') : t('sidebar.showPanel')}
         leftSlot={
           <div className="flex items-center gap-1.5 rounded-xl bg-surface-container-lowest p-1 border border-outline-variant/20 overflow-x-auto no-scrollbar">
             {filterOptions.map((filter) => {
@@ -597,7 +592,7 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
       <StudioLayout.Body>
         {/* Left Sidebar: Overview, Search, KPIs & Directory */}
         <StudioLayout.LeftSidebar
-          open={showLeftSidebar}
+          open={true}
           width={leftWidth}
           onResizeStart={handleLeftResizeStart}
         >

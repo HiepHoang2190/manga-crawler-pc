@@ -110,10 +110,10 @@ export default function WorkflowToolbar({
           <button
             type="button"
             onClick={onToggleLeftSidebar}
-            className={`cursor-pointer w-8 h-8 rounded-xl flex items-center justify-center transition-colors shrink-0 ${
+            className={`cursor-pointer w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 ${
               showLeftSidebar
-                ? 'text-primary bg-primary/10 hover:bg-primary/20'
-                : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container'
+                ? 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
+                : 'text-primary bg-primary/10 hover:bg-primary/15'
             }`}
             data-tooltip={paletteTooltip}
             aria-label={paletteTooltip}

@@ -208,4 +208,45 @@ describe('FollowedMangaPanel structure and standards', () => {
     expect(content).toContain('followedManga.stats.tip');
     expect(content).toContain('touch_app');
   });
+
+  test('does not render outer progress banner between Toolbar and Body, and unifies FollowedMangaSkeleton + progress bar during check-all', () => {
+    const content = fs.readFileSync(panelPath, 'utf8');
+    const betweenToolbarAndBody = content.match(
+      /<StudioLayout\.Toolbar[\s\S]*?\/>\s*([\s\S]*?)<StudioLayout\.Body>/,
+    );
+    expect(betweenToolbarAndBody).not.toBeNull();
+    expect(betweenToolbarAndBody[1]).not.toContain('isCheckingAll');
+    expect(betweenToolbarAndBody[1]).not.toContain('checkingProgress');
+
+    expect(content).toContain('const FollowedMangaSkeleton = React.memo(');
+    expect(content).toContain('data-testid="followed-manga-skeleton"');
+    expect(content).toContain('data-testid="followed-manga-check-progress"');
+    expect(content).toContain('role="status"');
+    expect(content).toContain('w-32 sm:w-44 h-1.5');
+    expect(content).toContain('checkingProgressPercent');
+    expect(content).toContain('animate-pulse');
+    expect(content).toContain('aspect-[3/4.2]');
+    expect(content).toContain('h-14 w-10 sm:h-16 sm:w-11');
+    expect(content).toMatch(/\{isCheckingAll\s*\?\s*[\s\S]{0,120}<FollowedMangaSkeleton/);
+    expect(content).toContain('!isCheckingAll && favorites.length > 0 && sortedFavorites.length > 0');
+  });
+
+  test('toolbar Stop Check button matches BulkScanPanel style and uses i18n stopCheck / stopping keys', () => {
+    const content = fs.readFileSync(panelPath, 'utf8');
+    const vi = fs.readFileSync(path.resolve(process.cwd(), 'src/i18n/locales/vi.js'), 'utf8');
+    const en = fs.readFileSync(path.resolve(process.cwd(), 'src/i18n/locales/en.js'), 'utf8');
+
+    expect(content).toContain('handleStopCheck');
+    expect(content).toContain('isStoppingCheck');
+    expect(content).toContain('stop_circle');
+    expect(content).toContain('bg-error/15 text-error hover:bg-error/25 border border-error/30');
+    expect(content).toContain("t('followedManga.actions.stopCheck')");
+    expect(content).toContain("t('followedManga.actions.stopping')");
+    expect(content).not.toContain('bg-error text-on-error');
+
+    expect(vi).toContain("'followedManga.actions.stopCheck':");
+    expect(vi).toContain("'followedManga.actions.stopping':");
+    expect(en).toContain("'followedManga.actions.stopCheck':");
+    expect(en).toContain("'followedManga.actions.stopping':");
+  });
 });

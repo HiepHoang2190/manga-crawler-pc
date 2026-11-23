@@ -106,5 +106,63 @@ describe('favoriteChecker logic service', () => {
       expect(results.length).toBe(0);
       expect(checkFn).not.toHaveBeenCalled();
     });
+
+    it('resolves immediately on mid-flight abort, stops further items, and silences progress after abort', async () => {
+      const controller = new AbortController();
+      const started = [];
+      const progressAfterAbort = [];
+      let abortedSeen = false;
+
+      const checkFn = jest.fn(
+        (item) =>
+          new Promise((resolve) => {
+            started.push(item.id);
+            if (item.id === mockFavorites[0].id) {
+              // Trigger abort while first item is still pending
+              queueMicrotask(() => {
+                abortedSeen = true;
+                controller.abort();
+              });
+            }
+            // Never resolves quickly on its own (simulate slow network)
+            setTimeout(() => resolve({ ok: true }), 5000).unref?.();
+          }),
+      );
+
+      const results = await runFavoriteCheckQueue({
+        list: mockFavorites,
+        checkFn,
+        concurrency: 1,
+        abortSignal: controller.signal,
+        onProgress: (p) => {
+          if (abortedSeen) progressAfterAbort.push(p);
+        },
+      });
+
+      expect(started).toEqual([mockFavorites[0].id]);
+      expect(results).toEqual([]);
+      expect(progressAfterAbort).toEqual([]);
+    });
+
+    it('forwards abortSignal to checkFn and reports monotonic completed count in onProgress', async () => {
+      const controller = new AbortController();
+      const receivedSignals = [];
+      const progressEvents = [];
+
+      const results = await runFavoriteCheckQueue({
+        list: mockFavorites.slice(0, 2),
+        abortSignal: controller.signal,
+        concurrency: 1,
+        checkFn: async (_item, signal) => {
+          receivedSignals.push(signal);
+          return { ok: true };
+        },
+        onProgress: (p) => progressEvents.push({ ...p }),
+      });
+
+      expect(results).toHaveLength(2);
+      expect(receivedSignals).toEqual([controller.signal, controller.signal]);
+      expect(progressEvents.map((p) => p.completed)).toEqual([0, 1, 1, 2]);
+    });
   });
 });

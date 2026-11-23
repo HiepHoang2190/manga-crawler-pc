@@ -53,9 +53,11 @@ const api = {
   loadManga: (site, url, opts) =>
     ipcRenderer.invoke('manga:load', { site, url, ...(opts && typeof opts === 'object' ? opts : {}) }),
   fetchLatestUpdates: (payload) => ipcRenderer.invoke('manga:fetchLatestUpdates', payload),
+  cancelLatestUpdates: () => ipcRenderer.invoke('manga:cancelLatestUpdates'),
   fetchComicvnMoiNhat: (payload) =>
     ipcRenderer.invoke('manga:fetchComicvnMoiNhat', payload || {}),
   fetchBulkScan: (payload) => ipcRenderer.invoke('manga:fetchBulkScan', payload || {}),
+  cancelBulkScan: (payload) => ipcRenderer.invoke('manga:cancelBulkScan', payload || {}),
   getBulkScanSessions: () => ipcRenderer.invoke('bulkScan:getSessions'),
   saveBulkScanSession: (siteId, session) =>
     ipcRenderer.invoke('bulkScan:saveSession', { siteId, session }),

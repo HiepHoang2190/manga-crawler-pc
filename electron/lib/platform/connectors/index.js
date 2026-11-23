@@ -416,10 +416,24 @@ async function fetchLatestUpdates(siteIds, options = {}) {
   if (!ids.length) {
     return { ok: false, error: 'Chưa chọn site.', results: [] };
   }
-  const { getCookieForSite, ...restOpts } = options || {};
+  const { getCookieForSite, signal, ...restOpts } = options || {};
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, results: [] };
+  }
   const page = clampLatestUpdatesListingPage(restOpts.page);
 
   async function fetchOneSite(siteId) {
+    if (signal?.aborted) {
+      return {
+        ok: false,
+        aborted: true,
+        siteId,
+        error: 'Aborted',
+        items: [],
+        page,
+        totalPages: 1,
+      };
+    }
     const c = get(siteId);
     if (!c || typeof c.fetchLatestUpdates !== 'function') {
       return {
@@ -433,10 +447,21 @@ async function fetchLatestUpdates(siteIds, options = {}) {
     }
     const callOpts =
       typeof getCookieForSite === 'function' && c.requiresCookie
-        ? { ...restOpts, page, cookie: String(getCookieForSite(siteId) || '') }
-        : { ...restOpts, page };
+        ? { ...restOpts, page, ...(signal ? { signal } : {}), cookie: String(getCookieForSite(siteId) || '') }
+        : { ...restOpts, page, ...(signal ? { signal } : {}) };
     try {
       const r = await c.fetchLatestUpdates(callOpts);
+      if (signal?.aborted) {
+        return {
+          ok: false,
+          aborted: true,
+          siteId,
+          error: 'Aborted',
+          items: [],
+          page,
+          totalPages: 1,
+        };
+      }
       if (!r || r.ok !== true) {
         return {
           ok: false,
@@ -469,6 +494,9 @@ async function fetchLatestUpdates(siteIds, options = {}) {
   }
 
   const results = await Promise.all(ids.map((siteId) => fetchOneSite(siteId)));
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, results: [] };
+  }
   return { ok: true, results };
 }
 

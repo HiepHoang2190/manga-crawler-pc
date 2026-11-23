@@ -75,10 +75,10 @@ StudioLayout.Toolbar = function StudioToolbar({
             onClick={onToggleLeftSidebar}
             data-tooltip={effectiveLeftSidebarTooltip}
             aria-label={effectiveLeftSidebarTooltip}
-            className={`cursor-pointer w-8 h-8 rounded-xl flex items-center justify-center transition-colors shrink-0 ${
+            className={`cursor-pointer w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 ${
               showLeftSidebar
-                ? 'text-primary bg-primary/10 hover:bg-primary/20 shadow-2xs'
-                : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
+                ? 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
+                : 'text-primary bg-primary/10 hover:bg-primary/15'
             }`}
           >
             <span className={`material-symbols-outlined text-[18px] ${!showLeftSidebar ? 'scale-x-[-1]' : ''}`}>

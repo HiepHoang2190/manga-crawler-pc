@@ -310,6 +310,7 @@ function createMoeTruyenFamilyService(siteConfig = {}) {
    * @param {object} [options]
    * @param {number} [options.maxPages]
    * @param {(p: { page: number, totalPages: number }) => void} [options.onProgress]
+   * @param {AbortSignal} [options.signal]
    * @param {typeof fetchHtml} [options.fetchHtmlImpl]
    */
   async function fetchBulkScanListing(options = {}) {
@@ -321,6 +322,19 @@ function createMoeTruyenFamilyService(siteConfig = {}) {
       Math.max(1, Math.floor(Number(options.maxPages) || MANGA_BULK_SCAN_MAX_PAGES_CAP)),
     );
     const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+    const signal = options.signal || null;
+    const makeAbortedResult = (pagesFetched, totalPagesDetected, items = []) => ({
+      ok: false,
+      aborted: true,
+      siteId: SITE_ID,
+      pagesFetched,
+      totalPagesDetected,
+      items,
+    });
+
+    if (signal?.aborted) {
+      return makeAbortedResult(0, 1, []);
+    }
 
     const page1Url = buildMangaCatalogListingUrl(1);
     let fetched;
@@ -329,8 +343,12 @@ function createMoeTruyenFamilyService(siteConfig = {}) {
         userAgent: ua,
         referer: DOMAIN,
         accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        ...(signal ? { signal } : {}),
       });
     } catch (err) {
+      if (signal?.aborted || err?.name === 'AbortError') {
+        return makeAbortedResult(0, 1, []);
+      }
       return {
         ok: false,
         siteId: SITE_ID,
@@ -339,6 +357,9 @@ function createMoeTruyenFamilyService(siteConfig = {}) {
         items: [],
         error: String(err?.message || err),
       };
+    }
+    if (signal?.aborted || fetched?.aborted) {
+      return makeAbortedResult(0, 1, []);
     }
     if (!fetched?.ok) {
       return {
@@ -362,11 +383,17 @@ function createMoeTruyenFamilyService(siteConfig = {}) {
 
     mergeItems(parseMangaCatalogListing(fetched.html, page1Url));
     if (onProgress) onProgress({ page: 1, totalPages: detected });
+    if (signal?.aborted) {
+      return makeAbortedResult(1, detected, Array.from(byUrl.values()));
+    }
 
     let pagesFetched = 1;
     let warn = '';
 
     for (let page = 2; page <= detected; page += 1) {
+      if (signal?.aborted) {
+        return makeAbortedResult(pagesFetched, detected, Array.from(byUrl.values()));
+      }
       const url = buildMangaCatalogListingUrl(page);
       let pageRes;
       try {
@@ -374,10 +401,17 @@ function createMoeTruyenFamilyService(siteConfig = {}) {
           userAgent: ua,
           referer: page1Url,
           accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          ...(signal ? { signal } : {}),
         });
       } catch (err) {
+        if (signal?.aborted || err?.name === 'AbortError') {
+          return makeAbortedResult(pagesFetched, detected, Array.from(byUrl.values()));
+        }
         warn = String(err?.message || err);
         break;
+      }
+      if (signal?.aborted || pageRes?.aborted) {
+        return makeAbortedResult(pagesFetched, detected, Array.from(byUrl.values()));
       }
       if (!pageRes?.ok) {
         warn = pageRes?.error || `HTTP error page ${page}`;
@@ -386,6 +420,9 @@ function createMoeTruyenFamilyService(siteConfig = {}) {
       mergeItems(parseMangaCatalogListing(pageRes.html, url));
       pagesFetched += 1;
       if (onProgress) onProgress({ page, totalPages: detected });
+      if (signal?.aborted) {
+        return makeAbortedResult(pagesFetched, detected, Array.from(byUrl.values()));
+      }
     }
 
     return {

@@ -72,4 +72,45 @@ test('StudioLayout.RightSidebar close button retains aria-label but has no data-
   expect(layoutSrc).not.toContain("data-tooltip={t('studio.closeInspector')}");
 });
 
+test('left-sidebar toggle buttons use neutral ghost style when open and primary cue only when collapsed', () => {
+  const layoutSrc = fs.readFileSync(path.join(dirname, 'StudioLayout.jsx'), 'utf8');
+  const workflowToolbarSrc = fs.readFileSync(
+    path.join(dirname, '../../features/workflow/components/WorkflowToolbar.jsx'),
+    'utf8',
+  );
+  const mangaEditorSrc = fs.readFileSync(
+    path.join(dirname, '../../features/translate/components/MangaStudioEditor.jsx'),
+    'utf8',
+  );
+
+  expect(layoutSrc).toMatch(
+    /w-8 h-8 rounded-lg[\s\S]{0,160}showLeftSidebar\s*\?\s*['"]text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high['"]\s*:\s*['"]text-primary bg-primary\/10/,
+  );
+  expect(workflowToolbarSrc).toMatch(
+    /w-8 h-8 rounded-lg[\s\S]{0,160}showLeftSidebar\s*\?\s*['"]text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high['"]\s*:\s*['"]text-primary bg-primary\/10/,
+  );
+  expect(mangaEditorSrc).toMatch(
+    /w-7 h-7 rounded-lg[\s\S]{0,220}showLeftSidebar\s*\?\s*['"]border-transparent text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high['"]\s*:\s*['"]border-primary\/25 bg-primary\/10 text-primary/,
+  );
+});
+
+test('utility tabs (PluginManagementPanel, SiteCheckerPanel) omit onToggleLeftSidebar and keep LeftSidebar open with resize', () => {
+  const pluginsSrc = fs.readFileSync(
+    path.join(dirname, '../../features/plugins/PluginManagementPanel.jsx'),
+    'utf8',
+  );
+  const siteCheckerSrc = fs.readFileSync(
+    path.join(dirname, '../../features/site-checker/SiteCheckerPanel.jsx'),
+    'utf8',
+  );
+
+  for (const src of [pluginsSrc, siteCheckerSrc]) {
+    expect(src).not.toContain('onToggleLeftSidebar');
+    expect(src).not.toContain('showLeftSidebar');
+    expect(src).toMatch(/<StudioLayout\.LeftSidebar[\s\S]{0,120}open=\{true\}/);
+    expect(src).toContain('leftWidth');
+    expect(src).toContain('handleLeftResizeStart');
+  }
+});
+
 

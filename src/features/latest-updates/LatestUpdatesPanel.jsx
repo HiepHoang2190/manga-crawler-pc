@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   EmptyState,
+  FetchErrorState,
   MultiSelectDropdown,
   SearchableSelect,
   StudioLayout,
@@ -476,6 +477,23 @@ export default function LatestUpdatesPanel({
   const [errorDetailsExpanded, setErrorDetailsExpanded] = useState(false);
   const [busyList, setBusyList] = useState(false);
   const [isSearchLoading, setIsSearchLoading] = useState(false);
+  const [isStoppingList, setIsStoppingList] = useState(false);
+  const fetchSeqRef = useRef(0);
+  const busyListRef = useRef(false);
+  const isSearchLoadingRef = useRef(false);
+  busyListRef.current = busyList;
+  isSearchLoadingRef.current = isSearchLoading;
+
+  useEffect(() => () => {
+    if (busyListRef.current || isSearchLoadingRef.current) {
+      fetchSeqRef.current += 1;
+      try {
+        window.electronAPI?.cancelLatestUpdates?.();
+      } catch {
+        /* ignore */
+      }
+    }
+  }, []);
   const [enqueueKey, setEnqueueKey] = useState('');
   const [inlineChapterBusyKey, setInlineChapterBusyKey] = useState('');
   const [chapterDrawerOpen, setChapterDrawerOpen] = useState(false);
@@ -1108,6 +1126,20 @@ export default function LatestUpdatesPanel({
     setRawPageInput(String(page));
   }, [page]);
 
+  const handleStopFetch = useCallback(() => {
+    if (!busyListRef.current && !isSearchLoadingRef.current) return;
+    fetchSeqRef.current += 1;
+    setIsStoppingList(true);
+    try {
+      void window.electronAPI?.cancelLatestUpdates?.();
+    } catch {
+      /* ignore */
+    }
+    setBusyList(false);
+    setIsSearchLoading(false);
+    setIsStoppingList(false);
+  }, []);
+
   /** `pageNum` tường minh để Prev/Next không dùng state `page` bị stale. */
   const runFetchForPage = useCallback(
     async (pageNum, overrideSearch) => {
@@ -1123,6 +1155,8 @@ export default function LatestUpdatesPanel({
         setFetchError(t('latestUpdates.pickSource'));
         return;
       }
+      const seq = ++fetchSeqRef.current;
+      setIsStoppingList(false);
       setBusyList(true);
       setFetchError('');
       try {
@@ -1138,6 +1172,9 @@ export default function LatestUpdatesPanel({
           latestUpdatesSearch:
             searchEffective && (multiEffective || selectedSupportsSearch) ? searchTerm : '',
         });
+        if (seq !== fetchSeqRef.current || res?.aborted) {
+          return;
+        }
         if (!res?.ok || !Array.isArray(res.results)) {
           setRows([]);
           setListingTotalPages(1);
@@ -1209,12 +1246,18 @@ export default function LatestUpdatesPanel({
         latestUpdatesListingCache.listingTotalPages = calculatedTotalPages;
         latestUpdatesListingCache.fetchError = warn;
       } catch (e) {
+        if (seq !== fetchSeqRef.current || e?.name === 'AbortError') {
+          return;
+        }
         setFetchError(String(e?.message || e || t('latestUpdates.fetchFailed')));
         setRows([]);
         setListingTotalPages(1);
       } finally {
-        setBusyList(false);
-        setIsSearchLoading(false);
+        if (seq === fetchSeqRef.current) {
+          setBusyList(false);
+          setIsSearchLoading(false);
+          setIsStoppingList(false);
+        }
       }
     },
     [activeFetchSiteIds, supported, effectiveMangaLoadOpts, t, appliedSearch, selectedSupportsSearch, searchAllSources, pageSize],
@@ -1658,17 +1701,32 @@ export default function LatestUpdatesPanel({
         leftSlot={subtabsSlot}
         rightSlot={
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              disabled={busyList || !selectedSiteId}
-              onClick={handleManualRefresh}
-              className="h-8 px-3 shrink-0 rounded-lg bg-primary text-xs font-semibold text-on-primary transition-all hover:opacity-95 active:scale-95 disabled:pointer-events-none disabled:opacity-50 flex items-center gap-1.5 cursor-pointer shadow-2xs"
-            >
-              <span className={`material-symbols-outlined text-[15px] leading-none ${busyList && !isSearchLoading ? 'animate-spin' : ''}`}>
-                refresh
-              </span>
-              <span>{busyList && !isSearchLoading ? t('latestUpdates.loading') : t('latestUpdates.refresh')}</span>
-            </button>
+            {(busyList || isSearchLoading) ? (
+              <button
+                type="button"
+                onClick={handleStopFetch}
+                disabled={isStoppingList}
+                data-tooltip={isStoppingList ? t('latestUpdates.stopping') : t('latestUpdates.stopFetch')}
+                aria-label={isStoppingList ? t('latestUpdates.stopping') : t('latestUpdates.stopFetch')}
+                className="h-8 px-3.5 shrink-0 rounded-lg bg-error/15 text-error hover:bg-error/25 border border-error/30 text-xs font-semibold transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[15px] leading-none">stop_circle</span>
+                <span>{isStoppingList ? t('latestUpdates.stopping') : t('latestUpdates.stopFetch')}</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={!selectedSiteId}
+                onClick={handleManualRefresh}
+                data-tooltip={t('latestUpdates.refresh')}
+                className="h-8 px-3.5 shrink-0 rounded-lg bg-primary text-xs font-semibold text-on-primary transition-all hover:opacity-95 active:scale-95 disabled:pointer-events-none disabled:opacity-50 inline-flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+              >
+                <span className="material-symbols-outlined text-[15px] leading-none">
+                  refresh
+                </span>
+                <span>{t('latestUpdates.refresh')}</span>
+              </button>
+            )}
 
             {is_plugin_source ? (
               <button
@@ -1901,15 +1959,15 @@ export default function LatestUpdatesPanel({
         <StudioLayout.Content>
           <div ref={contentScrollRef} className="custom-scrollbar flex-1 min-h-0 overflow-auto p-4 sm:p-6">
             <div className="w-full min-w-0">
-          {fetchError && !errorDismissed ? (
+          {rows.length > 0 && fetchError && !errorDismissed ? (
             multiErrorItems.length > 1 ? (
-              <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-100 shadow-2xs">
+              <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-xs text-amber-800 dark:text-amber-100 shadow-2xs">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="material-symbols-outlined text-amber-500 text-[18px] shrink-0 leading-none">
                       wifi_off
                     </span>
-                    <span className="font-medium truncate">
+                    <span className="font-semibold truncate">
                       {t('latestUpdates.multiFetchErrorSummary', { count: multiErrorItems.length })}
                     </span>
                   </div>
@@ -1917,7 +1975,7 @@ export default function LatestUpdatesPanel({
                     <button
                       type="button"
                       onClick={() => setErrorDetailsExpanded((prev) => !prev)}
-                      className="px-2 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-[11px] font-semibold transition-colors cursor-pointer select-none"
+                      className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-[11px] font-semibold transition-colors cursor-pointer select-none"
                     >
                       {errorDetailsExpanded ? t('latestUpdates.hideDetails') : t('latestUpdates.viewDetails')}
                     </button>
@@ -1944,22 +2002,33 @@ export default function LatestUpdatesPanel({
                 )}
               </div>
             ) : (
-              <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-100 flex items-center justify-between gap-2 shadow-2xs">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="material-symbols-outlined text-amber-500 text-[18px] shrink-0 leading-none">
+              <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-xs text-amber-800 dark:text-amber-100 flex items-start justify-between gap-2.5 shadow-2xs">
+                <div className="flex items-start gap-2 min-w-0">
+                  <span className="material-symbols-outlined text-amber-500 text-[18px] shrink-0 leading-none mt-0.5">
                     warning
                   </span>
-                  <span className="truncate">{fetchError}</span>
+                  <span className="leading-relaxed break-words">{fetchError}</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setErrorDismissed(true)}
-                  data-tooltip={t('latestUpdates.dismissError')}
-                  aria-label={t('latestUpdates.dismissError')}
-                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 transition-colors cursor-pointer"
-                >
-                  <span className="material-symbols-outlined text-[16px] leading-none">close</span>
-                </button>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleManualRefresh}
+                    data-tooltip={t('fetchError.retry')}
+                    aria-label={t('fetchError.retry')}
+                    className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 transition-colors cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-[15px] leading-none">refresh</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setErrorDismissed(true)}
+                    data-tooltip={t('latestUpdates.dismissError')}
+                    aria-label={t('latestUpdates.dismissError')}
+                    className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 transition-colors cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-[16px] leading-none">close</span>
+                  </button>
+                </div>
               </div>
             )
           ) : null}
@@ -2347,13 +2416,47 @@ export default function LatestUpdatesPanel({
                 })}
               </ul>
             )
-          ) : !fetchError ? (
+          ) : fetchError ? (
+            <FetchErrorState
+              message={fetchError}
+              multiErrors={multiErrorItems}
+              sourceLabel={
+                isMultiSourceSearch
+                  ? t('latestUpdates.searchScopeAll')
+                  : selectedDescriptor?.label || ''
+              }
+              requiresVpn={Boolean(selectedDescriptor?.requiresVpn)}
+              suggestsVpn={Boolean(selectedDescriptor?.suggestsVpn)}
+              onRetry={handleManualRefresh}
+              secondaryAction={
+                isSearchActive ? (
+                  <button
+                    type="button"
+                    onClick={handleClearLatestSearch}
+                    className="h-9 px-3.5 rounded-xl border border-outline-variant/25 bg-surface-container-high text-xs font-semibold text-on-surface hover:bg-surface-bright transition-all active:scale-95 inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-[15px] leading-none">filter_alt_off</span>
+                    <span>{t('latestUpdates.searchClear')}</span>
+                  </button>
+                ) : is_plugin_source ? (
+                  <button
+                    type="button"
+                    onClick={() => setPluginConsoleOpen(true)}
+                    className="h-9 px-3.5 rounded-xl border border-outline-variant/25 bg-surface-container-high text-xs font-semibold text-on-surface hover:bg-surface-bright transition-all active:scale-95 inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-[15px] leading-none">terminal</span>
+                    <span>{t('latestUpdates.pluginConsoleShow')}</span>
+                  </button>
+                ) : null
+              }
+            />
+          ) : (
             <EmptyState
               icon="update"
               {...{ title: t('latestUpdates.empty') }}
               description={t('latestUpdates.hintBelow')}
             />
-          ) : null}
+          )}
         </div>
       </div>
 

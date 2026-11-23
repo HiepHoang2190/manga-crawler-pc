@@ -126,15 +126,18 @@ export async function runFavoriteCheckQueue({
       const item = queue.shift();
       if (!item) break;
 
-      if (typeof onProgress === 'function') {
-        onProgress({ current: completed + 1, total, item });
+      if (typeof onProgress === 'function' && !abortSignal?.aborted) {
+        onProgress({ current: Math.min(total, completed + 1), completed, total, item });
       }
 
       try {
-        const res = await checkFn(item);
+        const res = await checkFn(item, abortSignal);
         if (abortSignal?.aborted) break;
         completed++;
         results.push({ item, res });
+        if (typeof onProgress === 'function') {
+          onProgress({ current: completed, completed, total, item });
+        }
         if (typeof onItemResult === 'function') {
           onItemResult({ item, res });
         }
@@ -142,6 +145,9 @@ export async function runFavoriteCheckQueue({
         if (abortSignal?.aborted) break;
         completed++;
         results.push({ item, error: err });
+        if (typeof onProgress === 'function') {
+          onProgress({ current: completed, completed, total, item });
+        }
         if (typeof onItemResult === 'function') {
           onItemResult({ item, error: err });
         }
@@ -150,7 +156,24 @@ export async function runFavoriteCheckQueue({
   };
 
   const workers = Array.from({ length: Math.min(concurrency, total) }, () => runWorker());
-  await Promise.all(workers);
+  const allWorkers = Promise.all(workers);
+
+  if (!abortSignal) {
+    await allWorkers;
+    return results;
+  }
+
+  let onAbort;
+  const abortPromise = new Promise((resolve) => {
+    onAbort = () => resolve();
+    abortSignal.addEventListener('abort', onAbort, { once: true });
+  });
+
+  try {
+    await Promise.race([allWorkers, abortPromise]);
+  } finally {
+    abortSignal.removeEventListener('abort', onAbort);
+  }
 
   return results;
 }

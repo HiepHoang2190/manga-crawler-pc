@@ -129,4 +129,34 @@ describe('fetchMoiNhatListing', () => {
     });
     expect(maxRequested).toBe(15);
   });
+
+  test('cancelling via AbortController after page 1 stops remaining pages and returns aborted:true', async () => {
+    const controller = new AbortController();
+    const requestedUrls = [];
+    const seenSignals = [];
+    const res = await fetchMoiNhatListing({
+      signal: controller.signal,
+      onProgress: (p) => {
+        if (p.page === 1) controller.abort();
+      },
+      fetchHtmlImpl: async (url, opts) => {
+        requestedUrls.push(url);
+        seenSignals.push(opts?.signal);
+        if (url === `${DOMAIN}danh-muc/moi-nhat`) {
+          return { ok: true, html: fixture('moi_nhat_page_1.html') };
+        }
+        return { ok: true, html: fixture('moi_nhat_page_2.html') };
+      },
+    });
+    expect(requestedUrls).toEqual([`${DOMAIN}danh-muc/moi-nhat`]);
+    expect(seenSignals[0]).toBe(controller.signal);
+    expect(res).toMatchObject({
+      ok: false,
+      aborted: true,
+      siteId: 'comicvn',
+      pagesFetched: 1,
+      totalPagesDetected: 2,
+    });
+    expect(res.items.length).toBe(2);
+  });
 });

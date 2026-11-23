@@ -90,6 +90,9 @@ function getChromiumFetch() {
 }
 
 async function fetchHtml(url, options = {}) {
+  if (options.signal?.aborted) {
+    return { ok: false, aborted: true, error: 'Aborted' };
+  }
   const ua = options.userAgent || getDefaultUserAgent();
   const method = String(options.method || 'GET').toUpperCase();
   const headers = {
@@ -179,6 +182,12 @@ async function fetchHtml(url, options = {}) {
   if (has_body) {
     fetch_opts.body = String(options.body);
   }
+  if (options.signal) {
+    fetch_opts.signal = options.signal;
+  }
+  if (options.signal?.aborted) {
+    return { ok: false, aborted: true, error: 'Aborted' };
+  }
   const fetchFn =
     typeof options.fetchImpl === 'function'
       ? options.fetchImpl
@@ -187,6 +196,9 @@ async function fetchHtml(url, options = {}) {
   try {
     res = await fetchFn(url, fetch_opts);
   } catch (err) {
+    if (options.signal?.aborted || err?.name === 'AbortError') {
+      return { ok: false, aborted: true, error: 'Aborted' };
+    }
     return { ok: false, error: err.message || 'Lỗi mạng khi tải trang.' };
   }
 
@@ -197,6 +209,9 @@ async function fetchHtml(url, options = {}) {
   try {
     html = await res.text();
   } catch (err) {
+    if (options.signal?.aborted || err?.name === 'AbortError') {
+      return { ok: false, aborted: true, error: 'Aborted' };
+    }
     return { ok: false, error: 'Không thể đọc nội dung phản hồi.' };
   }
   const result = { ok: true, html, finalUrl: res.url || url };

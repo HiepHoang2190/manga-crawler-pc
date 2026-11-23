@@ -5,6 +5,8 @@ export { default as AdminContactLinks } from './ui/AdminContactLinks.jsx';
 export { default as SourcePicker } from './ui/SourcePicker.jsx';
 export { default as ResizeSplitter } from './ui/ResizeSplitter.jsx';
 export { default as EmptyState } from './ui/EmptyState.jsx';
+export { default as FetchErrorState } from './ui/FetchErrorState.jsx';
+export { classifyFetchError } from './ui/fetchErrorUtils.js';
 export {
   useToolsSidebarResize,
   clampToolsSidebarWidth,

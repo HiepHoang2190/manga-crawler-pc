@@ -32,8 +32,6 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
 
   // StudioLayout integration
   const {
-    showLeftSidebar,
-    toggleLeftSidebar,
     leftWidth,
     handleLeftResizeStart,
   } = useStudioLayout({
@@ -585,9 +583,6 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
     <StudioLayout>
       {/* Top Header Bar */}
       <StudioLayout.Toolbar
-        showLeftSidebar={showLeftSidebar}
-        onToggleLeftSidebar={toggleLeftSidebar}
-        leftSidebarTooltip={showLeftSidebar ? t('sidebar.hidePanel') : t('sidebar.showPanel')}
         leftSlot={
           <div className="flex items-center gap-1.5 rounded-xl bg-surface-container-lowest p-1 border border-outline-variant/20">
             {subtabs.map((tab) => {
@@ -670,7 +665,7 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
       <StudioLayout.Body>
         {/* Left Sidebar: Search, KPI Cards and Guides */}
         <StudioLayout.LeftSidebar
-          open={showLeftSidebar}
+          open={true}
           width={leftWidth}
           onResizeStart={handleLeftResizeStart}
         >

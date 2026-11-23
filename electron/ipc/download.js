@@ -87,6 +87,8 @@ function registerDownloadIpc(ipc_context) {
     });
   });
 
+  let activeLatestUpdatesController = null;
+
   ipcMain.handle('manga:fetchLatestUpdates', async (_event, payload) => {
     const rawIds = payload && payload.siteIds;
     const siteIds = Array.isArray(rawIds)
@@ -95,16 +97,57 @@ function registerDownloadIpc(ipc_context) {
     const page = connectors.clampLatestUpdatesListingPage(
       payload && payload.page,
     );
-    return connectors.fetchLatestUpdates(siteIds, {
-      page,
-      latestUpdatesSearch: String(payload?.latestUpdatesSearch || '').trim(),
-      searchLimit: payload?.searchLimit,
-      mangadexLanguage: payload?.mangadexLanguage,
-      minotruyenListingCategory: payload?.minotruyenListingCategory,
-      comickLanguage: payload?.comickLanguage,
-      mangaballLanguage: payload?.mangaballLanguage,
-      getCookieForSite: (sid) => cookieManager.getEffectiveCookie(sid),
+    if (activeLatestUpdatesController) {
+      try {
+        activeLatestUpdatesController.abort();
+      } catch {
+        /* ignore */
+      }
+      activeLatestUpdatesController = null;
+    }
+    const controller = new AbortController();
+    activeLatestUpdatesController = controller;
+    let onAbort;
+    const abortPromise = new Promise((resolve) => {
+      onAbort = () => resolve({ ok: false, aborted: true, results: [] });
+      controller.signal.addEventListener('abort', onAbort, { once: true });
     });
+    try {
+      const fetchPromise = connectors.fetchLatestUpdates(siteIds, {
+        page,
+        latestUpdatesSearch: String(payload?.latestUpdatesSearch || '').trim(),
+        searchLimit: payload?.searchLimit,
+        mangadexLanguage: payload?.mangadexLanguage,
+        minotruyenListingCategory: payload?.minotruyenListingCategory,
+        comickLanguage: payload?.comickLanguage,
+        mangaballLanguage: payload?.mangaballLanguage,
+        signal: controller.signal,
+        getCookieForSite: (sid) => cookieManager.getEffectiveCookie(sid),
+      });
+      return await Promise.race([fetchPromise, abortPromise]);
+    } catch (e) {
+      if (controller.signal.aborted || e?.name === 'AbortError') {
+        return { ok: false, aborted: true, results: [] };
+      }
+      throw e;
+    } finally {
+      controller.signal.removeEventListener('abort', onAbort);
+      if (activeLatestUpdatesController === controller) {
+        activeLatestUpdatesController = null;
+      }
+    }
+  });
+
+  ipcMain.handle('manga:cancelLatestUpdates', async () => {
+    if (activeLatestUpdatesController) {
+      try {
+        activeLatestUpdatesController.abort();
+      } catch {
+        /* ignore */
+      }
+      activeLatestUpdatesController = null;
+    }
+    return { ok: true };
   });
 
   ipcMain.handle('manga:fetchComicvnMoiNhat', async (event, payload) => {
@@ -155,13 +198,28 @@ function registerDownloadIpc(ipc_context) {
     }
   });
 
+  const activeBulkScanControllers = new Map();
+
   ipcMain.handle('manga:fetchBulkScan', async (event, payload) => {
     const siteId = String(payload?.siteId || '').trim();
     const maxPages = payload && payload.maxPages;
+    const prevController = activeBulkScanControllers.get(siteId);
+    if (prevController) {
+      try {
+        prevController.abort();
+      } catch {
+        /* ignore */
+      }
+      activeBulkScanControllers.delete(siteId);
+    }
+    const controller = new AbortController();
+    activeBulkScanControllers.set(siteId, controller);
     try {
       return await connectors.fetchBulkScan(siteId, {
         maxPages,
+        signal: controller.signal,
         onProgress: (p) => {
+          if (controller.signal.aborted) return;
           try {
             event.sender.send('manga:bulkScanProgress', { siteId, ...p });
           } catch {
@@ -170,6 +228,16 @@ function registerDownloadIpc(ipc_context) {
         },
       });
     } catch (e) {
+      if (controller.signal.aborted || e?.name === 'AbortError') {
+        return {
+          ok: false,
+          aborted: true,
+          siteId,
+          pagesFetched: 0,
+          totalPagesDetected: 1,
+          items: [],
+        };
+      }
       return {
         ok: false,
         siteId,
@@ -178,7 +246,36 @@ function registerDownloadIpc(ipc_context) {
         items: [],
         error: String(e?.message || e),
       };
+    } finally {
+      if (activeBulkScanControllers.get(siteId) === controller) {
+        activeBulkScanControllers.delete(siteId);
+      }
     }
+  });
+
+  ipcMain.handle('manga:cancelBulkScan', async (_event, payload) => {
+    const targetSiteId = String(payload?.siteId || '').trim();
+    if (targetSiteId) {
+      const controller = activeBulkScanControllers.get(targetSiteId);
+      if (controller) {
+        try {
+          controller.abort();
+        } catch {
+          /* ignore */
+        }
+        activeBulkScanControllers.delete(targetSiteId);
+      }
+    } else {
+      for (const [, controller] of activeBulkScanControllers) {
+        try {
+          controller.abort();
+        } catch {
+          /* ignore */
+        }
+      }
+      activeBulkScanControllers.clear();
+    }
+    return { ok: true };
   });
 
   ipcMain.handle('manga:fetchMangadexCovers', async (_event, { urlOrId }) => {

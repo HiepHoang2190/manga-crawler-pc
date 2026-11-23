@@ -155,6 +155,64 @@ describe('fetchBulkScanListing', () => {
     });
     expect(maxRequested).toBe(MANGA_BULK_SCAN_MAX_PAGES_CAP);
   });
+
+  test('cancelling via AbortController after page 1 stops remaining pages and returns aborted:true', async () => {
+    const controller = new AbortController();
+    const requestedUrls = [];
+    const seenSignals = [];
+    const res = await fetchBulkScanListing({
+      signal: controller.signal,
+      onProgress: (p) => {
+        if (p.page === 1) controller.abort();
+      },
+      fetchHtmlImpl: async (url, opts) => {
+        requestedUrls.push(url);
+        seenSignals.push(opts?.signal);
+        return {
+          ok: true,
+          html: pageHtml({
+            page: 1,
+            maxPage: 3,
+            items: [
+              { href: '/manga/1-one', title: 'One' },
+              { href: '/manga/2-two', title: 'Two' },
+            ],
+          }),
+        };
+      },
+    });
+    expect(requestedUrls).toEqual([LISTING_PATH]);
+    expect(seenSignals[0]).toBe(controller.signal);
+    expect(res).toMatchObject({
+      ok: false,
+      aborted: true,
+      siteId: 'moetruyen',
+      pagesFetched: 1,
+      totalPagesDetected: 3,
+    });
+    expect(res.items).toHaveLength(2);
+  });
+
+  test('pre-aborted signal returns aborted:true without fetching page 1', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    let calls = 0;
+    const res = await fetchBulkScanListing({
+      signal: controller.signal,
+      fetchHtmlImpl: async () => {
+        calls += 1;
+        return { ok: true, html: '' };
+      },
+    });
+    expect(calls).toBe(0);
+    expect(res).toMatchObject({
+      ok: false,
+      aborted: true,
+      siteId: 'moetruyen',
+      pagesFetched: 0,
+      items: [],
+    });
+  });
 });
 
 describe('MoeTruyen connector bulk scan flag', () => {

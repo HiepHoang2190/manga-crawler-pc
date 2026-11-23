@@ -147,4 +147,49 @@ describe('fetchHtml options.cookie', () => {
       expect(res.chapters.some((c) => c.title.includes('Đọc'))).toBe(false);
     });
   });
+
+  describe('fetchHtml options.signal', () => {
+    it('forwards signal to global.fetch when provided', async () => {
+      const controller = new AbortController();
+      global.fetch = jest.fn(async () => ({
+        ok: true,
+        status: 200,
+        text: async () => '<html></html>',
+      }));
+
+      await fetchHtml('https://example.com/page', { signal: controller.signal });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://example.com/page',
+        expect.objectContaining({
+          signal: controller.signal,
+        }),
+      );
+    });
+
+    it('short-circuits and returns aborted:true when signal is already aborted', async () => {
+      const controller = new AbortController();
+      controller.abort();
+      global.fetch = jest.fn();
+
+      const res = await fetchHtml('https://example.com/page', { signal: controller.signal });
+
+      expect(global.fetch).not.toHaveBeenCalled();
+      expect(res).toMatchObject({ ok: false, aborted: true });
+    });
+
+    it('returns aborted:true when fetch rejects with AbortError', async () => {
+      const controller = new AbortController();
+      const abortErr = new Error('The operation was aborted');
+      abortErr.name = 'AbortError';
+      global.fetch = jest.fn(async () => {
+        controller.abort();
+        throw abortErr;
+      });
+
+      const res = await fetchHtml('https://example.com/page', { signal: controller.signal });
+
+      expect(res).toMatchObject({ ok: false, aborted: true });
+    });
+  });
 });

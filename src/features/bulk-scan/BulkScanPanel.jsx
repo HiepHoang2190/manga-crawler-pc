@@ -1,6 +1,6 @@
 import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from '../../context/I18nContext';
-import { EmptyState, SearchableSelect, StudioLayout, useStudioLayout, ViewModeToggle } from '../../shared';
+import { EmptyState, FetchErrorState, SearchableSelect, StudioLayout, useStudioLayout, ViewModeToggle } from '../../shared';
 import { ChaptersDrawer } from '../reader';
 import { dedupeChaptersByNumber } from '../download';
 import { ExploreSourceSelect } from '../explore';
@@ -212,8 +212,23 @@ export default function BulkScanPanel({
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const deferredSearchQuery = useDeferredValue(searchQuery);
+  const [cancellingScan, setCancellingScan] = useState(false);
   const cancelRef = useRef(false);
+  const scanCancelRef = useRef(false);
+  const busyListRef = useRef(false);
+  busyListRef.current = busyList;
   const selectedSiteIdRef = useRef('');
+
+  useEffect(() => () => {
+    if (busyListRef.current) {
+      scanCancelRef.current = true;
+      try {
+        window.electronAPI?.cancelBulkScan?.({ siteId: selectedSiteIdRef.current });
+      } catch {
+        /* ignore */
+      }
+    }
+  }, []);
   const contentScrollRef = useRef(null);
   const chapterCacheRef = useRef(new Map());
   /** Absolute index in `visibleItems` — shift+click range select (ChapterList pattern). */
@@ -537,7 +552,7 @@ export default function BulkScanPanel({
     const api = window.electronAPI;
     if (!api?.subscribeBulkScanProgress) return undefined;
     const unsub = api.subscribeBulkScanProgress((p) => {
-      if (!p || p.siteId !== selectedSiteIdRef.current) return;
+      if (!p || scanCancelRef.current || p.siteId !== selectedSiteIdRef.current) return;
       if (typeof p.page === 'number') setListProgress(p);
     });
     return () => unsub?.();
@@ -660,6 +675,17 @@ export default function BulkScanPanel({
     lastClickedIndexRef.current = null;
   }, [selectedSiteId, listFilter, items, page]);
 
+  const stopScan = useCallback(() => {
+    if (!busyListRef.current || scanCancelRef.current) return;
+    scanCancelRef.current = true;
+    setCancellingScan(true);
+    try {
+      void window.electronAPI?.cancelBulkScan?.({ siteId: selectedSiteIdRef.current });
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const runLoad = useCallback(async () => {
     const api = window.electronAPI;
     if (!api?.fetchBulkScan) {
@@ -672,11 +698,16 @@ export default function BulkScanPanel({
     }
     const prevSelectedUrls = [...selected];
     const prevHadItems = items.length > 0;
+    scanCancelRef.current = false;
+    setCancellingScan(false);
     setBusyList(true);
     setFetchError('');
     setListProgress(null);
     try {
       const res = await api.fetchBulkScan({ siteId: selectedSiteId });
+      if (res?.aborted || scanCancelRef.current) {
+        return;
+      }
       if (!res?.ok) {
         // Keep previous in-memory session; only surface the error.
         setFetchError(res?.error || t('bulkScan.fetchFailed'));
@@ -700,11 +731,16 @@ export default function BulkScanPanel({
         setFetchError(t('bulkScan.partialWarning'));
       }
     } catch (e) {
+      if (scanCancelRef.current || e?.name === 'AbortError') {
+        return;
+      }
       // Same non-destructive policy as !res?.ok — keep items/selected/scannedAt.
       setFetchError(String(e?.message || e || t('bulkScan.fetchFailed')));
     } finally {
       setBusyList(false);
+      setCancellingScan(false);
       setListProgress(null);
+      scanCancelRef.current = false;
     }
   }, [t, selectedSiteId, selected, items]);
 
@@ -802,6 +838,7 @@ export default function BulkScanPanel({
   }, [items, selected, onEnqueueLoadedManga, savePath, selectedSiteId, mangaLoadOpts, t]);
 
   const listStatus = useMemo(() => {
+    if (busyList && cancellingScan) return t('bulkScan.stopping');
     if (busyList && listProgress) {
       return t('bulkScan.loadingPage', {
         page: listProgress.page,
@@ -813,7 +850,7 @@ export default function BulkScanPanel({
       return t('bulkScan.enqueueProgress', enqueueProgress);
     }
     return '';
-  }, [busyList, listProgress, enqueueBusy, enqueueProgress, t]);
+  }, [busyList, cancellingScan, listProgress, enqueueBusy, enqueueProgress, t]);
 
   const cookieHint =
     selectedSiteId === 'comicvn' ? t('bulkScan.cookieHintComicvn') : null;
@@ -889,24 +926,29 @@ export default function BulkScanPanel({
               </button>
             ) : null}
 
-            <button
-              type="button"
-              className="h-8 px-3.5 rounded-lg text-xs font-semibold bg-primary text-on-primary hover:opacity-95 shadow-2xs inline-flex items-center justify-center gap-1.5 transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none cursor-pointer shrink-0"
-              disabled={controlsBusy || !selectedSiteId}
-              onClick={() => void runLoad()}
-              data-tooltip={busyList ? t('bulkScan.loading') : items.length > 0 ? t('bulkScan.rescanSource') : t('bulkScan.scanSource')}
-            >
-              <span className={`material-symbols-outlined text-[15px] leading-none ${busyList ? 'animate-spin' : ''}`}>
-                sync
-              </span>
-              <span>
-                {busyList
-                  ? t('bulkScan.loading')
-                  : items.length > 0
-                    ? t('bulkScan.rescanSource')
-                    : t('bulkScan.scanSource')}
-              </span>
-            </button>
+            {busyList ? (
+              <button
+                type="button"
+                className="h-8 px-3.5 rounded-lg text-xs font-semibold bg-error/15 text-error hover:bg-error/25 border border-error/30 inline-flex items-center justify-center gap-1.5 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shrink-0"
+                disabled={cancellingScan}
+                onClick={stopScan}
+                data-tooltip={cancellingScan ? t('bulkScan.stopping') : t('bulkScan.stopScan')}
+              >
+                <span className="material-symbols-outlined text-[15px] leading-none">stop_circle</span>
+                <span>{cancellingScan ? t('bulkScan.stopping') : t('bulkScan.stopScan')}</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="h-8 px-3.5 rounded-lg text-xs font-semibold bg-primary text-on-primary hover:opacity-95 shadow-2xs inline-flex items-center justify-center gap-1.5 transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none cursor-pointer shrink-0"
+                disabled={controlsBusy || !selectedSiteId}
+                onClick={() => void runLoad()}
+                data-tooltip={items.length > 0 ? t('bulkScan.rescanSource') : t('bulkScan.scanSource')}
+              >
+                <span className="material-symbols-outlined text-[15px] leading-none">sync</span>
+                <span>{items.length > 0 ? t('bulkScan.rescanSource') : t('bulkScan.scanSource')}</span>
+              </button>
+            )}
 
             <ViewModeToggle
               viewMode={viewMode}
@@ -1045,7 +1087,7 @@ export default function BulkScanPanel({
               </div>
             ) : null}
 
-            {fetchError ? (
+            {items.length > 0 && fetchError ? (
               <div className="rounded-xl border border-error/40 bg-error/10 p-2.5 text-xs text-error flex items-start gap-2">
                 <span className="material-symbols-outlined text-[16px] shrink-0 mt-0.5">error</span>
                 <span className="leading-snug">{fetchError}</span>
@@ -1141,6 +1183,16 @@ export default function BulkScanPanel({
                 viewMode={viewMode}
                 statusText={listStatus || t('bulkScan.loading')}
                 progressPercent={activeProgressPercent}
+              />
+            </div>
+          ) : items.length === 0 && fetchError ? (
+            <div className="custom-scrollbar flex-1 min-h-0 overflow-auto p-4 sm:p-6 flex">
+              <FetchErrorState
+                message={fetchError}
+                sourceLabel={activeConnector?.label || selectedSiteId || ''}
+                requiresVpn={Boolean(activeConnector?.requiresVpn)}
+                suggestsVpn={Boolean(activeConnector?.suggestsVpn)}
+                onRetry={() => void runLoad()}
               />
             </div>
           ) : items.length === 0 ? (

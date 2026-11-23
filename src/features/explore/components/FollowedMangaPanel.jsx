@@ -30,6 +30,96 @@ const SORT_STORAGE_KEY = 'mangaFollowedSortPref_v1';
 const PAGE_SIZE_STORAGE_KEY = 'mangaFollowedPageSizePref_v1';
 const PAGE_SIZES = [20, 50, 100];
 const FOLLOWED_MANGA_PAGE_SIZE = 20;
+const FOLLOWED_GRID_SKELETON_ITEMS = Array.from({ length: 12 }, (_, idx) => idx);
+const FOLLOWED_LIST_SKELETON_ITEMS = Array.from({ length: 8 }, (_, idx) => idx);
+
+const FollowedMangaSkeleton = React.memo(function FollowedMangaSkeleton({
+  viewMode,
+  statusText,
+  progressPercent = null,
+}) {
+  return (
+    <div
+      data-testid="followed-manga-skeleton"
+      aria-busy="true"
+      aria-label={statusText}
+      className="space-y-4 select-none"
+    >
+      <div
+        role="status"
+        data-testid="followed-manga-check-progress"
+        className="flex flex-wrap items-center justify-between gap-3"
+      >
+        <div className="flex items-center gap-2 text-xs font-medium text-on-surface-variant min-w-0">
+          <span className="material-symbols-outlined text-[18px] animate-spin text-primary shrink-0 leading-none">
+            progress_activity
+          </span>
+          <span className="truncate">{statusText}</span>
+        </div>
+        {progressPercent !== null && (
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="w-32 sm:w-44 h-1.5 rounded-full bg-surface-container-highest overflow-hidden">
+              <div
+                className="h-full bg-primary transition-all duration-300 rounded-full"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+            <span className="text-[11px] font-semibold tabular-nums text-on-surface-variant">
+              {progressPercent}%
+            </span>
+          </div>
+        )}
+      </div>
+
+      {viewMode === 'list' ? (
+        <ul className="flex flex-col gap-2">
+          {FOLLOWED_LIST_SKELETON_ITEMS.map((idx) => (
+            <li
+              key={idx}
+              className="flex items-center justify-between gap-3 px-3 py-2.5 sm:px-4 rounded-xl border border-outline-variant/20 bg-surface-container-high/35 animate-pulse"
+            >
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <div className="h-14 w-10 sm:h-16 sm:w-11 shrink-0 rounded-lg bg-surface-container-highest" />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="h-4 w-48 max-w-[65%] rounded bg-surface-container-highest" />
+                    <div className="h-4 w-16 rounded bg-surface-container-highest/80" />
+                  </div>
+                  <div className="h-3 w-28 rounded bg-surface-container-highest/70" />
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <div className="h-8 w-24 rounded-lg bg-surface-container-highest" />
+                <div className="h-8 w-8 rounded-lg bg-surface-container-highest/80" />
+                <div className="h-8 w-8 rounded-lg bg-surface-container-highest/80" />
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+          {FOLLOWED_GRID_SKELETON_ITEMS.map((idx) => (
+            <li
+              key={idx}
+              className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-outline-variant/20 bg-surface-container-high/35 animate-pulse"
+            >
+              <div className="aspect-[3/4.2] bg-surface-container-highest" />
+              <div className="flex flex-col gap-2 p-3">
+                <div className="h-3.5 w-11/12 rounded bg-surface-container-highest" />
+                <div className="h-3.5 w-2/3 rounded bg-surface-container-highest/80" />
+                <div className="h-3 w-1/2 rounded bg-surface-container-highest/60" />
+                <div className="flex items-center gap-1.5 pt-1">
+                  <div className="flex-1 h-8 rounded-lg bg-surface-container-highest" />
+                  <div className="h-8 w-8 shrink-0 rounded-lg bg-surface-container-highest/80" />
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+});
 
 function loadStoredSync() {
   if (typeof localStorage === 'undefined') return {};
@@ -171,7 +261,8 @@ export default function FollowedMangaPanel({
 
   // Checking progress state
   const [isCheckingAll, setIsCheckingAll] = useState(false);
-  const [checkingProgress, setCheckingProgress] = useState(null); // { current, total, item }
+  const [isStoppingCheck, setIsStoppingCheck] = useState(false);
+  const [checkingProgress, setCheckingProgress] = useState(null); // { current, completed, total, item }
   const [singleCheckingId, setSingleCheckingId] = useState(null);
   const abortControllerRef = useRef(null);
 
@@ -496,8 +587,8 @@ export default function FollowedMangaPanel({
 
   // Check single manga
   const checkSingleManga = useCallback(
-    async (item) => {
-      if (!item || !api?.loadManga) return;
+    async (item, signal) => {
+      if (!item || !api?.loadManga || signal?.aborted) return;
       const url = String(item.mangaUrl || '').trim();
       if (!url) return;
 
@@ -508,11 +599,13 @@ export default function FollowedMangaPanel({
 
       try {
         const res = await api.loadManga(item.siteId || '', url, opts);
-        if (!res?.ok) return;
+        if (signal?.aborted || !res?.ok) return;
 
         await computeAndSaveSync(item, res.chapters || []);
       } catch (err) {
-        console.warn('Check single favorite failed:', err);
+        if (!signal?.aborted) {
+          console.warn('Check single favorite failed:', err);
+        }
       }
     },
     [api, mangaLoadOpts, computeAndSaveSync]
@@ -527,11 +620,11 @@ export default function FollowedMangaPanel({
 
     if (!targets.length) return;
 
-    setIsCheckingAll(true);
-    setCheckingProgress({ current: 0, total: targets.length, item: null });
-
     const controller = new AbortController();
     abortControllerRef.current = controller;
+    setIsStoppingCheck(false);
+    setIsCheckingAll(true);
+    setCheckingProgress({ current: 0, completed: 0, total: targets.length, item: null });
 
     try {
       await runFavoriteCheckQueue({
@@ -539,24 +632,40 @@ export default function FollowedMangaPanel({
         checkFn: checkSingleManga,
         concurrency: 2,
         abortSignal: controller.signal,
-        onProgress: (p) => setCheckingProgress(p),
+        onProgress: (p) => {
+          if (!controller.signal.aborted) setCheckingProgress(p);
+        },
       });
     } finally {
-      setIsCheckingAll(false);
-      setCheckingProgress(null);
-      abortControllerRef.current = null;
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+        setIsCheckingAll(false);
+        setIsStoppingCheck(false);
+        setCheckingProgress(null);
+      }
     }
   }, [isCheckingAll, siteFilter, favorites, checkSingleManga]);
 
   // Stop checking
   const handleStopCheck = useCallback(() => {
+    setIsStoppingCheck(true);
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
-      abortControllerRef.current = null;
+    } else {
+      setIsCheckingAll(false);
+      setIsStoppingCheck(false);
+      setCheckingProgress(null);
     }
-    setIsCheckingAll(false);
-    setCheckingProgress(null);
   }, []);
+
+  const checkingProgressPercent = useMemo(() => {
+    if (!isCheckingAll || !checkingProgress || !checkingProgress.total) return 0;
+    const done =
+      typeof checkingProgress.completed === 'number'
+        ? checkingProgress.completed
+        : checkingProgress.current || 0;
+    return Math.min(100, Math.max(0, Math.round((done / checkingProgress.total) * 100)));
+  }, [isCheckingAll, checkingProgress]);
 
   // Handle recheck single
   const handleRecheckSingle = useCallback(
@@ -963,21 +1072,24 @@ export default function FollowedMangaPanel({
               <button
                 type="button"
                 onClick={handleStopCheck}
-                className="inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold bg-error text-on-error hover:opacity-95 shadow-2xs transition-all active:scale-95 cursor-pointer"
-                aria-label={t('followedManga.actions.stop')}
+                disabled={isStoppingCheck}
+                className="inline-flex items-center justify-center gap-1.5 h-8 px-3.5 rounded-lg text-xs font-semibold bg-error/15 text-error hover:bg-error/25 border border-error/30 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shrink-0"
+                data-tooltip={isStoppingCheck ? t('followedManga.actions.stopping') : t('followedManga.actions.stopCheck')}
+                aria-label={isStoppingCheck ? t('followedManga.actions.stopping') : t('followedManga.actions.stopCheck')}
               >
-                <span className="material-symbols-outlined text-[15px]">stop</span>
-                <span>{t('followedManga.actions.stop')}</span>
+                <span className="material-symbols-outlined text-[15px] leading-none">stop_circle</span>
+                <span>{isStoppingCheck ? t('followedManga.actions.stopping') : t('followedManga.actions.stopCheck')}</span>
               </button>
             ) : !queueProcessing && unfinishedQueueCount === 0 ? (
               <button
                 type="button"
                 onClick={handleCheckAll}
                 disabled={favorites.length === 0 || isEnqueuingAll}
-                className="inline-flex items-center justify-center gap-1.5 h-8 px-3.5 rounded-lg text-xs font-semibold bg-primary text-on-primary hover:opacity-95 shadow-2xs transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
+                className="inline-flex items-center justify-center gap-1.5 h-8 px-3.5 rounded-lg text-xs font-semibold bg-primary text-on-primary hover:opacity-95 shadow-2xs transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none cursor-pointer shrink-0"
+                data-tooltip={t('followedManga.actions.checkAll')}
                 aria-label={t('followedManga.actions.checkAll')}
               >
-                <span className="material-symbols-outlined text-[15px]">sync</span>
+                <span className="material-symbols-outlined text-[15px] leading-none">sync</span>
                 <span>{t('followedManga.actions.checkAll')}</span>
               </button>
             ) : null}
@@ -990,33 +1102,6 @@ export default function FollowedMangaPanel({
           </div>
         }
       />
-
-      {/* Mini Progress Banner when scanning is active */}
-      {isCheckingAll && checkingProgress && (
-        <div className="px-4 py-1.5 bg-primary/10 border-b border-primary/20 flex items-center justify-between text-xs transition-all">
-          <div className="flex items-center gap-2 text-primary font-medium min-w-0 pr-4">
-            <span className="material-symbols-outlined text-[16px] animate-spin shrink-0">
-              sync
-            </span>
-            <span className="truncate">
-              {t('followedManga.actions.checking', {
-                title: checkingProgress.item?.title || '...',
-                current: checkingProgress.current,
-                total: checkingProgress.total,
-              })}
-            </span>
-          </div>
-          <div className="w-40 sm:w-56 h-1.5 rounded-full bg-surface-container-highest overflow-hidden shrink-0">
-            <div
-              className="h-full bg-primary transition-all duration-300"
-              style={{
-                width: `${Math.round((checkingProgress.current / checkingProgress.total) * 100)}%`,
-              }}
-            />
-          </div>
-        </div>
-      )}
-
 
       {/* 2-Column StudioLayout Frame */}
       <StudioLayout.Body>
@@ -1184,7 +1269,23 @@ export default function FollowedMangaPanel({
         {/* Central Content: Cards Grid & List with In-Memory Pagination */}
         <StudioLayout.Content>
           <div ref={contentScrollRef} className="custom-scrollbar flex-1 min-h-0 overflow-auto p-4 sm:p-6 bg-surface">
-            {favorites.length === 0 ? (
+            {isCheckingAll ? (
+              <FollowedMangaSkeleton
+                viewMode={viewMode}
+                statusText={
+                  isStoppingCheck
+                    ? t('followedManga.actions.stopping')
+                    : checkingProgress
+                      ? t('followedManga.actions.checking', {
+                          title: checkingProgress.item?.title || '...',
+                          current: checkingProgress.current,
+                          total: checkingProgress.total,
+                        })
+                      : t('followedManga.actions.checkAll')
+                }
+                progressPercent={checkingProgress ? checkingProgressPercent : null}
+              />
+            ) : favorites.length === 0 ? (
               <EmptyState
                 icon="bookmarks"
                 title={t('followedManga.empty.title')}
@@ -1438,7 +1539,7 @@ export default function FollowedMangaPanel({
           </div>
 
           {/* Bottom In-Memory Pagination Bar */}
-          {favorites.length > 0 && sortedFavorites.length > 0 && (
+          {!isCheckingAll && favorites.length > 0 && sortedFavorites.length > 0 && (
             <div
               className="shrink-0 border-t border-outline-variant/20 bg-surface-container-low/80 backdrop-blur-md px-4 py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 select-none"
               role="region"

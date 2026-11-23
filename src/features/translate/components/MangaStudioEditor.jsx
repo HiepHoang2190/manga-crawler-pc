@@ -2494,8 +2494,8 @@ function MangaStudioEditor({
             onClick={() => toggleLeftSidebar()}
             style={{ WebkitAppRegion: 'no-drag' }}
             className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all cursor-pointer border shrink-0 ${showLeftSidebar
-              ? 'border-primary/25 bg-primary/10 text-primary hover:bg-primary/20 shadow-2xs'
-              : 'border-outline-variant/25 bg-surface-container text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
+              ? 'border-transparent text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
+              : 'border-primary/25 bg-primary/10 text-primary hover:bg-primary/15'
               }`}
             data-tooltip={showLeftSidebar ? t('translate.studio.sidebarToggleHide') : t('translate.studio.sidebarToggleShow')}
           >

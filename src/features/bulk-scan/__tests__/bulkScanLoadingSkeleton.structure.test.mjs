@@ -35,4 +35,10 @@ describe('BulkScanPanel Loading Skeleton & In-Content Progress Banner', () => {
     expect(code).not.toMatch(/\btitle\s*=\s*["'{]/);
     expect(code).not.toMatch(/\b(?:hover:)?underline\b/);
   });
+
+  test('renders centered FetchErrorState when empty with fetchError and hides duplicate sidebar error box', () => {
+    expect(code).toContain('<FetchErrorState');
+    expect(code).toMatch(/items\.length\s*===\s*0\s*&&\s*fetchError[\s\S]{0,240}<FetchErrorState/);
+    expect(code).toMatch(/items\.length\s*>\s*0\s*&&\s*fetchError/);
+  });
 });
