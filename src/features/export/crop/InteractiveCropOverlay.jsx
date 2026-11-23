@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { resizeBox, moveBox, clampBox } from './cropGeometry';
+import { useI18n } from '../../../context/I18nContext';
 
 export default function InteractiveCropOverlay({
   imageSrc,
@@ -10,6 +11,7 @@ export default function InteractiveCropOverlay({
   showOriginal = false,
   disabled = false,
 }) {
+  const { t } = useI18n();
   const containerRef = useRef(null);
   const imgRef = useRef(null);
 
@@ -151,7 +153,7 @@ export default function InteractiveCropOverlay({
               height: dispHeight,
             }}
             onPointerDown={(e) => handlePointerDown(e, 'move')}
-            title="Kéo chuột để di chuyển vùng cắt"
+            data-tooltip={t('crop.dragToMove')}
           >
             {/* Grid 3x3 helper lines inside crop box */}
             <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none opacity-25">

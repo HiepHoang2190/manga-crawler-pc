@@ -10,8 +10,8 @@ test('src/features/latest-updates/index.js default-exports LatestUpdatesPanel', 
   expect(src).not.toMatch(/latestListingChapterActions/);
 });
 
-test('App imports LatestUpdatesPanel from the latest-updates barrel', () => {
-  const shell_src = fs.readFileSync(path.join(dirname, '../shell/ShellLayout.jsx'), 'utf8');
-  expect(shell_src).toMatch(/from '\.\.\/latest-updates'/);
-  expect(shell_src).not.toMatch(/from '\.\.\/\.\.\/components\/LatestUpdatesPanel'/);
+test('ExplorePanel imports LatestUpdatesPanel from the latest-updates barrel', () => {
+  const explore_src = fs.readFileSync(path.join(dirname, '../explore/ExplorePanel.jsx'), 'utf8');
+  expect(explore_src).toMatch(/from '\.\.\/latest-updates'/);
+  expect(explore_src).not.toMatch(/from '\.\.\/\.\.\/components\/LatestUpdatesPanel'/);
 });

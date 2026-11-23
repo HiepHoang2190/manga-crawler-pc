@@ -4505,4 +4505,40 @@ export const en = {
   'followedManga.error.cannotLoadChapters': 'Failed to load chapter list for {title}. Please try again later.',
   'followedManga.perfTip.title': 'Performance Optimized',
   'followedManga.perfTip.desc': 'Data loads instantly from cache (0ms). You can check individual manga or scan all with a background queue.',
+
+  // Error Boundary & Lazy Loading
+  'errorBoundary.tabTitle': 'Tab "{tab}" encountered an unexpected error',
+  'errorBoundary.tabDescription': 'This error has been isolated to prevent interrupting active downloads or other tabs. You can retry loading this tab.',
+  'errorBoundary.retry': 'Retry This Tab',
+  'errorBoundary.details': 'Technical Details',
+  'errorBoundary.loadingTab': 'Loading workspace...',
+
+  // TitleBar window controls
+  'titleBar.minimize': 'Minimize',
+  'titleBar.maximize': 'Maximize / Restore',
+  'titleBar.close': 'Close App',
+
+  // Crop overlay tooltip
+  'crop.dragToMove': 'Drag to move crop area',
+
+  // Confirm Modal & Backup confirm title
+  'confirmModal.confirm': 'Confirm',
+  'confirmModal.cancel': 'Cancel',
+  'settings.backup.importConfirmTitle': 'Restore Backup Data',
+
+  // Command Palette
+  'commandPalette.openTooltip': 'Quick Command Palette ({shortcut})',
+  'commandPalette.placeholder': 'Search tabs or quick actions...',
+  'commandPalette.noResults': 'No matching commands found',
+  'commandPalette.group.tabs': 'Switch Tab',
+  'commandPalette.group.actions': 'Quick Actions',
+  'commandPalette.activeBadge': 'Active',
+  'commandPalette.action.toggleConsole': 'Toggle Console Log Footer',
+  'commandPalette.action.toggleTheme': 'Toggle Light / Dark Theme',
+  'commandPalette.action.openHelp': 'Open Help Guide for Current Tab',
+  'commandPalette.action.startQueue': 'Start Download Queue',
+  'commandPalette.action.stopQueue': 'Stop Download Queue',
+  'commandPalette.hint.navigate': 'Navigate',
+  'commandPalette.hint.select': 'Select',
+  'commandPalette.hint.close': 'Close',
 };

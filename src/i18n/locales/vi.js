@@ -4483,4 +4483,40 @@ export const vi = {
   'followedManga.error.cannotLoadChapters': 'Không thể tải danh sách chương của {title}. Vui lòng thử lại sau.',
   'followedManga.perfTip.title': 'Tối ưu hiệu năng',
   'followedManga.perfTip.desc': 'Dữ liệu được nạp tức thì từ bộ nhớ đệm (0ms). Bạn có thể kiểm tra riêng từng truyện hoặc kiểm tra toàn bộ với hàng đợi ngầm.',
+
+  // Error Boundary & Lazy Loading
+  'errorBoundary.tabTitle': 'Tab "{tab}" gặp sự cố không mong muốn',
+  'errorBoundary.tabDescription': 'Sự cố đã được cô lập tại tab này để không làm gián đoạn hàng đợi tải và các tab khác. Bạn có thể thử tải lại tab.',
+  'errorBoundary.retry': 'Thử lại tab này',
+  'errorBoundary.details': 'Chi tiết kỹ thuật',
+  'errorBoundary.loadingTab': 'Đang nạp giao diện...',
+
+  // TitleBar window controls
+  'titleBar.minimize': 'Thu nhỏ',
+  'titleBar.maximize': 'Phóng to / Khôi phục',
+  'titleBar.close': 'Đóng ứng dụng',
+
+  // Crop overlay tooltip
+  'crop.dragToMove': 'Kéo chuột để di chuyển vùng cắt',
+
+  // Confirm Modal & Backup confirm title
+  'confirmModal.confirm': 'Xác nhận',
+  'confirmModal.cancel': 'Hủy',
+  'settings.backup.importConfirmTitle': 'Khôi phục dữ liệu sao lưu',
+
+  // Command Palette
+  'commandPalette.openTooltip': 'Bảng lệnh nhanh ({shortcut})',
+  'commandPalette.placeholder': 'Tìm tab hoặc hành động nhanh...',
+  'commandPalette.noResults': 'Không tìm thấy lệnh phù hợp',
+  'commandPalette.group.tabs': 'Chuyển tab',
+  'commandPalette.group.actions': 'Hành động nhanh',
+  'commandPalette.activeBadge': 'Đang mở',
+  'commandPalette.action.toggleConsole': 'Ẩn / Hiện bảng nhật ký (Console)',
+  'commandPalette.action.toggleTheme': 'Chuyển đổi giao diện Sáng / Tối',
+  'commandPalette.action.openHelp': 'Mở hướng dẫn cho tab hiện tại',
+  'commandPalette.action.startQueue': 'Bắt đầu hàng đợi tải',
+  'commandPalette.action.stopQueue': 'Dừng hàng đợi tải',
+  'commandPalette.hint.navigate': 'Di chuyển',
+  'commandPalette.hint.select': 'Chọn',
+  'commandPalette.hint.close': 'Đóng',
 };

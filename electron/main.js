@@ -1,6 +1,12 @@
 const fs = require('fs');
-const { app, BrowserWindow, session, shell } = require('electron');
+const { app, BrowserWindow, session, shell, screen } = require('electron');
 const path = require('path');
+const { createSettingsStore } = require('./lib/shared/atomicSettings');
+const {
+  DEFAULT_WINDOW_BOUNDS,
+  clampWindowBounds,
+  sanitizeWindowBoundsForSave,
+} = require('./lib/shared/windowState');
 
 function loadProjectEnvFile() {
   try {
@@ -26,19 +32,22 @@ function loadProjectEnvFile() {
 
 loadProjectEnvFile();
 
+process.on('uncaughtException', (err) => {
+  console.error('[main] Uncaught exception:', err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[main] Unhandled rejection:', reason);
+});
+
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+}
+
 // Check and try to install sharp on Windows if missing
 const { tryInstallSharpForWindows } = require('./lib/shared/checkSharp');
 const brandingStorage = require('./lib/platform/storage/brandingStorage');
-app.whenReady().then(async () => {
-  // Bỏ Electron/xxx và manga-crawler/xxx khỏi User-Agent mặc định để tránh bị chặn bởi Cloudflare
-  app.userAgentFallback = session.defaultSession.getUserAgent()
-    .replace(/Electron\/\S+\s?/, '')
-    .replace(/manga-crawler\/\S+\s?/, '');
-
-  if (process.platform === 'win32') {
-    await tryInstallSharpForWindows();
-  }
-});
 
 // Allow HTML5 Audio (chat beep) without a prior user gesture — desktop app, not a random website.
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -270,18 +279,14 @@ function settingsPath() {
   return path.join(app.getPath('userData'), 'settings.json');
 }
 
+const settingsStore = createSettingsStore(settingsPath);
+
 function readSettings() {
-  try {
-    return JSON.parse(fs.readFileSync(settingsPath(), 'utf8'));
-  } catch {
-    return {};
-  }
+  return settingsStore.readSettings();
 }
 
 function writeSettings(partial) {
-  const next = { ...readSettings(), ...partial };
-  fs.mkdirSync(path.dirname(settingsPath()), { recursive: true });
-  fs.writeFileSync(settingsPath(), JSON.stringify(next, null, 2), 'utf8');
+  return settingsStore.writeSettings(partial);
 }
 
 function getChapterFolderSettings() {
@@ -303,13 +308,23 @@ function createWindow() {
   const brandingConfig = brandingStorage.getBrandingConfig();
   const initialTitle = brandingConfig.appName?.trim() ? brandingConfig.appName : ' ';
   const nativeIcon = brandingStorage.resolveNativeIcon(brandingConfig);
+  const displays = (() => {
+    try {
+      return screen.getAllDisplays();
+    } catch {
+      return [];
+    }
+  })();
+  const savedBounds = readSettings()?.windowBounds;
+  const clampedBounds = clampWindowBounds(savedBounds, displays, DEFAULT_WINDOW_BOUNDS);
+  const hasSavedCoords = typeof clampedBounds.x === 'number' && typeof clampedBounds.y === 'number';
 
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 800,
-    minWidth: 1100,
-    minHeight: 640,
-    center: true,
+    width: clampedBounds.width,
+    height: clampedBounds.height,
+    ...(hasSavedCoords ? { x: clampedBounds.x, y: clampedBounds.y } : { center: true }),
+    minWidth: DEFAULT_WINDOW_BOUNDS.minWidth,
+    minHeight: DEFAULT_WINDOW_BOUNDS.minHeight,
     frame: false,
     title: initialTitle,
     backgroundColor: '#0e0e0e',
@@ -319,6 +334,55 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
     },
+  });
+
+  if (clampedBounds.isMaximized) {
+    mainWindow.maximize();
+  }
+
+  let boundsSaveTimer = null;
+  const persistWindowBounds = () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    try {
+      const isMax = mainWindow.isMaximized();
+      const rawBounds = isMax ? mainWindow.getNormalBounds() : mainWindow.getBounds();
+      const sanitized = sanitizeWindowBoundsForSave(rawBounds, isMax);
+      if (sanitized) {
+        writeSettings({ windowBounds: sanitized });
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+  const scheduleBoundsSave = () => {
+    if (boundsSaveTimer) clearTimeout(boundsSaveTimer);
+    boundsSaveTimer = setTimeout(() => {
+      boundsSaveTimer = null;
+      persistWindowBounds();
+    }, 300);
+  };
+
+  mainWindow.on('resize', scheduleBoundsSave);
+  mainWindow.on('move', scheduleBoundsSave);
+  mainWindow.on('maximize', scheduleBoundsSave);
+  mainWindow.on('unmaximize', scheduleBoundsSave);
+  mainWindow.on('close', () => {
+    if (boundsSaveTimer) {
+      clearTimeout(boundsSaveTimer);
+      boundsSaveTimer = null;
+    }
+    persistWindowBounds();
+  });
+  mainWindow.on('closed', () => {
+    if (boundsSaveTimer) {
+      clearTimeout(boundsSaveTimer);
+      boundsSaveTimer = null;
+    }
+    if (membershipFocusDebounceId) {
+      clearTimeout(membershipFocusDebounceId);
+      membershipFocusDebounceId = null;
+    }
+    mainWindow = null;
   });
 
   if (process.platform === 'darwin' && app.dock && !nativeIcon.isEmpty()) {
@@ -416,30 +480,58 @@ function purgeCbzTempRootSync() {
   }
 }
 
-app.whenReady().then(() => {
-  purgeCbzTempRootSync();
-  cookieManager.init(app.getPath('userData'));
-  registerConnectorImageRefererHeaders();
-  registerAllIpc(createIpcContext());
-  try {
-    createWindow();
-  } catch (e) {
-    console.error('createWindow failed:', e);
-  }
-  membershipValidateIntervalId = setInterval(() => {
-    runMembershipValidationAndNotify();
-  }, 30 * 60 * 1000);
-});
+if (gotSingleInstanceLock) {
+  app.on('second-instance', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    } else if (app.isReady()) {
+      createWindow();
+    }
+  });
 
-app.on('before-quit', () => {
-  closeActiveReaderSessions();
-  purgeCbzTempRootSync();
-});
+  app.whenReady().then(() => {
+    // Bỏ Electron/xxx và manga-crawler/xxx khỏi User-Agent mặc định để tránh bị chặn bởi Cloudflare
+    app.userAgentFallback = session.defaultSession.getUserAgent()
+      .replace(/Electron\/\S+\s?/, '')
+      .replace(/manga-crawler\/\S+\s?/, '');
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
-});
+    if (process.platform === 'win32') {
+      tryInstallSharpForWindows().catch(() => {});
+    }
 
-app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
-});
+    purgeCbzTempRootSync();
+    cookieManager.init(app.getPath('userData'));
+    registerConnectorImageRefererHeaders();
+    registerAllIpc(createIpcContext());
+    try {
+      createWindow();
+    } catch (e) {
+      console.error('createWindow failed:', e);
+    }
+    membershipValidateIntervalId = setInterval(() => {
+      runMembershipValidationAndNotify();
+    }, 30 * 60 * 1000);
+  });
+
+  app.on('before-quit', () => {
+    if (membershipValidateIntervalId) {
+      clearInterval(membershipValidateIntervalId);
+      membershipValidateIntervalId = null;
+    }
+    if (membershipFocusDebounceId) {
+      clearTimeout(membershipFocusDebounceId);
+      membershipFocusDebounceId = null;
+    }
+    closeActiveReaderSessions();
+    purgeCbzTempRootSync();
+  });
+
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit();
+  });
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+}

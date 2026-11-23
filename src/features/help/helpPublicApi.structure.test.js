@@ -14,7 +14,7 @@ test('src/features/help/index.js named-exports HelpGuideModal', () => {
 
 test('App imports HelpGuideModal from the help barrel', () => {
   const shell_src = fs.readFileSync(path.join(dirname, '../shell/ShellLayout.jsx'), 'utf8');
-  expect(shell_src).toMatch(/from '\.\.\/help'/);
+  expect(shell_src).toMatch(/(?:from|import\()\s*'\.\.\/help'/);
   expect(shell_src).not.toMatch(/HelpPanel/);
   expect(shell_src).not.toMatch(/from '\.\.\/\.\.\/components\/HelpGuideModal'/);
 });

@@ -36,6 +36,8 @@ export default function TitleBar({ endSlot = null, beforeWindowControls = null }
         <button
           type="button"
           onClick={handleMinimize}
+          data-tooltip={t('titleBar.minimize')}
+          aria-label={t('titleBar.minimize')}
           className="p-2 text-on-surface/60 hover:bg-surface-container-high transition-colors duration-200 cursor-pointer"
         >
           <span className="material-symbols-outlined">minimize</span>
@@ -43,6 +45,8 @@ export default function TitleBar({ endSlot = null, beforeWindowControls = null }
         <button
           type="button"
           onClick={handleMaximize}
+          data-tooltip={t('titleBar.maximize')}
+          aria-label={t('titleBar.maximize')}
           className="p-2 text-on-surface/60 hover:bg-surface-container-high transition-colors duration-200 cursor-pointer"
         >
           <span className="material-symbols-outlined">maximize</span>
@@ -50,6 +54,8 @@ export default function TitleBar({ endSlot = null, beforeWindowControls = null }
         <button
           type="button"
           onClick={handleClose}
+          data-tooltip={t('titleBar.close')}
+          aria-label={t('titleBar.close')}
           className="p-2 text-on-surface/60 hover:bg-error/20 hover:text-error transition-colors duration-200 cursor-pointer"
         >
           <span className="material-symbols-outlined">close</span>

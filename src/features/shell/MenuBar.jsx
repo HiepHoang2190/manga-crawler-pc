@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useI18n } from '../../context/I18nContext';
-import { sortViewsByOrder } from '../../utils/menuOrderPrefs.mjs';
 import MenuTabCustomizeModal from './MenuTabCustomizeModal.jsx';
+import { formatShortcutHint, getVisibleOrderedViews } from './commandPaletteUtils.mjs';
 
 export const VIEWS = [
   { id: 'explore', key: 'menu.explore', icon: 'explore', hidable: true },
@@ -29,18 +29,14 @@ export default function MenuBar({
   onReorderMenu,
   onToggleHiddenMenu,
   onResetMenuPrefs,
+  onOpenCommandPalette,
 }) {
   const { t } = useI18n();
   const [isCustomizeOpen, setIsCustomizeOpen] = useState(false);
-  const hidden = useMemo(() => new Set(hiddenMenuIds), [hiddenMenuIds]);
-  const views = useMemo(() => {
-    let v = VIEWS.filter((tab) => !hidden.has(tab.id));
-    if (v.length === 0) {
-      const fallbackTab = VIEWS.find((tab) => tab.id === 'explore') || VIEWS[0];
-      v = [fallbackTab];
-    }
-    return sortViewsByOrder(v, menuOrder);
-  }, [hidden, menuOrder]);
+  const views = useMemo(
+    () => getVisibleOrderedViews(VIEWS, hiddenMenuIds, menuOrder),
+    [hiddenMenuIds, menuOrder]
+  );
 
   return (
     <div className="flex items-center justify-between w-full min-h-10 pr-3">
@@ -123,16 +119,30 @@ export default function MenuBar({
         })}
       </nav>
 
-      {/* Nút tùy chỉnh thanh menu ngay bên ngoài */}
-      <button
-        type="button"
-        onClick={() => setIsCustomizeOpen(true)}
-        className="flex items-center justify-center w-7 h-7 -translate-y-[6px] rounded-lg text-on-surface-variant/60 hover:text-primary hover:bg-surface-container-high transition-colors cursor-pointer shrink-0 ml-2"
-        data-tooltip={t('menu.customizeTabs.button')}
-        aria-label={t('menu.customizeTabs.button')}
-      >
-        <span className="material-symbols-outlined text-[18px]">tune</span>
-      </button>
+      {/* Nút Command Palette + Tùy chỉnh thanh menu ngay bên ngoài */}
+      <div className="flex items-center gap-1.5 shrink-0 ml-2 -translate-y-[6px]">
+        {typeof onOpenCommandPalette === 'function' ? (
+          <button
+            type="button"
+            onClick={onOpenCommandPalette}
+            className="flex items-center justify-center w-7 h-7 rounded-lg border border-outline-variant/20 bg-surface-container-highest/60 text-on-surface-variant/75 hover:text-primary hover:bg-surface-container-high transition-colors cursor-pointer shrink-0"
+            data-testid="menu-command-palette-btn"
+            data-tooltip={t('commandPalette.openTooltip', { shortcut: formatShortcutHint('k') })}
+            aria-label={t('commandPalette.openTooltip', { shortcut: formatShortcutHint('k') })}
+          >
+            <span className="material-symbols-outlined text-[16px]">search</span>
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => setIsCustomizeOpen(true)}
+          className="flex items-center justify-center w-7 h-7 rounded-lg border border-outline-variant/20 bg-surface-container-highest/60 text-on-surface-variant/70 hover:text-primary hover:bg-surface-container-high transition-colors cursor-pointer shrink-0"
+          data-tooltip={t('menu.customizeTabs.button')}
+          aria-label={t('menu.customizeTabs.button')}
+        >
+          <span className="material-symbols-outlined text-[18px]">tune</span>
+        </button>
+      </div>
 
       {/* Modal tùy chỉnh thanh menu */}
       <MenuTabCustomizeModal

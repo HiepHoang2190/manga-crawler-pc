@@ -11,7 +11,7 @@ test('src/features/plugins/index.js default-exports PluginManagementPanel', () =
 
 test('App imports PluginManagementPanel from the plugins barrel', () => {
   const shell_src = fs.readFileSync(path.join(dirname, '../shell/ShellLayout.jsx'), 'utf8');
-  expect(shell_src).toMatch(/from '\.\.\/plugins'/);
+  expect(shell_src).toMatch(/(?:from|import\()\s*'\.\.\/plugins'/);
   expect(shell_src).not.toMatch(/from '\.\.\/\.\.\/components\/PluginManagementPanel'/);
 });
 

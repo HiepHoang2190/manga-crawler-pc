@@ -457,6 +457,41 @@ function MangaStudioEditor({
 
   const displayModelName = activeProviderInfo.name;
   const loadingPathsRef = useRef(new Set());
+  const createdBlobUrlsRef = useRef(new Set());
+
+  const createTrackedBlobUrl = useCallback((file) => {
+    const url = URL.createObjectURL(file);
+    createdBlobUrlsRef.current.add(url);
+    return url;
+  }, []);
+
+  const revokeTrackedBlobUrl = useCallback((url) => {
+    if (typeof url === 'string' && url.startsWith('blob:') && createdBlobUrlsRef.current.has(url)) {
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+        /* ignore */
+      }
+      createdBlobUrlsRef.current.delete(url);
+    }
+  }, []);
+
+  const revokeAllTrackedBlobUrls = useCallback(() => {
+    for (const url of createdBlobUrlsRef.current) {
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+        /* ignore */
+      }
+    }
+    createdBlobUrlsRef.current.clear();
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      revokeAllTrackedBlobUrls();
+    };
+  }, [revokeAllTrackedBlobUrls]);
 
   // Normalized pages state with layer data
   const [pages, setPages] = useState(() => normalizePages(initialPages));
@@ -1705,6 +1740,8 @@ function MangaStudioEditor({
     if (pageToRemove?.imagePath) {
       loadingPathsRef.current.delete(pageToRemove.imagePath);
     }
+    revokeTrackedBlobUrl(pageToRemove?.originalDataUrl);
+    revokeTrackedBlobUrl(pageToRemove?.dataUrl);
 
     // Xóa blob files & pipeline cache của ảnh này trên đĩa
     api?.translateDeletePageBlobs?.(pageToRemove, nextPages, currentProject?.id).catch(() => { });
@@ -1733,7 +1770,7 @@ function MangaStudioEditor({
       type: 'info',
       text: t('translate.studio.toastPageDeleted', { name: pageToRemove?.filename || targetIdx + 1 }),
     });
-  }, [pages, onUpdatePages, api, serializePagesForSession, currentProject]);
+  }, [pages, onUpdatePages, api, serializePagesForSession, currentProject, revokeTrackedBlobUrl]);
 
   // Xóa tất cả các trang khỏi Studio
   const handleRemoveAllPages = useCallback(async () => {
@@ -1749,11 +1786,12 @@ function MangaStudioEditor({
     setSelectedLayerId(null);
     onUpdatePages?.([]);
     loadingPathsRef.current.clear();
+    revokeAllTrackedBlobUrls();
     setStatusMessage({
       type: 'info',
       text: t('translate.studio.toastAllPagesDeleted'),
     });
-  }, [api, onUpdatePages, currentProject]);
+  }, [api, onUpdatePages, currentProject, revokeAllTrackedBlobUrls]);
 
   // Kích hoạt xác nhận xóa trang (nếu có layer thì hỏi xác nhận, nếu rỗng hoặc giữ Shift thì xóa ngay)
   const handlePromptRemovePage = useCallback((targetPage, e) => {
@@ -1984,7 +2022,7 @@ function MangaStudioEditor({
     const startIndex = pages.length;
     const loadedPages = await Promise.all(
       sorted.map(async (file, idx) => {
-        const url = URL.createObjectURL(file);
+        const url = createTrackedBlobUrl(file);
         const dims = await new Promise((resolve) => {
           const img = new Image();
           img.onload = () => resolve({ width: img.naturalWidth || 800, height: img.naturalHeight || 1200 });
@@ -2034,9 +2072,11 @@ function MangaStudioEditor({
     const sorted = [...files].sort((a, b) =>
       a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
     );
+    const nextUrls = new Set();
     const loadedPages = await Promise.all(
       sorted.map(async (file, idx) => {
-        const url = URL.createObjectURL(file);
+        const url = createTrackedBlobUrl(file);
+        nextUrls.add(url);
         const dims = await new Promise((resolve) => {
           const img = new Image();
           img.onload = () => resolve({ width: img.naturalWidth || 800, height: img.naturalHeight || 1200 });
@@ -2057,6 +2097,11 @@ function MangaStudioEditor({
         };
       })
     );
+    for (const trackedUrl of [...createdBlobUrlsRef.current]) {
+      if (!nextUrls.has(trackedUrl)) {
+        revokeTrackedBlobUrl(trackedUrl);
+      }
+    }
     setPages(loadedPages);
     setActivePageIndex(0);
     setSelectedLayerId(null);

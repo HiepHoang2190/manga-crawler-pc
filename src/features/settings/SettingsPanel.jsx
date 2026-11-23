@@ -69,9 +69,9 @@ function SettingsSectionCard({
             e.stopPropagation();
             onToggle?.();
           }}
-          title={isCollapsed ? t('settings.expandSection') : t('settings.collapseSection')}
+          data-tooltip={isCollapsed ? t('settings.expandSection') : t('settings.collapseSection')}
           aria-label={isCollapsed ? t('settings.expandSection') : t('settings.collapseSection')}
-          className="size-8 rounded-xl flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest transition-all duration-150 cursor-pointer shrink-0"
+          className="size-8 rounded-xl border border-outline-variant/20 bg-surface-container-highest/50 flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest transition-all duration-150 cursor-pointer shrink-0"
         >
           <span
             className={`material-symbols-outlined text-[20px] transition-transform duration-200 ${

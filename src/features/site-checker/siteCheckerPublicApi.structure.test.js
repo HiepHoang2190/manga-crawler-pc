@@ -11,7 +11,7 @@ test('src/features/site-checker/index.js default-exports SiteCheckerPanel', () =
 
 test('App imports SiteCheckerPanel from the site-checker barrel and does not own test state', () => {
   const shell_src = fs.readFileSync(path.join(dirname, '../shell/ShellLayout.jsx'), 'utf8');
-  expect(shell_src).toMatch(/from '\.\.\/site-checker'/);
+  expect(shell_src).toMatch(/(?:from|import\()\s*'\.\.\/site-checker'/);
   expect(shell_src).not.toMatch(/from '\.\.\/\.\.\/components\/SiteCheckerPanel'/);
   expect(shell_src).not.toMatch(/crawler:site-test-results/);
   expect(shell_src).not.toMatch(/startTestAll/);

@@ -1,15 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import TitleBar from './TitleBar.jsx';
-import MenuBar from './MenuBar.jsx';
+import MenuBar, { VIEWS } from './MenuBar.jsx';
 import ConsolePanel from './ConsolePanel.jsx';
 import StatusBar from './StatusBar.jsx';
+import CommandPaletteModal from './CommandPaletteModal.jsx';
+import { formatShortcutHint, getVisibleOrderedViews, isEditableEventTarget } from './commandPaletteUtils.mjs';
+import { useTheme } from '../../context/ThemeContext';
 import { useSettings, SettingsPanel, UpdateBadge, AppUpdateModal } from '../settings';
 import { useConnectorList } from '../../platform/connectors';
 import { useShellNav } from './ShellNavProvider.jsx';
-import { HelpGuideModal } from '../help';
-import DonatePanel from '../donate';
-import { GlobalTooltip, useAppLog } from '../../shared';
+import { GlobalTooltip, TabErrorBoundary, useAppLog } from '../../shared';
 import {
   useDownload,
   QueueRestoreModal,
@@ -25,15 +26,6 @@ import {
 import { useExport } from '../export';
 import { useAuth, AuthRequiredView, GuestCreditBadge, FreeUserTokenExhaustedModal } from '../../auth';
 import HomeWorkspace from '../home';
-import ExplorePanel from '../explore';
-import LatestUpdatesPanel from '../latest-updates';
-import BulkScanPanel from '../bulk-scan';
-import PluginManagementPanel from '../plugins';
-import SiteCheckerPanel from '../site-checker';
-import { MangaTranslateTab } from '../translate';
-import { WorkflowStudio } from '../workflow';
-import { EbookStudio } from '../ebook-studio';
-import { ToolsStudio } from '../tools-studio';
 import { ExtrasInstallModal } from '../extras';
 import {
   FREE_USER_TOKEN_MAX,
@@ -63,6 +55,29 @@ import {
   clearHiddenSavePaths,
   HIDDEN_SAVE_PATHS_KEY,
 } from '../../utils/offlineLibraryHiddenPaths';
+
+const ExplorePanel = lazy(() => import('../explore'));
+const PluginManagementPanel = lazy(() => import('../plugins'));
+const SiteCheckerPanel = lazy(() => import('../site-checker'));
+const MangaTranslateTab = lazy(() => import('../translate').then((m) => ({ default: m.MangaTranslateTab })));
+const WorkflowStudio = lazy(() => import('../workflow').then((m) => ({ default: m.WorkflowStudio })));
+const EbookStudio = lazy(() => import('../ebook-studio').then((m) => ({ default: m.EbookStudio })));
+const ToolsStudio = lazy(() => import('../tools-studio').then((m) => ({ default: m.ToolsStudio })));
+const DonatePanel = lazy(() => import('../donate'));
+const HelpGuideModal = lazy(() => import('../help').then((m) => ({ default: m.HelpGuideModal })));
+
+function TabLoadingFallback({ label }) {
+  return (
+    <div className="flex flex-1 min-h-0 items-center justify-center bg-surface text-on-surface-variant p-6 select-none">
+      <div className="inline-flex items-center gap-2.5 rounded-2xl border border-outline-variant/20 bg-surface-container-high/80 px-4 py-2.5 text-xs font-medium shadow-sm">
+        <span className="material-symbols-outlined text-[18px] text-primary animate-spin">
+          progress_activity
+        </span>
+        <span>{label}</span>
+      </div>
+    </div>
+  );
+}
 
 const LOG_FOOTER_VISIBLE_KEY = 'mangaLogFooterVisible';
 
@@ -100,6 +115,7 @@ function loadLogPanelHeight() {
 
 export default function ShellLayout() {
   const { t } = useI18n();
+  const { toggleDarkMode } = useTheme();
   const { logs, appendLog, clearLogs } = useAppLog();
   const { handleAuthGateLoggedIn: finishAuthLogin, ...auth } = useAuth();
   const {
@@ -161,15 +177,28 @@ export default function ShellLayout() {
   } = useShellNav();
   const isExploreView =
     menuView === 'explore' || menuView === 'latestUpdates' || menuView === 'bulkScan';
-  const [hasVisitedExplore, setHasVisitedExplore] = useState(
-    () => isExploreView,
+  const normalizedTabKey = isExploreView ? 'explore' : menuView;
+  const [visitedTabs, setVisitedTabs] = useState(
+    () => new Set([normalizedTabKey]),
   );
+  const hasVisitedExplore = visitedTabs.has('explore');
 
   useEffect(() => {
-    if (isExploreView) {
-      setHasVisitedExplore(true);
+    setVisitedTabs((prev) => {
+      if (prev.has(normalizedTabKey)) return prev;
+      const next = new Set(prev);
+      next.add(normalizedTabKey);
+      return next;
+    });
+  }, [normalizedTabKey]);
+
+  const tabLabelMap = useMemo(() => {
+    const map = {};
+    for (const v of VIEWS) {
+      map[v.id] = t(v.key);
     }
-  }, [isExploreView]);
+    return map;
+  }, [t]);
   const {
     queue,
     queueSelectedIds,
@@ -263,6 +292,8 @@ export default function ShellLayout() {
   const logPanelHeightRef = useRef(logPanelHeightPx);
   /** Tab ID hiện tại cho contextual help modal (null = đóng). */
   const [menuHelpTabId, setMenuHelpTabId] = useState(null);
+  /** Global Command Palette (⌘K / Ctrl+K) */
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   /** Trạng thái tab Connector đang quét kiểm tra kết nối */
   const [siteCheckerBusy, setSiteCheckerBusy] = useState(false);
   const tabBusyMap = useMemo(() => ({
@@ -310,6 +341,115 @@ export default function ShellLayout() {
       return next;
     });
   }, []);
+
+  const visibleOrderedViews = useMemo(
+    () => getVisibleOrderedViews(VIEWS, hiddenMenuIds, menuOrder),
+    [hiddenMenuIds, menuOrder]
+  );
+
+  useEffect(() => {
+    if (!authBootstrapped || !isSignedIn) return undefined;
+    const handleGlobalKeyDown = (e) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
+      const key = String(e.key || '').toLowerCase();
+      if (key === 'k') {
+        e.preventDefault();
+        setCommandPaletteOpen((prev) => !prev);
+        return;
+      }
+      if (key === 'j') {
+        e.preventDefault();
+        toggleLogFooter();
+        return;
+      }
+      if (/^[1-9]$/.test(key) && !isEditableEventTarget(e.target)) {
+        const idx = Number(key) - 1;
+        const targetTab = visibleOrderedViews[idx];
+        if (targetTab) {
+          e.preventDefault();
+          setMenuView(targetTab.id);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [authBootstrapped, isSignedIn, toggleLogFooter, visibleOrderedViews, setMenuView]);
+
+  const commandPaletteItems = useMemo(() => {
+    const tabGroupLabel = t('commandPalette.group.tabs');
+    const actionGroupLabel = t('commandPalette.group.actions');
+    const items = visibleOrderedViews.map((tab, index) => ({
+      id: `tab:${tab.id}`,
+      group: tabGroupLabel,
+      label: t(tab.key),
+      keywords: `${tab.id} ${t(tab.key)}`,
+      icon: tab.icon,
+      active: normalizedTabKey === tab.id,
+      shortcut: index < 9 ? formatShortcutHint(String(index + 1)) : '',
+      onSelect: () => setMenuView(tab.id),
+    }));
+
+    items.push(
+      {
+        id: 'action:toggle-console',
+        group: actionGroupLabel,
+        label: t('commandPalette.action.toggleConsole'),
+        keywords: 'console log footer drawer debug',
+        icon: 'terminal',
+        shortcut: formatShortcutHint('j'),
+        onSelect: toggleLogFooter,
+      },
+      {
+        id: 'action:toggle-theme',
+        group: actionGroupLabel,
+        label: t('commandPalette.action.toggleTheme'),
+        keywords: 'theme dark light mode giao dien sang toi',
+        icon: 'contrast',
+        onSelect: toggleDarkMode,
+      },
+      {
+        id: 'action:open-help',
+        group: actionGroupLabel,
+        label: t('commandPalette.action.openHelp'),
+        keywords: 'help guide huong dan tro giup',
+        icon: 'help',
+        onSelect: () => setMenuHelpTabId(normalizedTabKey),
+      },
+    );
+
+    if (queueProcessing) {
+      items.push({
+        id: 'action:stop-queue',
+        group: actionGroupLabel,
+        label: t('commandPalette.action.stopQueue'),
+        keywords: 'stop queue download dung hang doi tai',
+        icon: 'stop_circle',
+        onSelect: stopQueue,
+      });
+    } else if (Array.isArray(queue) && queue.length > 0) {
+      items.push({
+        id: 'action:start-queue',
+        group: actionGroupLabel,
+        label: t('commandPalette.action.startQueue'),
+        keywords: 'start queue download bat dau hang doi tai',
+        icon: 'play_circle',
+        onSelect: startQueue,
+      });
+    }
+
+    return items;
+  }, [
+    visibleOrderedViews,
+    normalizedTabKey,
+    t,
+    setMenuView,
+    toggleLogFooter,
+    toggleDarkMode,
+    queueProcessing,
+    queue,
+    stopQueue,
+    startQueue,
+  ]);
 
   const handleLogFooterResizePointerDown = useCallback((e) => {
     if (e.button !== 0) return;
@@ -973,6 +1113,7 @@ export default function ShellLayout() {
               onReorderMenu={handleReorderMenu}
               onToggleHiddenMenu={toggleHiddenMenu}
               onResetMenuPrefs={handleResetMenuPrefs}
+              onOpenCommandPalette={() => setCommandPaletteOpen(true)}
             />
             <div className="bg-surface-container-low h-px w-full" />
           </>
@@ -1015,72 +1156,102 @@ export default function ShellLayout() {
       ) : null}
 
       {/* Giữ nguyên phiên làm việc của Workflow Studio không bị reset khi chuyển qua lại giữa các menu */}
-      <div
-        data-testid="tab-content-workflow"
-        className={
-          menuView === 'workflow'
-            ? 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden'
-            : 'hidden'
-        }
-        aria-hidden={menuView !== 'workflow'}
-      >
-        <WorkflowStudio />
-      </div>
+      {visitedTabs.has('workflow') ? (
+        <div
+          data-testid="tab-content-workflow"
+          className={
+            menuView === 'workflow'
+              ? 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden'
+              : 'hidden'
+          }
+          aria-hidden={menuView !== 'workflow'}
+        >
+          <TabErrorBoundary tabId="workflow" tabLabel={tabLabelMap.workflow} t={t}>
+            <Suspense fallback={<TabLoadingFallback label={t('errorBoundary.loadingTab')} />}>
+              <WorkflowStudio />
+            </Suspense>
+          </TabErrorBoundary>
+        </div>
+      ) : null}
 
       {/* Giữ nguyên phiên làm việc của Dịch Manga (Studio) không bị reset khi chuyển qua lại giữa các menu */}
-      <div
-        data-testid="tab-content-translate"
-        className={
-          menuView === 'translate'
-            ? 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden'
-            : 'hidden'
-        }
-        aria-hidden={menuView !== 'translate'}
-      >
-        <MangaTranslateTab savePath={savePath} />
-      </div>
+      {visitedTabs.has('translate') ? (
+        <div
+          data-testid="tab-content-translate"
+          className={
+            menuView === 'translate'
+              ? 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden'
+              : 'hidden'
+          }
+          aria-hidden={menuView !== 'translate'}
+        >
+          <TabErrorBoundary tabId="translate" tabLabel={tabLabelMap.translate} t={t}>
+            <Suspense fallback={<TabLoadingFallback label={t('errorBoundary.loadingTab')} />}>
+              <MangaTranslateTab savePath={savePath} />
+            </Suspense>
+          </TabErrorBoundary>
+        </div>
+      ) : null}
 
       {/* Giữ nguyên phiên làm việc của Ebook Studio không bị reset khi chuyển qua lại giữa các menu */}
-      <div
-        data-testid="tab-content-ebookStudio"
-        className={
-          menuView === 'ebookStudio'
-            ? 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden'
-            : 'hidden'
-        }
-        aria-hidden={menuView !== 'ebookStudio'}
-      >
-        <EbookStudio savePath={savePath} />
-      </div>
+      {visitedTabs.has('ebookStudio') ? (
+        <div
+          data-testid="tab-content-ebookStudio"
+          className={
+            menuView === 'ebookStudio'
+              ? 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden'
+              : 'hidden'
+          }
+          aria-hidden={menuView !== 'ebookStudio'}
+        >
+          <TabErrorBoundary tabId="ebookStudio" tabLabel={tabLabelMap.ebookStudio} t={t}>
+            <Suspense fallback={<TabLoadingFallback label={t('errorBoundary.loadingTab')} />}>
+              <EbookStudio savePath={savePath} />
+            </Suspense>
+          </TabErrorBoundary>
+        </div>
+      ) : null}
 
       {/* Giữ nguyên phiên làm việc của Tools Studio (Công cụ) không bị reset khi chuyển qua lại giữa các menu */}
-      <div
-        data-testid="tab-content-toolsStudio"
-        className={
-          menuView === 'toolsStudio'
-            ? 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden'
-            : 'hidden'
-        }
-        aria-hidden={menuView !== 'toolsStudio'}
-      >
-        <ToolsStudio savePath={savePath} />
-      </div>
+      {visitedTabs.has('toolsStudio') ? (
+        <div
+          data-testid="tab-content-toolsStudio"
+          className={
+            menuView === 'toolsStudio'
+              ? 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden'
+              : 'hidden'
+          }
+          aria-hidden={menuView !== 'toolsStudio'}
+        >
+          <TabErrorBoundary tabId="toolsStudio" tabLabel={tabLabelMap.toolsStudio} t={t}>
+            <Suspense fallback={<TabLoadingFallback label={t('errorBoundary.loadingTab')} />}>
+              <ToolsStudio savePath={savePath} />
+            </Suspense>
+          </TabErrorBoundary>
+        </div>
+      ) : null}
 
       {/* Giữ nguyên phiên làm việc của SiteCheckerPanel (Kiểm tra nguồn / Connector) để quét nền khi chuyển qua lại giữa các menu */}
-      <div
-        data-testid="tab-content-siteChecker"
-        className={
-          menuView === 'siteChecker'
-            ? 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden'
-            : 'hidden'
-        }
-        aria-hidden={menuView !== 'siteChecker'}
-      >
-        <SiteCheckerPanel
-          connectors={connectorList}
-          onBusyChange={setSiteCheckerBusy}
-        />
-      </div>
+      {visitedTabs.has('siteChecker') ? (
+        <div
+          data-testid="tab-content-siteChecker"
+          className={
+            menuView === 'siteChecker'
+              ? 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden'
+              : 'hidden'
+          }
+          aria-hidden={menuView !== 'siteChecker'}
+        >
+          <TabErrorBoundary tabId="siteChecker" tabLabel={tabLabelMap.siteChecker} t={t}>
+            <Suspense fallback={<TabLoadingFallback label={t('errorBoundary.loadingTab')} />}>
+              <SiteCheckerPanel
+                connectors={connectorList}
+                onBusyChange={setSiteCheckerBusy}
+              />
+            </Suspense>
+          </TabErrorBoundary>
+        </div>
+      ) : null}
 
       {/* Giữ nguyên phiên làm việc của Khám phá (ExplorePanel: Mới cập nhật & Quét hàng loạt) không bị reset khi chuyển qua lại giữa các menu */}
       {hasVisitedExplore ? (
@@ -1093,31 +1264,35 @@ export default function ShellLayout() {
           }
           aria-hidden={!isExploreView}
         >
-          <ExplorePanel
-            initialSubtab={menuView === 'bulkScan' ? 'bulk' : (menuView === 'latestUpdates' ? 'latest' : null)}
-            connectors={connectorList}
-            mangaLoadOpts={latestMangaLoadOpts}
-            onEnqueueLoadedManga={handleEnqueueLoadedMangaFromLatest}
-            queue={queue}
-            queueProcessing={queueProcessing}
-            downloadProgress={downloadProgress}
-            onStartQueue={startQueue}
-            onStopQueue={stopQueue}
-            onAddQueuedFromLatest={handleAddQueuedFromLatest}
-            onDownloadMangadexCovers={handleDownloadMangadexCovers}
-            savePath={savePath}
-            prepareDrawerMangaForRead={prepareLatestDrawerForRead}
-            onOpenReaderForDrawerChapter={(ch) => {
-              openReader(ch);
-            }}
-            onReadChapterOnlineForDrawerChapter={(ch) => {
-              openReader(ch, { stream: true });
-            }}
-            favorites={favorites}
-            favoriteSyncById={favoriteSyncById}
-            onEnqueuePendingChapters={enqueueFavoritePendingChapters}
-            onToggleFavorite={toggleFavoriteFromLatest}
-          />
+          <TabErrorBoundary tabId="explore" tabLabel={tabLabelMap.explore} t={t}>
+            <Suspense fallback={<TabLoadingFallback label={t('errorBoundary.loadingTab')} />}>
+              <ExplorePanel
+                initialSubtab={menuView === 'bulkScan' ? 'bulk' : (menuView === 'latestUpdates' ? 'latest' : null)}
+                connectors={connectorList}
+                mangaLoadOpts={latestMangaLoadOpts}
+                onEnqueueLoadedManga={handleEnqueueLoadedMangaFromLatest}
+                queue={queue}
+                queueProcessing={queueProcessing}
+                downloadProgress={downloadProgress}
+                onStartQueue={startQueue}
+                onStopQueue={stopQueue}
+                onAddQueuedFromLatest={handleAddQueuedFromLatest}
+                onDownloadMangadexCovers={handleDownloadMangadexCovers}
+                savePath={savePath}
+                prepareDrawerMangaForRead={prepareLatestDrawerForRead}
+                onOpenReaderForDrawerChapter={(ch) => {
+                  openReader(ch);
+                }}
+                onReadChapterOnlineForDrawerChapter={(ch) => {
+                  openReader(ch, { stream: true });
+                }}
+                favorites={favorites}
+                favoriteSyncById={favoriteSyncById}
+                onEnqueuePendingChapters={enqueueFavoritePendingChapters}
+                onToggleFavorite={toggleFavoriteFromLatest}
+              />
+            </Suspense>
+          </TabErrorBoundary>
         </div>
       ) : null}
 
@@ -1130,6 +1305,8 @@ export default function ShellLayout() {
         }
         className="contents"
       >
+      <TabErrorBoundary tabId={menuView} tabLabel={tabLabelMap[menuView]} t={t}>
+        <Suspense fallback={<TabLoadingFallback label={t('errorBoundary.loadingTab')} />}>
       {menuView === 'dashboard' ? (
         <DashboardPanel
           data={dashboardData}
@@ -1212,6 +1389,8 @@ export default function ShellLayout() {
       ) : menuView === 'donate' ? (
         <DonatePanel />
       ) : null}
+        </Suspense>
+      </TabErrorBoundary>
       </div>
 
       {logFooterVisible ? (
@@ -1257,7 +1436,17 @@ export default function ShellLayout() {
         onClose={() => setFreeUserTokenExhaustedOpen(false)}
       />
 
-      <HelpGuideModal tabId={menuHelpTabId} onClose={() => setMenuHelpTabId(null)} />
+      {menuHelpTabId ? (
+        <Suspense fallback={null}>
+          <HelpGuideModal tabId={menuHelpTabId} onClose={() => setMenuHelpTabId(null)} />
+        </Suspense>
+      ) : null}
+
+      <CommandPaletteModal
+        open={commandPaletteOpen}
+        items={commandPaletteItems}
+        onClose={() => setCommandPaletteOpen(false)}
+      />
 
       <AppUpdateModal />
       <ExtrasInstallModal

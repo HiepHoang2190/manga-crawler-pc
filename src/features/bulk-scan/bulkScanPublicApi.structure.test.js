@@ -12,10 +12,10 @@ test('src/features/bulk-scan/index.js default-exports BulkScanPanel and migrateH
   expect(src).not.toMatch(/saveBulkScanSession/);
 });
 
-test('App imports BulkScanPanel from the bulk-scan barrel', () => {
-  const shell_src = fs.readFileSync(path.join(dirname, '../shell/ShellLayout.jsx'), 'utf8');
-  expect(shell_src).toMatch(/from '\.\.\/bulk-scan'/);
-  expect(shell_src).not.toMatch(/from '\.\.\/\.\.\/components\/BulkScanPanel'/);
+test('ExplorePanel imports BulkScanPanel from the bulk-scan barrel', () => {
+  const explore_src = fs.readFileSync(path.join(dirname, '../explore/ExplorePanel.jsx'), 'utf8');
+  expect(explore_src).toMatch(/from '\.\.\/bulk-scan'/);
+  expect(explore_src).not.toMatch(/from '\.\.\/\.\.\/components\/BulkScanPanel'/);
 });
 
 test('shell imports migrateHiddenMenuIds from the bulk-scan barrel', () => {

@@ -24,6 +24,6 @@ test('src/features/explore/ExplorePanel.jsx exists and defines ExplorePanel comp
 
 test('ShellLayout imports ExplorePanel from the explore barrel', () => {
   const shell_src = fs.readFileSync(path.join(dirname, '../shell/ShellLayout.jsx'), 'utf8');
-  expect(shell_src).toMatch(/import ExplorePanel from '\.\.\/explore'/);
+  expect(shell_src).toMatch(/(?:import ExplorePanel from|lazy\(\(\) => import\()\s*'\.\.\/explore'/);
   expect(shell_src).toMatch(/<ExplorePanel/);
 });

@@ -11,6 +11,7 @@ import {
   BACKUP_FORMAT_ENCRYPTED,
 } from '../../utils/userDataBackup';
 import { clearAutoBackupScheduleMeta } from '../../utils/autoBackup';
+import { ConfirmModal } from '../../shared';
 
 function SectionCheckbox({ id, label, checked, onChange, disabled }) {
   return (
@@ -47,6 +48,7 @@ export default function UserDataBackupSection() {
   const [msg, setMsg] = useState('');
   const [pendingImport, setPendingImport] = useState(null);
   const [importPassword, setImportPassword] = useState('');
+  const [confirmImportPayload, setConfirmImportPayload] = useState(null);
 
   const hasElectron = typeof window !== 'undefined' && !!window.electronAPI?.getSavedDownloadPath;
   const [autoBackupPath, setAutoBackupPath] = useState('');
@@ -146,6 +148,28 @@ export default function UserDataBackupSection() {
     [t]
   );
 
+  const executeConfirmedImport = useCallback(async (payload) => {
+    if (!payload) return;
+    setMsg('');
+    setBusy(true);
+    try {
+      await applyBackupPayload(payload);
+      clearAutoBackupScheduleMeta();
+      setConfirmImportPayload(null);
+      setPendingImport(null);
+      setImportPassword('');
+      setMsg(t('settings.backup.importReloading'));
+      window.setTimeout(() => {
+        window.location.reload();
+      }, 400);
+    } catch (e) {
+      setConfirmImportPayload(null);
+      setMsg(String(e?.message || e));
+    } finally {
+      setBusy(false);
+    }
+  }, [t]);
+
   const runImport = useCallback(async () => {
     if (!pendingImport) return;
     setMsg('');
@@ -163,18 +187,7 @@ export default function UserDataBackupSection() {
         }
         payload = dec.payload;
       }
-      if (!window.confirm(t('settings.backup.importConfirm'))) {
-        setBusy(false);
-        return;
-      }
-      await applyBackupPayload(payload);
-      clearAutoBackupScheduleMeta();
-      setPendingImport(null);
-      setImportPassword('');
-      setMsg(t('settings.backup.importReloading'));
-      window.setTimeout(() => {
-        window.location.reload();
-      }, 400);
+      setConfirmImportPayload(payload);
     } catch (e) {
       setMsg(String(e?.message || e));
     } finally {
@@ -341,6 +354,20 @@ export default function UserDataBackupSection() {
 
         <p className="text-xs text-on-surface-variant/90 leading-snug max-w-2xl">{t('settings.backup.note')}</p>
       </div>
+
+      <ConfirmModal
+        open={Boolean(confirmImportPayload)}
+        title={t('settings.backup.importConfirmTitle')}
+        message={t('settings.backup.importConfirm')}
+        confirmLabel={t('settings.backup.applyImport')}
+        cancelLabel={t('settings.backup.cancelImport')}
+        icon="restore"
+        busy={busy}
+        onConfirm={() => void executeConfirmedImport(confirmImportPayload)}
+        onCancel={() => {
+          if (!busy) setConfirmImportPayload(null);
+        }}
+      />
     </div>
   );
 }

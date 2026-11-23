@@ -11,6 +11,6 @@ test('src/features/donate/index.js default-exports DonatePanel', () => {
 
 test('App imports DonatePanel from the donate barrel', () => {
   const shell_src = fs.readFileSync(path.join(dirname, '../shell/ShellLayout.jsx'), 'utf8');
-  expect(shell_src).toMatch(/from '\.\.\/donate'/);
+  expect(shell_src).toMatch(/(?:from|import\()\s*'\.\.\/donate'/);
   expect(shell_src).not.toMatch(/from '\.\.\/\.\.\/components\/DonatePanel'/);
 });
