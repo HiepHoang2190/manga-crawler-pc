@@ -448,6 +448,107 @@ class VietMessengerService extends HtmlConnectorService {
     return siteConfig?.cookie || '';
   }
 
+  async fetchLatestUpdates(options = {}) {
+    const signal = options.signal || null;
+    if (signal?.aborted) {
+      return { ok: false, aborted: true, siteId: 'vietmessenger', page: 1, totalPages: 1, items: [] };
+    }
+    const page = Math.min(20, Math.max(1, Math.floor(Number(options.page) || 1)));
+    const listingUrl = `${this.config.domain}comics/?page=${page}`;
+    const cheerio = require('cheerio');
+    const { fetchHtml } = require('../../../download/connector/htmlConnectorUtils');
+
+    let fetched;
+    try {
+      if (typeof options.fetchHtmlImpl === 'function') {
+        fetched = await options.fetchHtmlImpl(listingUrl, {
+          referer: this.config.domain,
+          ...(signal ? { signal } : {}),
+        });
+      } else {
+        const userCookie = (options.cookie && String(options.cookie).trim()) || this._effectiveUserCookie() || '';
+        fetched = await fetchHtml(listingUrl, {
+          referer: this.config.domain,
+          ...(userCookie ? { cookie: userCookie } : {}),
+          ...(signal ? { signal } : {}),
+        });
+      }
+    } catch (err) {
+      if (signal?.aborted || err?.name === 'AbortError') {
+        return { ok: false, aborted: true, siteId: 'vietmessenger', page, totalPages: 1, items: [] };
+      }
+      return { ok: false, error: String(err?.message || err) };
+    }
+    if (signal?.aborted || fetched?.aborted) {
+      return { ok: false, aborted: true, siteId: 'vietmessenger', page, totalPages: 1, items: [] };
+    }
+    if (!fetched?.ok) {
+      return { ok: false, error: fetched?.error || 'Không tải được danh sách VietMessenger.' };
+    }
+
+    const $ = cheerio.load(String(fetched.html || ''));
+    const coverByHref = new Map();
+    $('a[href*="?title="]').each((_, el) => {
+      const $a = $(el);
+      const $img = $a.find('img').first();
+      if (!$img.length) return;
+      let absHref = '';
+      try {
+        absHref = new URL(String($a.attr('href') || '').trim(), this.config.domain).href;
+      } catch {
+        return;
+      }
+      if (coverByHref.has(absHref)) return;
+      const raw = ($img.attr('data-src') || $img.attr('src') || '').trim();
+      if (!raw || /^data:/i.test(raw)) return;
+      try {
+        coverByHref.set(absHref, new URL(raw, this.config.domain).href);
+      } catch {
+        /* */
+      }
+    });
+
+    const items = [];
+    const seen = new Set();
+    $('h2 a.title[href*="?title="], a.title[href*="?title="]').each((_, el) => {
+      const $a = $(el);
+      let mangaUrl = '';
+      try {
+        mangaUrl = new URL(String($a.attr('href') || '').trim(), this.config.domain).href;
+      } catch {
+        return;
+      }
+      if (!mangaUrl || seen.has(mangaUrl)) return;
+      const title = $a.text().trim().replace(/\s+/g, ' ');
+      if (!title) return;
+      seen.add(mangaUrl);
+      items.push({
+        title,
+        mangaUrl,
+        coverUrl: coverByHref.get(mangaUrl) || '',
+        latestChapterLabel: '',
+      });
+    });
+
+    let totalPages = 1;
+    $('.pagenav select option').each((_, el) => {
+      const val = String($(el).attr('value') || '');
+      const m = val.match(/[?&]page=(\d+)/i);
+      if (m) {
+        const p = parseInt(m[1], 10);
+        if (Number.isFinite(p) && p > totalPages) totalPages = p;
+      }
+    });
+
+    return {
+      ok: true,
+      siteId: 'vietmessenger',
+      page,
+      totalPages: Math.min(20, Math.max(page, totalPages)),
+      items,
+    };
+  }
+
 }
 
 module.exports = new VietMessengerService();

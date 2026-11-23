@@ -134,14 +134,14 @@ describe('xbatoService', () => {
       expect(xbatoConnector.requiresCookie).toBe(false);
     });
 
-    it('does not support latest updates on PC', () => {
-      expect(xbatoConnector.supportsLatestUpdates).toBeFalsy();
-      expect(typeof xbatoConnector.fetchLatestUpdates).toBe('undefined');
+    it('exposes latest updates and search support on PC', () => {
+      expect(xbatoConnector.supportsLatestUpdates).toBe(true);
+      expect(typeof xbatoConnector.fetchLatestUpdates).toBe('function');
       const { listConnectors } = require('../../../platform/connectors');
       const listed = listConnectors().find((c) => c.id === 'xbato');
       expect(listed).toBeDefined();
-      expect(listed.supportsLatestUpdates).toBe(false);
-      expect(listed.supportsLatestUpdatesSearch).toBe(false);
+      expect(listed.supportsLatestUpdates).toBe(true);
+      expect(listed.supportsLatestUpdatesSearch).toBe(true);
     });
   });
 

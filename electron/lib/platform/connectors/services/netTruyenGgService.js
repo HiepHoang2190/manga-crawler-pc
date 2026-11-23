@@ -15,6 +15,7 @@ const {
   extractSlug,
   parseChapterListResponse,
   parseChapterImagesFromHtml,
+  parseNetTruyenVietListingHtml,
 } = require('./netTruyenVietService');
 
 const DOMAIN = 'https://nettruyen.gg/';
@@ -192,6 +193,53 @@ class NetTruyenGgService extends HtmlConnectorService {
 
 const service = new NetTruyenGgService();
 
+const HINETTRUYEN_DOMAIN = 'https://hinettruyen.com/';
+const NETTRUYENGG_MAX_PAGES = 20;
+
+async function fetchLatestUpdates(options = {}) {
+  const signal = options.signal || null;
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, siteId: 'nettruyengg', page: 1, totalPages: 1, items: [] };
+  }
+  const page = Math.min(NETTRUYENGG_MAX_PAGES, Math.max(1, Math.floor(Number(options.page) || 1)));
+  const rawSearch = options.latestUpdatesSearch ?? options.searchQuery;
+  const searchQuery = String(rawSearch || '').trim();
+  const fetchImpl = typeof options.fetchHtmlImpl === 'function' ? options.fetchHtmlImpl : fetchHtml;
+
+  const listingUrl = searchQuery
+    ? `${HINETTRUYEN_DOMAIN}tim-truyen?keyword=${encodeURIComponent(searchQuery)}&page=${page}`
+    : `${DOMAIN}truyen-tranh-moi?page=${page}`;
+
+  let fetched;
+  try {
+    fetched = await fetchImpl(listingUrl, {
+      userAgent: options.userAgent || USER_AGENT_JSOUP,
+      referer: searchQuery ? HINETTRUYEN_DOMAIN : DOMAIN,
+      ...(signal ? { signal } : {}),
+    });
+  } catch (err) {
+    if (signal?.aborted || err?.name === 'AbortError') {
+      return { ok: false, aborted: true, siteId: 'nettruyengg', page, totalPages: 1, items: [] };
+    }
+    return { ok: false, error: String(err?.message || err) };
+  }
+  if (signal?.aborted || fetched?.aborted) {
+    return { ok: false, aborted: true, siteId: 'nettruyengg', page, totalPages: 1, items: [] };
+  }
+  if (!fetched?.ok) {
+    return { ok: false, error: fetched?.error || 'Không tải được danh sách NetTruyenGG.' };
+  }
+
+  const parsed = parseNetTruyenVietListingHtml(fetched.html, fetched.finalUrl || listingUrl);
+  return {
+    ok: true,
+    siteId: 'nettruyengg',
+    page,
+    totalPages: Math.max(page, parsed.totalPages),
+    items: parsed.items,
+  };
+}
+
 module.exports = {
   DOMAIN,
   LABEL,
@@ -199,4 +247,5 @@ module.exports = {
   downloadChapter: (payload, connector) => service.downloadChapter(payload, connector || LABEL),
   extractSlug,
   getOrigin,
+  fetchLatestUpdates,
 };

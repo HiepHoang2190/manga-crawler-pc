@@ -18,6 +18,8 @@ module.exports = {
   imageReferer: TRUYENMOE_IMAGE_REFERER,
   isImageCdnHost: isTruyenMoeImageCdnHost,
   supportsApiFetch: false,
+  supportsLatestUpdates: true,
+  supportsLatestUpdatesSearch: true,
   supportsBulkScan: false,
 
   load(url) {
@@ -26,5 +28,9 @@ module.exports = {
 
   downloadChapter(payload) {
     return service.downloadChapter(payload, LABEL);
+  },
+
+  fetchLatestUpdates(options) {
+    return service.fetchLatestUpdates(options || {});
   },
 };

@@ -15,6 +15,7 @@ module.exports = {
   imageReferer: COMICVN_IMAGE_REFERER,
   isImageCdnHost: isComicvnImageCdnHost,
   supportsApiFetch: true,
+  supportsLatestUpdates: true,
   supportsBulkScan: true,
 
   load(url) {
@@ -23,6 +24,10 @@ module.exports = {
 
   downloadChapter(payload) {
     return service.downloadChapter(payload, LABEL);
+  },
+
+  fetchLatestUpdates(options) {
+    return service.fetchLatestUpdates(options || {});
   },
 
   fetchMoiNhatListing(options) {

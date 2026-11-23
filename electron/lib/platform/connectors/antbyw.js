@@ -13,6 +13,8 @@ module.exports = {
   imageReferer: ANTBYW_IMAGE_REFERER,
   isImageCdnHost: isAntbywImageCdnHost,
   supportsApiFetch: false,
+  supportsLatestUpdates: true,
+  supportsLatestUpdatesSearch: true,
 
   load(url) {
     return service.load(url);
@@ -20,5 +22,9 @@ module.exports = {
 
   downloadChapter(payload) {
     return service.downloadChapter(payload, LABEL);
+  },
+
+  fetchLatestUpdates(options) {
+    return service.fetchLatestUpdates(options || {});
   },
 };

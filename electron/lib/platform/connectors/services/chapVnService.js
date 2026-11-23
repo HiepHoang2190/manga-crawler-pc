@@ -329,9 +329,94 @@ function downloadChapter(payload, connector) {
   return service.downloadChapter(payload, connector || LABEL);
 }
 
+function parseChapVnHomeHtml(html, pageUrl) {
+  const $ = cheerio.load(String(html || ''));
+  const coverByUrl = new Map();
+
+  $('a[href*="threads/"]').each((_, el) => {
+    const $a = $(el);
+    const $img = $a.find('img').first();
+    if (!$img.length) return;
+    let threadUrl = '';
+    try {
+      threadUrl = new URL(String($a.attr('href') || '').trim(), pageUrl).href;
+    } catch {
+      return;
+    }
+    if (coverByUrl.has(threadUrl)) return;
+    const raw = ($img.attr('data-src') || $img.attr('src') || '').trim();
+    if (!raw || /^data:/i.test(raw)) return;
+    try {
+      coverByUrl.set(threadUrl, new URL(raw, pageUrl).href);
+    } catch {
+      /* */
+    }
+  });
+
+  const items = [];
+  const seen = new Set();
+  $('a.newsTitle[href*="threads/"], h2 a[href*="threads/"], .structItem-title a[href*="threads/"]').each((_, el) => {
+    const $a = $(el);
+    let mangaUrl = '';
+    try {
+      mangaUrl = new URL(String($a.attr('href') || '').trim(), pageUrl).href;
+    } catch {
+      return;
+    }
+    if (!mangaUrl || seen.has(mangaUrl)) return;
+    const title = $a.text().trim().replace(/\s+/g, ' ');
+    if (!title) return;
+    seen.add(mangaUrl);
+    items.push({
+      title,
+      mangaUrl,
+      coverUrl: coverByUrl.get(mangaUrl) || '',
+      latestChapterLabel: '',
+    });
+  });
+
+  return items;
+}
+
+async function fetchLatestUpdates(options = {}) {
+  const signal = options.signal || null;
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, siteId: 'chapvn', page: 1, totalPages: 1, items: [] };
+  }
+  const fetchImpl = typeof options.fetchHtmlImpl === 'function' ? options.fetchHtmlImpl : fetchHtml;
+
+  let fetched;
+  try {
+    fetched = await fetchImpl(DOMAIN, {
+      referer: DOMAIN,
+      ...(signal ? { signal } : {}),
+    });
+  } catch (err) {
+    if (signal?.aborted || err?.name === 'AbortError') {
+      return { ok: false, aborted: true, siteId: 'chapvn', page: 1, totalPages: 1, items: [] };
+    }
+    return { ok: false, error: String(err?.message || err) };
+  }
+  if (signal?.aborted || fetched?.aborted) {
+    return { ok: false, aborted: true, siteId: 'chapvn', page: 1, totalPages: 1, items: [] };
+  }
+  if (!fetched?.ok) {
+    return { ok: false, error: fetched?.error || 'Không tải được danh sách Chap.vn.' };
+  }
+
+  return {
+    ok: true,
+    siteId: 'chapvn',
+    page: 1,
+    totalPages: 1,
+    items: parseChapVnHomeHtml(fetched.html, DOMAIN),
+  };
+}
+
 module.exports = {
   DOMAIN,
   LABEL,
   load,
   downloadChapter,
+  fetchLatestUpdates,
 };

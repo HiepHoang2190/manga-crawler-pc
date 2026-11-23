@@ -971,6 +971,87 @@ function downloadChapter(payload, connector) {
   return service.downloadChapter(payload, connector || LABEL);
 }
 
+function parseDilibListingHtml(html, pageUrl) {
+  const $ = cheerio.load(String(html || ''));
+  const items = [];
+  const seen = new Set();
+
+  $('a[href]').each((_, el) => {
+    const $a = $(el);
+    if ($a.closest('.divicon').length) return;
+    const $img = $a.find('img').first();
+    if (!$img.length) return;
+
+    const href = ($a.attr('href') || '').trim();
+    const mangaUrl = resolveAbsoluteUrl(href, pageUrl);
+    if (!mangaUrl) return;
+
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(mangaUrl);
+    } catch {
+      return;
+    }
+    if (!parsedUrl.hostname.toLowerCase().includes('dilib.vn')) return;
+    if (!/-\d{4,}\.html$/i.test(parsedUrl.pathname)) return;
+    if (seen.has(mangaUrl)) return;
+
+    const rawCover = ($img.attr('data-src') || $img.attr('src') || '').trim();
+    if (rawCover.includes('/search/images/')) return;
+    const coverUrl = rawCover && !/^data:/i.test(rawCover) ? resolveAbsoluteUrl(rawCover, pageUrl) : '';
+
+    const title = ($a.attr('title') || $img.attr('alt') || $a.text() || '').trim();
+    if (!title) return;
+
+    seen.add(mangaUrl);
+    items.push({ title, mangaUrl, coverUrl, latestChapterLabel: '' });
+  });
+
+  return items;
+}
+
+async function fetchLatestUpdates(options = {}) {
+  const signal = options.signal || null;
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, siteId: SITE_ID, page: 1, totalPages: 1, items: [] };
+  }
+  const rawSearch = options.latestUpdatesSearch ?? options.searchQuery;
+  const searchQuery = String(rawSearch || '').trim();
+  const fetchImpl = typeof options.fetchHtmlImpl === 'function' ? options.fetchHtmlImpl : fetchHtml;
+
+  const listingUrl = searchQuery
+    ? `${DOMAIN}search/ajax-search.php?keyword=${encodeURIComponent(searchQuery)}`
+    : DOMAIN;
+
+  let fetched;
+  try {
+    fetched = await fetchImpl(listingUrl, {
+      userAgent: options.userAgent || USER_AGENT,
+      referer: DOMAIN,
+      ...(signal ? { signal } : {}),
+    });
+  } catch (err) {
+    if (signal?.aborted || err?.name === 'AbortError') {
+      return { ok: false, aborted: true, siteId: SITE_ID, page: 1, totalPages: 1, items: [] };
+    }
+    return { ok: false, error: String(err?.message || err) };
+  }
+  if (signal?.aborted || fetched?.aborted) {
+    return { ok: false, aborted: true, siteId: SITE_ID, page: 1, totalPages: 1, items: [] };
+  }
+  if (!fetched?.ok) {
+    return { ok: false, error: fetched?.error || 'Không tải được danh sách Dilib.' };
+  }
+
+  return {
+    ok: true,
+    siteId: SITE_ID,
+    page: 1,
+    totalPages: 1,
+    items: parseDilibListingHtml(fetched.html, DOMAIN),
+  };
+}
+
 module.exports = {
   DOMAIN,
   LABEL,
@@ -978,4 +1059,5 @@ module.exports = {
   isValidDownloadLink,
   load,
   downloadChapter,
+  fetchLatestUpdates,
 };

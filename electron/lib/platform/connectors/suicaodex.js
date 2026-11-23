@@ -13,6 +13,8 @@ module.exports = {
   imageReferer: SUICAODEX_IMAGE_REFERER,
   isImageCdnHost: isSuicaoDexImageCdnHost,
   supportsApiFetch: true,
+  supportsLatestUpdates: true,
+  supportsLatestUpdatesSearch: true,
 
   load(url, options = {}) {
     if (url && typeof url === 'string' && url.includes('/moetruyen/')) {
@@ -29,5 +31,9 @@ module.exports = {
 
   downloadChapter(payload) {
     return service.downloadChapter(payload, LABEL);
+  },
+
+  fetchLatestUpdates(options) {
+    return service.fetchLatestUpdates(options || {});
   },
 };

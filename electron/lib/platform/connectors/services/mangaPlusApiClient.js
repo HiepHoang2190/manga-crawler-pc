@@ -55,7 +55,8 @@ function getJsonString(obj, key) {
  * @param {string} sess
  * @returns {Promise<{ok: boolean, data?: object, error?: string}>}
  */
-async function fetchApiProtobuf(apiUrl, sess) {
+async function fetchApiProtobuf(apiUrl, sess, options = {}) {
+  const signal = options && options.signal ? options.signal : undefined;
   const res = await fetch(apiUrl, {
     headers: {
       Origin: SITE_DOMAIN.replace(/\/+$/, ''),
@@ -65,6 +66,7 @@ async function fetchApiProtobuf(apiUrl, sess) {
       'Session-Token': sess,
       Accept: '*/*',
     },
+    ...(signal ? { signal } : {}),
   });
   if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
   try {

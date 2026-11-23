@@ -16,6 +16,8 @@ module.exports = {
   isImageCdnHost: isBluelakeImageCdnHost,
   supportsApiFetch: false,
   requiresVpn: true,
+  supportsLatestUpdates: true,
+  supportsLatestUpdatesSearch: true,
 
   load(url, options) {
     return service.load(url, options);
@@ -23,5 +25,9 @@ module.exports = {
 
   downloadChapter(payload) {
     return service.downloadChapter(payload, LABEL);
+  },
+
+  fetchLatestUpdates(options) {
+    return service.fetchLatestUpdates(options || {});
   },
 };

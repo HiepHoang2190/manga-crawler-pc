@@ -12,6 +12,11 @@ module.exports = {
   hostIncludes: ['vivicomic.com'],
   icon: getIconPath('vivicomic'),
   imageReferer: viviComicService.DOMAIN,
+  supportsLatestUpdates: true,
+  supportsLatestUpdatesSearch: true,
   load: viviComicService.load,
   downloadChapter: viviComicService.downloadChapter,
+  fetchLatestUpdates(options) {
+    return viviComicService.fetchLatestUpdates(options || {});
+  },
 };

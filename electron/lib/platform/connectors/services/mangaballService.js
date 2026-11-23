@@ -1684,11 +1684,101 @@ async function downloadChapter(
   };
 }
 
+const MANGABALL_PAGE_SIZE = 48;
+const MANGABALL_MAX_PAGES = 20;
+
+function parseMangaballHomeHtml(html, pageUrl) {
+  const $ = cheerio.load(String(html || ''));
+  const items = [];
+  const seen = new Set();
+
+  $('a[href*="/title-detail/"]').each((_, el) => {
+    const $a = $(el);
+    const $img = $a.find('img').first();
+    if (!$img.length) return;
+
+    const href = ($a.attr('href') || '').trim();
+    let mangaUrl = '';
+    try {
+      mangaUrl = new URL(href, pageUrl).href;
+    } catch {
+      return;
+    }
+    const info = extractTitleInfo(mangaUrl);
+    const dedupeKey = info?.titleId || mangaUrl;
+    if (seen.has(dedupeKey)) return;
+    seen.add(dedupeKey);
+
+    let title = ($a.find('p').first().text() || '').trim();
+    if (!title) {
+      const alt = ($img.attr('alt') || $a.attr('title') || '').trim();
+      title = alt.replace(/^Read\s+/i, '').replace(/\s+online free\s*-\s*MangaBall$/i, '').trim();
+    }
+    if (!title) return;
+
+    const rawCover = ($img.attr('data-src') || $img.attr('src') || '').trim();
+    const coverUrl = normalizeMangaballImageUrl(rawCover) || '';
+
+    items.push({ title, mangaUrl, coverUrl, latestChapterLabel: '' });
+  });
+
+  return items;
+}
+
+async function fetchLatestUpdates(options = {}) {
+  const signal = options.signal || null;
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, siteId: 'mangaball', page: 1, totalPages: 1, items: [] };
+  }
+  const page = Math.min(MANGABALL_MAX_PAGES, Math.max(1, Math.floor(Number(options.page) || 1)));
+  const listingUrl = `${SITE_DOMAIN}/`;
+  const { fetchHtml } = require('../../../download/connector/htmlConnectorUtils');
+  const fetchImpl = typeof options.fetchHtmlImpl === 'function' ? options.fetchHtmlImpl : fetchHtml;
+
+  const cookie = (options.cookie && String(options.cookie).trim()) || cookieManager.getEffectiveCookie('mangaball') || '';
+  let fetched;
+  try {
+    fetched = await fetchImpl(listingUrl, {
+      userAgent: options.userAgent || USER_AGENT,
+      referer: `${SITE_DOMAIN}/`,
+      ...(cookie ? { cookie } : {}),
+      ...(signal ? { signal } : {}),
+    });
+  } catch (err) {
+    if (signal?.aborted || err?.name === 'AbortError') {
+      return { ok: false, aborted: true, siteId: 'mangaball', page, totalPages: 1, items: [] };
+    }
+    return { ok: false, error: String(err?.message || err) };
+  }
+  if (signal?.aborted || fetched?.aborted) {
+    return { ok: false, aborted: true, siteId: 'mangaball', page, totalPages: 1, items: [] };
+  }
+  if (!fetched?.ok) {
+    return { ok: false, error: fetched?.error || 'Không tải được danh sách MangaBall.' };
+  }
+
+  const allItems = parseMangaballHomeHtml(fetched.html, listingUrl);
+  const totalPages = allItems.length > 0
+    ? Math.min(MANGABALL_MAX_PAGES, Math.max(1, Math.ceil(allItems.length / MANGABALL_PAGE_SIZE)))
+    : 1;
+  const clampedPage = Math.min(page, totalPages);
+  const start = (clampedPage - 1) * MANGABALL_PAGE_SIZE;
+
+  return {
+    ok: true,
+    siteId: 'mangaball',
+    page: clampedPage,
+    totalPages,
+    items: allItems.slice(start, start + MANGABALL_PAGE_SIZE),
+  };
+}
+
 module.exports = {
   SITE_DOMAIN,
   LABEL,
   load,
   downloadChapter,
+  fetchLatestUpdates,
   extractTitleInfo,
   extractCsrfToken,
   parseListingApiChapters,

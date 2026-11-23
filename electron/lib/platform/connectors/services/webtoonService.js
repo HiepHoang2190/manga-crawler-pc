@@ -546,4 +546,152 @@ async function downloadChapter(
   };
 }
 
-module.exports = { SITE_DOMAIN, LABEL, load, downloadChapter };
+const WEBTOONS_PAGE_SIZE = 48;
+const WEBTOONS_MAX_PAGES = 20;
+
+function resolveWebtoonUrl(baseUrl, raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  try {
+    return new URL(s, baseUrl).href;
+  } catch {
+    return '';
+  }
+}
+
+async function fetchWebtoonListingHtml(url, opts = {}) {
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': opts.userAgent || CHROME_UA,
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        Referer: opts.referer || `${SITE_DOMAIN}/`,
+      },
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    });
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+    return { ok: true, html: await res.text() };
+  } catch (err) {
+    if (opts.signal?.aborted || err?.name === 'AbortError') {
+      return { ok: false, aborted: true, error: 'Aborted' };
+    }
+    return { ok: false, error: String(err?.message || err) };
+  }
+}
+
+function parseWebtoonsCards(html, pageUrl, { prioritizeUp = false } = {}) {
+  const $ = cheerio.load(String(html || ''));
+  const byKey = new Map();
+  const order = [];
+
+  $('a[href*="title_no="]').each((_, el) => {
+    const $a = $(el);
+    const mangaUrl = resolveWebtoonUrl(pageUrl, $a.attr('href'));
+    if (!mangaUrl) return;
+
+    const titleNoMatch = mangaUrl.match(/[?&]title_no=(\d+)/i);
+    const key = titleNoMatch ? titleNoMatch[1] : mangaUrl;
+    const hasUp = $a.find('.badge_up2, .ico_up, .txt_ico_up').length > 0;
+
+    const existing = byKey.get(key);
+    if (existing) {
+      if (hasUp && !existing.latestChapterLabel) {
+        existing.latestChapterLabel = 'UP';
+      }
+      return;
+    }
+
+    const $img = $a.find('img').first();
+    const title = (
+      $a.find('strong.title, .subj, .title').first().text() ||
+      $img.attr('alt') ||
+      $a.attr('title') ||
+      ''
+    ).trim();
+    if (!title) return;
+
+    const rawCover = ($img.attr('data-url') || $img.attr('data-src') || $img.attr('src') || '').trim();
+    const coverUrl = rawCover && !/^data:/i.test(rawCover) ? resolveWebtoonUrl(pageUrl, rawCover) : '';
+
+    const item = {
+      title,
+      mangaUrl,
+      coverUrl,
+      latestChapterLabel: hasUp ? 'UP' : '',
+    };
+    byKey.set(key, item);
+    order.push(item);
+  });
+
+  if (prioritizeUp) {
+    const upItems = [];
+    const restItems = [];
+    for (const item of order) {
+      if (item.latestChapterLabel === 'UP') upItems.push(item);
+      else restItems.push(item);
+    }
+    return [...upItems, ...restItems];
+  }
+  return order;
+}
+
+async function fetchLatestUpdates(options = {}) {
+  const signal = options.signal || null;
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, siteId: 'webtoons', page: 1, totalPages: 1, items: [] };
+  }
+  const page = Math.min(WEBTOONS_MAX_PAGES, Math.max(1, Math.floor(Number(options.page) || 1)));
+  const rawSearch = options.latestUpdatesSearch ?? options.searchQuery;
+  const searchQuery = String(rawSearch || '').trim();
+  const fetchImpl = typeof options.fetchHtmlImpl === 'function' ? options.fetchHtmlImpl : fetchWebtoonListingHtml;
+
+  const listingUrl = searchQuery
+    ? `${SITE_DOMAIN}/en/search?keyword=${encodeURIComponent(searchQuery)}`
+    : `${SITE_DOMAIN}/en/dailySchedule`;
+
+  let fetched;
+  try {
+    fetched = await fetchImpl(listingUrl, {
+      userAgent: options.userAgent || CHROME_UA,
+      referer: `${SITE_DOMAIN}/`,
+      ...(signal ? { signal } : {}),
+    });
+  } catch (err) {
+    if (signal?.aborted || err?.name === 'AbortError') {
+      return { ok: false, aborted: true, siteId: 'webtoons', page, totalPages: 1, items: [] };
+    }
+    return { ok: false, error: String(err?.message || err) };
+  }
+  if (signal?.aborted || fetched?.aborted) {
+    return { ok: false, aborted: true, siteId: 'webtoons', page, totalPages: 1, items: [] };
+  }
+  if (!fetched?.ok) {
+    return { ok: false, error: fetched?.error || 'Không tải được danh sách Webtoons.' };
+  }
+
+  const allItems = parseWebtoonsCards(fetched.html, listingUrl, { prioritizeUp: !searchQuery });
+  if (searchQuery) {
+    return {
+      ok: true,
+      siteId: 'webtoons',
+      page: 1,
+      totalPages: 1,
+      items: allItems,
+    };
+  }
+
+  const totalPages = allItems.length > 0
+    ? Math.min(WEBTOONS_MAX_PAGES, Math.max(1, Math.ceil(allItems.length / WEBTOONS_PAGE_SIZE)))
+    : 1;
+  const clampedPage = Math.min(page, totalPages);
+  const start = (clampedPage - 1) * WEBTOONS_PAGE_SIZE;
+  return {
+    ok: true,
+    siteId: 'webtoons',
+    page: clampedPage,
+    totalPages,
+    items: allItems.slice(start, start + WEBTOONS_PAGE_SIZE),
+  };
+}
+
+module.exports = { SITE_DOMAIN, LABEL, load, downloadChapter, fetchLatestUpdates };

@@ -174,4 +174,124 @@ function downloadChapter(payload, connector) {
   return service.downloadChapter(payload, connector || LABEL);
 }
 
-module.exports = { DOMAIN, LABEL, load, downloadChapter };
+function parseMangapillLatestHtml(html, pageUrl) {
+  const $ = cheerio.load(String(html || ''));
+  const items = [];
+  const seen = new Set();
+
+  $('a[href^="/manga/"]').each((_, el) => {
+    const $mangaLink = $(el);
+    const href = String($mangaLink.attr('href') || '').trim();
+    if (!href) return;
+    const mangaUrl = resolveUrl(pageUrl, href);
+    if (!mangaUrl || seen.has(mangaUrl)) return;
+
+    const title = $mangaLink.text().trim().replace(/\s+/g, ' ');
+    if (!title) return;
+    seen.add(mangaUrl);
+
+    const $card = $mangaLink.closest('div').parent();
+    let coverUrl = '';
+    const $img = $card.find('img').first();
+    if ($img.length) {
+      const raw = ($img.attr('data-src') || $img.attr('src') || '').trim();
+      if (raw && !/^data:/i.test(raw)) coverUrl = resolveUrl(pageUrl, raw);
+    }
+
+    const latestChapterLabel = $card
+      .find('a[href^="/chapters/"]')
+      .map((__, cEl) => $(cEl).text().trim().replace(/\s+/g, ' '))
+      .get()
+      .find(Boolean) || '';
+
+    items.push({ title, mangaUrl, coverUrl, latestChapterLabel });
+  });
+
+  return items;
+}
+
+function parseMangapillSearchHtml(html, pageUrl) {
+  const $ = cheerio.load(String(html || ''));
+  const items = [];
+  const seen = new Set();
+
+  $('a[href^="/manga/"]').each((_, el) => {
+    const $link = $(el);
+    const href = String($link.attr('href') || '').trim();
+    if (!href) return;
+    const mangaUrl = resolveUrl(pageUrl, href);
+    if (!mangaUrl || seen.has(mangaUrl)) return;
+
+    const title = $link.text().trim().replace(/\s+/g, ' ');
+    if (!title) return;
+    seen.add(mangaUrl);
+
+    const $card = $link.closest('div').parent();
+    let coverUrl = '';
+    const $img = $card.find('img').first();
+    if ($img.length) {
+      const raw = ($img.attr('data-src') || $img.attr('src') || '').trim();
+      if (raw && !/^data:/i.test(raw)) coverUrl = resolveUrl(pageUrl, raw);
+    }
+
+    items.push({ title, mangaUrl, coverUrl, latestChapterLabel: '' });
+  });
+
+  return items;
+}
+
+async function fetchLatestUpdates(options = {}) {
+  const signal = options.signal || null;
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, siteId: 'mangapill', page: 1, totalPages: 1, items: [] };
+  }
+  const fetchImpl = typeof options.fetchHtmlImpl === 'function' ? options.fetchHtmlImpl : fetchHtml;
+  const rawSearch = options.latestUpdatesSearch ?? options.searchQuery;
+  const searchQuery = String(rawSearch || '').trim();
+  const listingUrl = searchQuery
+    ? `${DOMAIN}search?q=${encodeURIComponent(searchQuery)}`
+    : `${DOMAIN}chapters`;
+
+  let fetched;
+  try {
+    fetched = await fetchImpl(listingUrl, {
+      userAgent: options.userAgent || USER_AGENT_JSOUP,
+      referer: DOMAIN,
+      accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      ...(signal ? { signal } : {}),
+    });
+  } catch (err) {
+    if (signal?.aborted || err?.name === 'AbortError') {
+      return { ok: false, aborted: true, siteId: 'mangapill', page: 1, totalPages: 1, items: [] };
+    }
+    return { ok: false, error: String(err?.message || err) };
+  }
+  if (signal?.aborted || fetched?.aborted) {
+    return { ok: false, aborted: true, siteId: 'mangapill', page: 1, totalPages: 1, items: [] };
+  }
+  if (!fetched?.ok) {
+    return { ok: false, error: fetched?.error || 'Không tải được danh sách Mangapill.' };
+  }
+
+  const items = searchQuery
+    ? parseMangapillSearchHtml(fetched.html, listingUrl)
+    : parseMangapillLatestHtml(fetched.html, listingUrl);
+
+  return {
+    ok: true,
+    siteId: 'mangapill',
+    page: 1,
+    totalPages: 1,
+    items,
+  };
+}
+
+module.exports = {
+  DOMAIN,
+  LABEL,
+  load,
+  downloadChapter,
+  fetchLatestUpdates,
+  parseMangapillLatestHtml,
+  parseMangapillSearchHtml,
+};

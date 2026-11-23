@@ -12,6 +12,7 @@ module.exports = {
   imageReferer: DOMAIN,
   supportsApiFetch: false,
   requiresCookie: false,
+  supportsLatestUpdates: true,
 
   load(url, options) {
     return service.load(url, options);
@@ -19,5 +20,9 @@ module.exports = {
 
   downloadChapter(payload) {
     return service.downloadChapter(payload, LABEL);
+  },
+
+  fetchLatestUpdates(options) {
+    return service.fetchLatestUpdates(options || {});
   },
 };

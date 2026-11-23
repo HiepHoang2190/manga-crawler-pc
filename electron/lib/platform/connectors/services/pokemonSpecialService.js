@@ -620,8 +620,101 @@ class PokemonSpecialService extends HtmlConnectorService {
 // Create service instance
 const service = new PokemonSpecialService();
 
+const PKM_MAX_RESULTS = 24;
+const PKM_MAX_PAGES = 20;
+
+async function fetchLatestUpdates(options = {}) {
+  const signal = options.signal || null;
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, siteId: 'pokemonspecial', page: 1, totalPages: 1, items: [] };
+  }
+  const page = Math.min(PKM_MAX_PAGES, Math.max(1, Math.floor(Number(options.page) || 1)));
+  const startIndex = (page - 1) * PKM_MAX_RESULTS + 1;
+  const rawSearch = options.latestUpdatesSearch ?? options.searchQuery;
+  const searchQuery = String(rawSearch || '').trim();
+
+  let feedUrl = `${DOMAIN}/feeds/posts/default?alt=json&start-index=${startIndex}&max-results=${PKM_MAX_RESULTS}`;
+  if (searchQuery) {
+    feedUrl += `&q=${encodeURIComponent(searchQuery)}`;
+  }
+
+  const fetchImpl = typeof options.fetchImpl === 'function' ? options.fetchImpl : globalThis.fetch;
+  if (typeof fetchImpl !== 'function') {
+    return { ok: false, error: 'Fetch API không khả dụng.' };
+  }
+
+  let res;
+  try {
+    res = await fetchImpl(feedUrl, {
+      headers: {
+        Accept: 'application/json',
+        Referer: `${DOMAIN}/`,
+        'User-Agent': USER_AGENT,
+      },
+      ...(signal ? { signal } : {}),
+    });
+  } catch (err) {
+    if (signal?.aborted || err?.name === 'AbortError') {
+      return { ok: false, aborted: true, siteId: 'pokemonspecial', page, totalPages: 1, items: [] };
+    }
+    return { ok: false, error: String(err?.message || err) };
+  }
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, siteId: 'pokemonspecial', page, totalPages: 1, items: [] };
+  }
+  if (!res?.ok) {
+    return { ok: false, error: `PokemonSpecial HTTP ${res?.status || 'error'}` };
+  }
+
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    return { ok: false, error: 'Không đọc được JSON từ PokemonSpecial.' };
+  }
+
+  const entries = Array.isArray(data?.feed?.entry) ? data.feed.entry : [];
+  const seen = new Set();
+  const items = [];
+  for (const entry of entries) {
+    const links = Array.isArray(entry?.link) ? entry.link : [];
+    const alt = links.find((l) => l && l.rel === 'alternate' && l.href);
+    let mangaUrl = '';
+    if (alt?.href) {
+      try {
+        mangaUrl = new URL(alt.href, `${DOMAIN}/`).href;
+      } catch {
+        mangaUrl = '';
+      }
+    }
+    if (!mangaUrl || seen.has(mangaUrl)) continue;
+    seen.add(mangaUrl);
+
+    const title = String(entry?.title?.$t || '').trim();
+    if (!title) continue;
+
+    const rawThumb = String(entry?.media$thumbnail?.url || '').trim();
+    const coverUrl = rawThumb ? rawThumb.replace(/\/[sw]\d+[^/]*\//, '/s640/') : '';
+    items.push({ title, mangaUrl, coverUrl, latestChapterLabel: '' });
+  }
+
+  const totalResults = Number(data?.feed?.['openSearch$totalResults']?.$t || 0);
+  const totalPages = totalResults > 0
+    ? Math.min(PKM_MAX_PAGES, Math.max(1, Math.ceil(totalResults / PKM_MAX_RESULTS)))
+    : (items.length >= PKM_MAX_RESULTS ? Math.min(PKM_MAX_PAGES, page + 1) : page);
+
+  return {
+    ok: true,
+    siteId: 'pokemonspecial',
+    page,
+    totalPages,
+    items,
+  };
+}
+
 module.exports = {
   LABEL,
   load: (url) => service.load(url),
   downloadChapter: (payload, connector) => service.downloadChapter(payload, connector || LABEL),
+  fetchLatestUpdates,
 };

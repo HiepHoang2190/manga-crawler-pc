@@ -571,10 +571,123 @@ function downloadChapter(payload, connector) {
   return service.downloadChapter(payload, connector || LABEL);
 }
 
+function parseMangaVnForumHtml(html, pageUrl) {
+  const $ = cheerio.load(String(html || ''));
+  const items = [];
+  const seen = new Set();
+
+  $('.img_truyen').each((_, el) => {
+    const $imgDiv = $(el);
+    const $thumbLink = $imgDiv.find('a[href*="/t"]').first();
+    const rawThumbHref = ($thumbLink.attr('href') || '').trim();
+    const tidMatch = rawThumbHref.match(/\/t(\d+)/i);
+    if (!tidMatch) return;
+    const tidPrefix = `/t${tidMatch[1]}`;
+
+    const $parent = $imgDiv.parent();
+    let $titleLink = $parent
+      .find(`a[href*="${tidPrefix}"]`)
+      .filter((__, a) => $(a).text().trim().length > 0 && $(a).closest('.img_truyen').length === 0)
+      .first();
+
+    if (!$titleLink.length) {
+      $titleLink = $imgDiv.prevAll('span').find(`a[href*="${tidPrefix}"]`).first();
+    }
+
+    const rawHref = ($titleLink.attr('href') || rawThumbHref).trim();
+    if (!rawHref) return;
+    let mangaUrl = '';
+    try {
+      mangaUrl = service.normalizeUrl(new URL(rawHref, DOMAIN).href);
+    } catch {
+      return;
+    }
+    const dedupeKey = `${tidPrefix}:${mangaUrl}`;
+    if (seen.has(dedupeKey) || seen.has(mangaUrl)) return;
+    seen.add(dedupeKey);
+    seen.add(mangaUrl);
+
+    const $img = $imgDiv.find('img').first();
+    const rawCover = ($img.attr('data-src') || $img.attr('src') || '').trim();
+    let coverUrl = '';
+    if (rawCover && !/^data:/i.test(rawCover)) {
+      try {
+        coverUrl = new URL(rawCover, DOMAIN).href;
+      } catch {
+        coverUrl = '';
+      }
+    }
+
+    const title = ($titleLink.text() || $titleLink.attr('title') || $img.attr('alt') || '').trim().replace(/\s+/g, ' ');
+    if (!title) return;
+
+    items.push({ title, mangaUrl, coverUrl, latestChapterLabel: '' });
+  });
+
+  let totalPages = 1;
+  $('.pagination a[href], a[href*="/f3p"]').each((_, el) => {
+    const href = String($(el).attr('href') || '');
+    const m = href.match(/\/f3p(\d+)/i);
+    if (m) {
+      const offset = parseInt(m[1], 10);
+      const p = Math.floor(offset / 50) + 1;
+      if (Number.isFinite(p) && p > totalPages) totalPages = p;
+    }
+    const numText = parseInt(String($(el).text() || '').trim(), 10);
+    if (Number.isFinite(numText) && numText > totalPages && numText < 500) {
+      totalPages = numText;
+    }
+  });
+
+  return {
+    items,
+    totalPages: Math.min(20, Math.max(1, totalPages)),
+  };
+}
+
+async function fetchLatestUpdates(options = {}) {
+  const signal = options.signal || null;
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, siteId: 'mangavn', page: 1, totalPages: 1, items: [] };
+  }
+  const page = Math.min(20, Math.max(1, Math.floor(Number(options.page) || 1)));
+  const listingUrl = page > 1 ? `${DOMAIN}f3p${(page - 1) * 50}-` : `${DOMAIN}f3-`;
+  const fetchImpl = typeof options.fetchHtmlImpl === 'function' ? options.fetchHtmlImpl : fetchHtml;
+
+  let fetched;
+  try {
+    fetched = await fetchImpl(listingUrl, {
+      referer: DOMAIN,
+      ...(signal ? { signal } : {}),
+    });
+  } catch (err) {
+    if (signal?.aborted || err?.name === 'AbortError') {
+      return { ok: false, aborted: true, siteId: 'mangavn', page, totalPages: 1, items: [] };
+    }
+    return { ok: false, error: String(err?.message || err) };
+  }
+  if (signal?.aborted || fetched?.aborted) {
+    return { ok: false, aborted: true, siteId: 'mangavn', page, totalPages: 1, items: [] };
+  }
+  if (!fetched?.ok) {
+    return { ok: false, error: fetched?.error || 'Không tải được danh sách MangaVN.' };
+  }
+
+  const parsed = parseMangaVnForumHtml(fetched.html, listingUrl);
+  return {
+    ok: true,
+    siteId: 'mangavn',
+    page,
+    totalPages: Math.max(page, parsed.totalPages),
+    items: parsed.items,
+  };
+}
+
 module.exports = {
   DOMAIN,
   LABEL,
   load,
   downloadChapter,
   normalizeUrl: (url) => service.normalizeUrl(url),
+  fetchLatestUpdates,
 };

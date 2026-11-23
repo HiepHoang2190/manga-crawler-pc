@@ -336,6 +336,100 @@ class TruyenqqVnService extends HtmlConnectorService {
 
 const service = new TruyenqqVnService();
 
+function parseTruyenqqVnListingHtml(html, pageUrl, { isSearch = false } = {}) {
+  const $ = cheerio.load(String(html || ''));
+  const items = [];
+  const seen = new Set();
+
+  if (isSearch && $('.listing .item').length > 0) {
+    $('.listing .item').each((_, el) => {
+      const $item = $(el);
+      const $titleLink = $item.find('.info h3 a, h3 a').first();
+      const $coverLink = $item.find('.cover a, a').first();
+      const href = ($titleLink.attr('href') || $coverLink.attr('href') || '').trim();
+      const mangaUrl = resolveUrl(pageUrl, href);
+      if (!mangaUrl || seen.has(mangaUrl)) return;
+      seen.add(mangaUrl);
+
+      const $img = $item.find('.cover img, img').first();
+      const rawCover = $img.length ? getImageSrcFromEl($img) : '';
+      const coverUrl = rawCover && !/^data:/i.test(rawCover) ? resolveUrl(pageUrl, rawCover) : '';
+      const title = ($titleLink.text() || $titleLink.attr('title') || $img.attr('alt') || '').trim();
+      if (!title) return;
+
+      const latestChapterLabel = $item.find('.caption p, .chapter a, .info p a').first().text().trim();
+      items.push({ title, mangaUrl, coverUrl, latestChapterLabel });
+    });
+    return items;
+  }
+
+  $('a[href]').each((_, el) => {
+    const $a = $(el);
+    if ($a.closest('.owl-carousel, .slide').length) return;
+    const $img = $a.find('img[src*="/media/book/"], img[data-src*="/media/book/"]').first();
+    if (!$img.length) return;
+
+    const href = ($a.attr('href') || '').trim();
+    const mangaUrl = resolveUrl(pageUrl, href);
+    if (!mangaUrl || seen.has(mangaUrl)) return;
+    seen.add(mangaUrl);
+
+    const rawCover = getImageSrcFromEl($img);
+    const coverUrl = rawCover && !/^data:/i.test(rawCover) ? resolveUrl(pageUrl, rawCover) : '';
+
+    const title = ($a.find('.caption h3, h3').first().text() || $a.attr('title') || $img.attr('alt') || '').trim();
+    if (!title) return;
+
+    const latestChapterLabel = $a.find('.caption p, p').first().text().trim();
+    items.push({ title, mangaUrl, coverUrl, latestChapterLabel });
+  });
+
+  return items;
+}
+
+async function fetchLatestUpdates(options = {}) {
+  const signal = options.signal || null;
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, siteId: 'truyenqqvn', page: 1, totalPages: 1, items: [] };
+  }
+  const rawSearch = options.latestUpdatesSearch ?? options.searchQuery;
+  const searchQuery = String(rawSearch || '').trim();
+  const listingUrl = searchQuery
+    ? `${DOMAIN}tim-kiem?s=${encodeURIComponent(searchQuery)}`
+    : `${DOMAIN}truyen-moi-cap-nhat`;
+
+  let fetched;
+  try {
+    if (typeof options.fetchHtmlImpl === 'function') {
+      fetched = await options.fetchHtmlImpl(listingUrl, {
+        referer: DOMAIN,
+        ...(signal ? { signal } : {}),
+      });
+    } else {
+      fetched = await service._fetchPageHtml(listingUrl, { ...options, referer: DOMAIN });
+    }
+  } catch (err) {
+    if (signal?.aborted || err?.name === 'AbortError') {
+      return { ok: false, aborted: true, siteId: 'truyenqqvn', page: 1, totalPages: 1, items: [] };
+    }
+    return { ok: false, error: String(err?.message || err) };
+  }
+  if (signal?.aborted || fetched?.aborted) {
+    return { ok: false, aborted: true, siteId: 'truyenqqvn', page: 1, totalPages: 1, items: [] };
+  }
+  if (!fetched?.ok) {
+    return { ok: false, error: fetched?.error || 'Không tải được danh sách TruyenQQ.vn.' };
+  }
+
+  return {
+    ok: true,
+    siteId: 'truyenqqvn',
+    page: 1,
+    totalPages: 1,
+    items: parseTruyenqqVnListingHtml(fetched.html, DOMAIN, { isSearch: Boolean(searchQuery) }),
+  };
+}
+
 module.exports = {
   DOMAIN,
   LABEL,
@@ -344,4 +438,5 @@ module.exports = {
   _parseMangaPage: (html, pageUrl) => service._parseMangaPage(html, pageUrl),
   load: (url, options) => service.load(url, options),
   downloadChapter: (payload, connector) => service.downloadChapter(payload, connector || LABEL),
+  fetchLatestUpdates,
 };

@@ -239,8 +239,10 @@ function resolveSiteForDownload(siteId, payload) {
 /** Built-in site ids that support search in the Latest updates tab (must match renderer fallbacks). */
 const LATEST_UPDATES_SEARCH_SITE_IDS = new Set([
   'moetruyen',
+  'truyenmoe',
   'cuutruyen',
   'mangadex',
+  'suicaodex',
   'truyenqq',
   'minotruyen',
   'nettruyenar',
@@ -248,6 +250,7 @@ const LATEST_UPDATES_SEARCH_SITE_IDS = new Set([
   'zettruyen',
   'yurineko',
   'batcave',
+  'xbato',
   'truyengg',
   'baotangtruyen',
   'nhattruyen',
@@ -255,6 +258,24 @@ const LATEST_UPDATES_SEARCH_SITE_IDS = new Set([
   'flamecomics',
   'sangchanhteam',
   'tcbscanmanga',
+  'kingofshojo',
+  'mangapill',
+  'manhuagui',
+  'truyentranhphapbi',
+  'webtoons',
+  'dilib',
+  'antbyw',
+  'vivicomic',
+  'truyenqqvn',
+  'nettruyenviet',
+  'pokemonspecial',
+  'baozimh',
+  'mangaplus',
+  'bluelake',
+  'luottruyen',
+  'goctruyentranh',
+  'truyentuoitho',
+  'nettruyengg',
 ]);
 
 function connectorSupportsLatestUpdatesSearch(connector) {
@@ -298,7 +319,7 @@ function listConnectors() {
         hostIncludes: Array.isArray(c.hostIncludes) ? [...c.hostIncludes] : [],
         supportsLatestUpdates,
         supportsLatestUpdatesSearch:
-          supportsLatestUpdates && LATEST_UPDATES_SEARCH_SITE_IDS.has(c.id),
+          supportsLatestUpdates && connectorSupportsLatestUpdatesSearch(c),
         supportsBulkScan: Boolean(c.supportsBulkScan),
         isJsPlugin: false,
       };

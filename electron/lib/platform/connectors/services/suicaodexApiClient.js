@@ -274,6 +274,87 @@ class SuicaoDexApiClient {
   }
 }
 
+function parseSuicaoDexMangaListing(apiData, language = 'vi') {
+  const list = Array.isArray(apiData?.data) ? apiData.data : [];
+  const items = [];
+  for (const m of list) {
+    if (!m || !m.id) continue;
+    const title = extractLocalizedTitle(m, language);
+    if (!title) continue;
+    const coverUrl = extractCoverUrl(m.id, m.relationships);
+    const chRaw = m.last_chapter != null ? String(m.last_chapter).trim() : '';
+    items.push({
+      title,
+      mangaUrl: buildMangaPageUrl(m.id),
+      coverUrl,
+      latestChapterLabel: chRaw ? `Ch. ${chRaw}` : '',
+    });
+  }
+  return items;
+}
+
+async function fetchLatestUpdates(options = {}) {
+  const signal = options.signal || null;
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, siteId: 'suicaodex', page: 1, totalPages: 1, items: [] };
+  }
+  const fetchFn = typeof options.fetchImpl === 'function' ? options.fetchImpl : globalThis.fetch;
+  const page = Math.max(1, Math.floor(Number(options.page) || 1));
+  const limit = 24;
+  const rawLang = String(options.mangadexLanguage || 'vi').toLowerCase();
+  const lang = rawLang === 'en' ? 'en' : 'vi';
+  const rawSearch = options.latestUpdatesSearch ?? options.searchQuery;
+  const searchQuery = String(rawSearch || '').trim();
+
+  const u = new URL(`${API_BASE}/manga`);
+  u.searchParams.set('limit', String(limit));
+  u.searchParams.set('page', String(page));
+  if (searchQuery) {
+    u.searchParams.set('title', searchQuery);
+  } else {
+    u.searchParams.set('order[latestUploadedChapter]', 'desc');
+  }
+
+  let res;
+  try {
+    res = await fetchFn(u.href, {
+      headers: API_HEADERS,
+      ...(signal ? { signal } : {}),
+    });
+  } catch (err) {
+    if (signal?.aborted || err?.name === 'AbortError') {
+      return { ok: false, aborted: true, siteId: 'suicaodex', page, totalPages: 1, items: [] };
+    }
+    return { ok: false, error: String(err?.message || err) };
+  }
+
+  if (!res?.ok) {
+    return { ok: false, error: `HTTP ${res?.status || 'error'}` };
+  }
+
+  let jsonData;
+  try {
+    jsonData = await res.json();
+  } catch {
+    return { ok: false, error: 'Invalid JSON' };
+  }
+
+  const items = parseSuicaoDexMangaListing(jsonData, lang);
+  const totalCount = Number(jsonData?.total);
+  const totalPages =
+    Number.isFinite(totalCount) && totalCount > 0
+      ? Math.max(1, Math.ceil(totalCount / limit))
+      : 1;
+
+  return {
+    ok: true,
+    siteId: 'suicaodex',
+    page,
+    totalPages,
+    items,
+  };
+}
+
 module.exports = {
   SuicaoDexApiClient,
   API_BASE,
@@ -283,4 +364,6 @@ module.exports = {
   resolveMangaUrl,
   fetchManga,
   fetchChapters,
+  parseSuicaoDexMangaListing,
+  fetchLatestUpdates,
 };

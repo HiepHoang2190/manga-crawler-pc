@@ -453,11 +453,99 @@ function downloadChapter(payload, connectorLabel) {
   return service.downloadChapter(payload, connectorLabel || LABEL);
 }
 
+const TWMANGA_BASE_URL = 'https://www.twmanga.com';
+
+function pickBaozimhCardCover($, $card, pageUrl) {
+  let rawCover = '';
+  $card.find('amp-img, img').each((_, el) => {
+    if (rawCover) return;
+    const $el = $(el);
+    if ($el.attr('placeholder') !== undefined || $el.attr('fallback') !== undefined) return;
+    const src = ($el.attr('data-src') || $el.attr('src') || '').trim();
+    if (!src || /^data:/i.test(src) || /default_cover\./i.test(src)) return;
+    rawCover = src;
+  });
+  return rawCover ? resolveUrl(pageUrl, rawCover) : '';
+}
+
+function parseBaozimhListingHtml(html, pageUrl) {
+  const $ = cheerio.load(String(html || ''));
+  const items = [];
+  const seen = new Set();
+
+  $('.comics-card').each((_, el) => {
+    const $card = $(el);
+    const $poster = $card.find('a.comics-card__poster, a[href*="/comic/"]').first();
+    const href = ($poster.attr('href') || '').trim();
+    const mangaUrl = href ? resolveUrl(pageUrl, href) : '';
+    if (!mangaUrl || seen.has(mangaUrl)) return;
+    seen.add(mangaUrl);
+
+    const title = (
+      $card.find('.comics-card__title h3, .comics-card__title').first().text() ||
+      $poster.attr('title') ||
+      $poster.attr('aria-label') ||
+      ''
+    ).trim();
+    if (!title) return;
+
+    const coverUrl = pickBaozimhCardCover($, $card, pageUrl);
+    items.push({ title, mangaUrl, coverUrl, latestChapterLabel: '' });
+  });
+
+  return items;
+}
+
+async function fetchLatestUpdates(options = {}) {
+  const signal = options.signal || null;
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, siteId: SITE_ID, page: 1, totalPages: 1, items: [] };
+  }
+  const rawSearch = options.latestUpdatesSearch ?? options.searchQuery;
+  const searchQuery = String(rawSearch || '').trim();
+  const fetchImpl = typeof options.fetchHtmlImpl === 'function'
+    ? options.fetchHtmlImpl
+    : htmlConnectorUtils.fetchHtml;
+
+  const listingUrl = searchQuery
+    ? `${TWMANGA_BASE_URL}/search?q=${encodeURIComponent(searchQuery)}`
+    : `${TWMANGA_BASE_URL}/list/new`;
+
+  let fetched;
+  try {
+    fetched = await fetchImpl(listingUrl, {
+      userAgent: options.userAgent || USER_AGENT_JSOUP,
+      referer: `${TWMANGA_BASE_URL}/`,
+      ...(signal ? { signal } : {}),
+    });
+  } catch (err) {
+    if (signal?.aborted || err?.name === 'AbortError') {
+      return { ok: false, aborted: true, siteId: SITE_ID, page: 1, totalPages: 1, items: [] };
+    }
+    return { ok: false, error: String(err?.message || err) };
+  }
+  if (signal?.aborted || fetched?.aborted) {
+    return { ok: false, aborted: true, siteId: SITE_ID, page: 1, totalPages: 1, items: [] };
+  }
+  if (!fetched?.ok) {
+    return { ok: false, error: fetched?.error || 'Không tải được danh sách Baozimh.' };
+  }
+
+  return {
+    ok: true,
+    siteId: SITE_ID,
+    page: 1,
+    totalPages: 1,
+    items: parseBaozimhListingHtml(fetched.html, TWMANGA_BASE_URL),
+  };
+}
+
 module.exports = {
   LABEL,
   BaozimhService,
   load,
   downloadChapter,
+  fetchLatestUpdates,
   rewriteBaozimhComicImageUrl,
   baozimhImageUrlCandidates,
   orderBaozimhImageUrlCandidates,

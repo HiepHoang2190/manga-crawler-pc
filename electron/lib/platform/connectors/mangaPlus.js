@@ -15,6 +15,8 @@ module.exports = {
   imageReferer: MANGAPLUS_IMAGE_REFERER,
   isImageCdnHost: isMangaPlusImageCdnHost,
   supportsApiFetch: true,
+  supportsLatestUpdates: true,
+  supportsLatestUpdatesSearch: true,
 
   /**
    * Hit title_detailV3 protobuf API (not the HTML homepage).
@@ -37,5 +39,9 @@ module.exports = {
 
   downloadChapter(payload) {
     return service.downloadChapter(payload, LABEL);
+  },
+
+  fetchLatestUpdates(options) {
+    return service.fetchLatestUpdates(options || {});
   },
 };

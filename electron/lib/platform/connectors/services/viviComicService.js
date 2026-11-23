@@ -159,10 +159,97 @@ function downloadChapter(payload, connector) {
   return service.downloadChapter(payload, connector || LABEL);
 }
 
+const VIVICOMIC_MAX_PAGES = 20;
+
+function parseViviComicListingHtml(html, pageUrl) {
+  const $ = cheerio.load(String(html || ''));
+  const items = [];
+  const seen = new Set();
+
+  $('.comic-card').each((_, el) => {
+    const $card = $(el);
+    const $titleLink = $card.find('.comic-card-title a').first();
+    const $thumbLink = $card.find('a.comic-card-thumb').first();
+    const href = ($titleLink.attr('href') || $thumbLink.attr('href') || '').trim();
+    const mangaUrl = href ? resolveUrl(pageUrl, href) : '';
+    if (!mangaUrl || seen.has(mangaUrl)) return;
+    seen.add(mangaUrl);
+
+    const $img = $card.find('.comic-card-thumb img, img').first();
+    const rawCover = $img.length ? getImageSrcFromEl($img) : '';
+    const coverUrl = rawCover && !/^data:/i.test(rawCover) ? resolveUrl(pageUrl, rawCover) : '';
+
+    const title = ($titleLink.text() || $img.attr('alt') || $thumbLink.attr('title') || '').trim();
+    if (!title) return;
+
+    const latestChapterLabel = $card.find('.comic-card-stats .chap-link').first().text().trim();
+    items.push({ title, mangaUrl, coverUrl, latestChapterLabel });
+  });
+
+  let totalPages = 1;
+  $('.pagination a[href], a[href*="page="]').each((_, el) => {
+    const m = String($(el).attr('href') || '').match(/[?&]page=(\d+)/i);
+    if (m) {
+      const p = parseInt(m[1], 10);
+      if (Number.isFinite(p) && p > totalPages) totalPages = p;
+    }
+  });
+
+  return {
+    items,
+    totalPages: Math.min(VIVICOMIC_MAX_PAGES, Math.max(1, totalPages)),
+  };
+}
+
+async function fetchLatestUpdates(options = {}) {
+  const signal = options.signal || null;
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, siteId: 'vivicomic', page: 1, totalPages: 1, items: [] };
+  }
+  const page = Math.min(VIVICOMIC_MAX_PAGES, Math.max(1, Math.floor(Number(options.page) || 1)));
+  const rawSearch = options.latestUpdatesSearch ?? options.searchQuery;
+  const searchQuery = String(rawSearch || '').trim();
+  const fetchImpl = typeof options.fetchHtmlImpl === 'function' ? options.fetchHtmlImpl : fetchHtml;
+
+  const listingUrl = searchQuery
+    ? `${ORIGIN_BASE}/tim-kiem?q=${encodeURIComponent(searchQuery)}${page > 1 ? `&page=${page}` : ''}`
+    : `${ORIGIN_BASE}/danh-sach-truyen${page > 1 ? `?page=${page}` : ''}`;
+
+  let fetched;
+  try {
+    fetched = await fetchImpl(listingUrl, {
+      userAgent: options.userAgent || USER_AGENT_JSOUP,
+      referer: DOMAIN,
+      ...(signal ? { signal } : {}),
+    });
+  } catch (err) {
+    if (signal?.aborted || err?.name === 'AbortError') {
+      return { ok: false, aborted: true, siteId: 'vivicomic', page, totalPages: 1, items: [] };
+    }
+    return { ok: false, error: String(err?.message || err) };
+  }
+  if (signal?.aborted || fetched?.aborted) {
+    return { ok: false, aborted: true, siteId: 'vivicomic', page, totalPages: 1, items: [] };
+  }
+  if (!fetched?.ok) {
+    return { ok: false, error: fetched?.error || 'Không tải được danh sách ViviComic.' };
+  }
+
+  const parsed = parseViviComicListingHtml(fetched.html, listingUrl);
+  return {
+    ok: true,
+    siteId: 'vivicomic',
+    page,
+    totalPages: Math.max(page, parsed.totalPages),
+    items: parsed.items,
+  };
+}
+
 module.exports = {
   DOMAIN,
   LABEL,
   load,
   downloadChapter,
+  fetchLatestUpdates,
   parseViviComicMangaPage,
 };

@@ -18,6 +18,7 @@ module.exports = {
   imageReferer: COMICK_IMAGE_REFERER,
   isImageCdnHost: isComickCdnHost,
   supportsApiFetch: true,
+  supportsLatestUpdates: true,
 
   load(url, options = {}) {
     const lang = String(options?.comickLanguage || 'en').toLowerCase();
@@ -26,5 +27,9 @@ module.exports = {
 
   downloadChapter(payload) {
     return service.downloadChapter(payload, LABEL);
+  },
+
+  fetchLatestUpdates(options) {
+    return service.fetchLatestUpdates(options || {});
   },
 };

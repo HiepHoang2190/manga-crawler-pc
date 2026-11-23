@@ -620,6 +620,39 @@ function downloadChapter(payload, connector) {
   return service.downloadChapter(payload, connector || LABEL);
 }
 
+async function fetchXbatoListingHtml(url, options = {}) {
+  const signal = options.signal || null;
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, error: 'Aborted' };
+  }
+  const cookie = String(options.cookie || cookieManager.getEffectiveCookie('xbato') || '').trim();
+  const referer = String(options.referer || DOMAIN).trim();
+  const fetchFn = typeof options.fetchHtmlImpl === 'function' ? options.fetchHtmlImpl : fetchHtml;
+
+  const fetched = await fetchFn(url, {
+    userAgent: options.userAgent || USER_AGENT_JSOUP,
+    referer,
+    acceptLanguage: 'en-US,en;q=0.9',
+    ...(cookie ? { cookie } : {}),
+    ...(signal ? { signal } : {}),
+  });
+  if (signal?.aborted || fetched?.aborted) {
+    return { ok: false, aborted: true, error: 'Aborted' };
+  }
+  if (fetched?.ok && !isCloudflareBlockedHtml(fetched.html)) {
+    return fetched;
+  }
+
+  const viaBrowser = await fetchXbatoHtmlViaBrowser(url);
+  if (viaBrowser?.ok) {
+    return viaBrowser;
+  }
+  return {
+    ok: false,
+    error: fetched?.error || viaBrowser?.error || MISSING_COOKIE_ERROR,
+  };
+}
+
 /**
  * Fetch search results from xBato search API
  * @param {string} query - Search keyword
@@ -632,12 +665,29 @@ async function fetchSearchResults(query, options = {}) {
   }
 
   const search_url = `${ORIGIN_BASE}/ajax/search-suggest?keyword=${encodeURIComponent(query)}`;
-  const api_result = await fetchXbatoJson(search_url, options);
-  if (!api_result.ok) {
-    return { ok: false, error: api_result.error || 'Search failed' };
+  const fetched = await fetchXbatoListingHtml(search_url, {
+    ...options,
+    headers: {
+      Accept: 'application/json, text/plain, */*',
+      'X-Requested-With': 'XMLHttpRequest',
+      ...(options.headers || {}),
+    },
+  });
+  if (!fetched.ok) {
+    return { ok: false, error: fetched.error || 'Search failed', ...(fetched.aborted ? { aborted: true } : {}) };
   }
 
-  const json_data = api_result.data;
+  let json_text = String(fetched.html || '').trim();
+  if (json_text.startsWith('<')) {
+    const $ = cheerio.load(json_text);
+    json_text = $('pre').first().text().trim() || $('body').text().trim();
+  }
+  let json_data = {};
+  try {
+    json_data = JSON.parse(json_text);
+  } catch (err) {
+    return { ok: false, error: 'JSON API không hợp lệ: ' + String(err?.message || err) };
+  }
   const items = [];
 
   const data_array = Array.isArray(json_data?.data) ? json_data.data : [];
@@ -694,9 +744,13 @@ async function fetchLatestUpdates(options = {}) {
     ? `${ORIGIN_BASE}/newest`
     : `${ORIGIN_BASE}/newest/page/${page}`;
 
-  const fetched = await fetchXbatoHtml(listing_url, options);
+  const fetched = await fetchXbatoListingHtml(listing_url, options);
   if (!fetched.ok) {
-    return { ok: false, error: fetched.error || 'Không tải được danh sách mới cập nhật.' };
+    return {
+      ok: false,
+      error: fetched.error || 'Không tải được danh sách mới cập nhật.',
+      ...(fetched.aborted ? { aborted: true } : {}),
+    };
   }
 
   const $ = cheerio.load(fetched.html);

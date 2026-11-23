@@ -692,6 +692,152 @@ function load(url, options) {
  * @param {string} [connector] - Connector label override
  * @returns {Promise<{ok: boolean, successCount?: number, totalPages?: number, failedPageIndices?: array, skipped?: boolean, aborted?: boolean, error?: string}>}
  */
+const MANHUAGUI_PAGE_SIZE = 60;
+const MANHUAGUI_MAX_PAGES = 20;
+
+function resolveManhuaguiUrl(baseUrl, raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  try {
+    return new URL(s, baseUrl).href;
+  } catch {
+    return '';
+  }
+}
+
+function parseManhuaguiUpdateHtml(html, pageUrl) {
+  const $ = cheerio.load(String(html || ''));
+  const items = [];
+  const seen = new Set();
+
+  $('.latest-list li').each((_, el) => {
+    const $li = $(el);
+    const $coverLink = $li.find('a.cover').first();
+    const href = ($coverLink.attr('href') || $li.find('p.ell a').first().attr('href') || '').trim();
+    const mangaUrl = resolveManhuaguiUrl(pageUrl, href);
+    if (!mangaUrl || seen.has(mangaUrl)) return;
+    seen.add(mangaUrl);
+
+    const title = (
+      $li.find('p.ell a').first().text() ||
+      $coverLink.attr('title') ||
+      $coverLink.find('img').attr('alt') ||
+      ''
+    ).trim();
+    if (!title) return;
+
+    const $img = $coverLink.find('img').first();
+    const rawCover = ($img.attr('data-src') || $img.attr('src') || '').trim();
+    const coverUrl = rawCover && !/^data:/i.test(rawCover) ? resolveManhuaguiUrl(pageUrl, rawCover) : '';
+    const latestChapterLabel = $coverLink.find('.tt').first().text().trim();
+
+    items.push({ title, mangaUrl, coverUrl, latestChapterLabel });
+  });
+
+  return items;
+}
+
+function parseManhuaguiSearchHtml(html, pageUrl) {
+  const $ = cheerio.load(String(html || ''));
+  const items = [];
+  const seen = new Set();
+
+  $('.book-result li').each((_, el) => {
+    const $li = $(el);
+    const $coverLink = $li.find('.book-cover a.bcover, a.bcover').first();
+    const $titleLink = $li.find('.book-detail dt a, dt a').first();
+    const href = ($coverLink.attr('href') || $titleLink.attr('href') || '').trim();
+    const mangaUrl = resolveManhuaguiUrl(pageUrl, href);
+    if (!mangaUrl || seen.has(mangaUrl)) return;
+    seen.add(mangaUrl);
+
+    const title = ($titleLink.text() || $coverLink.attr('title') || $coverLink.find('img').attr('alt') || '').trim();
+    if (!title) return;
+
+    const $img = $coverLink.find('img').first();
+    const rawCover = ($img.attr('data-src') || $img.attr('src') || '').trim();
+    const coverUrl = rawCover && !/^data:/i.test(rawCover) ? resolveManhuaguiUrl(pageUrl, rawCover) : '';
+    const latestChapterLabel = $coverLink.find('.tt').first().text().trim();
+
+    items.push({ title, mangaUrl, coverUrl, latestChapterLabel });
+  });
+
+  let totalPages = 1;
+  $('.pager a[href], .page-nav a[href]').each((_, el) => {
+    const href = String($(el).attr('href') || '');
+    const m = href.match(/_p(\d+)\.html/i);
+    if (m) {
+      const p = parseInt(m[1], 10);
+      if (Number.isFinite(p) && p > totalPages) totalPages = p;
+    }
+  });
+
+  return {
+    items,
+    totalPages: Math.min(MANHUAGUI_MAX_PAGES, Math.max(1, totalPages)),
+  };
+}
+
+async function fetchLatestUpdates(options = {}) {
+  const signal = options.signal || null;
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, siteId: 'manhuagui', page: 1, totalPages: 1, items: [] };
+  }
+  const page = Math.min(MANHUAGUI_MAX_PAGES, Math.max(1, Math.floor(Number(options.page) || 1)));
+  const rawSearch = options.latestUpdatesSearch ?? options.searchQuery;
+  const searchQuery = String(rawSearch || '').trim();
+  const fetchImpl = typeof options.fetchHtmlImpl === 'function' ? options.fetchHtmlImpl : fetchHtml;
+
+  const listingUrl = searchQuery
+    ? `${BASE_URL}/s/${encodeURIComponent(searchQuery)}${page > 1 ? `_p${page}` : ''}.html`
+    : `${BASE_URL}/update/`;
+
+  let fetched;
+  try {
+    fetched = await fetchImpl(listingUrl, {
+      userAgent: options.userAgent || USER_AGENT,
+      referer: `${BASE_URL}/`,
+      ...(signal ? { signal } : {}),
+    });
+  } catch (err) {
+    if (signal?.aborted || err?.name === 'AbortError') {
+      return { ok: false, aborted: true, siteId: 'manhuagui', page, totalPages: 1, items: [] };
+    }
+    return { ok: false, error: String(err?.message || err) };
+  }
+  if (signal?.aborted || fetched?.aborted) {
+    return { ok: false, aborted: true, siteId: 'manhuagui', page, totalPages: 1, items: [] };
+  }
+  if (!fetched?.ok) {
+    return { ok: false, error: fetched?.error || 'Không tải được danh sách ManhuaGui.' };
+  }
+
+  if (searchQuery) {
+    const parsed = parseManhuaguiSearchHtml(fetched.html, listingUrl);
+    return {
+      ok: true,
+      siteId: 'manhuagui',
+      page,
+      totalPages: Math.max(page, parsed.totalPages),
+      items: parsed.items,
+    };
+  }
+
+  const allItems = parseManhuaguiUpdateHtml(fetched.html, listingUrl);
+  const totalPages = allItems.length > 0
+    ? Math.min(MANHUAGUI_MAX_PAGES, Math.max(1, Math.ceil(allItems.length / MANHUAGUI_PAGE_SIZE)))
+    : 1;
+  const clampedPage = Math.min(page, totalPages);
+  const start = (clampedPage - 1) * MANHUAGUI_PAGE_SIZE;
+  return {
+    ok: true,
+    siteId: 'manhuagui',
+    page: clampedPage,
+    totalPages,
+    items: allItems.slice(start, start + MANHUAGUI_PAGE_SIZE),
+  };
+}
+
 function downloadChapter(payload, connector) {
   return service.downloadChapter(payload, connector || LABEL);
 }
@@ -702,6 +848,7 @@ module.exports = {
   LABEL,
   load,
   downloadChapter,
+  fetchLatestUpdates,
   // Export utility functions for testing
   extractImgData,
   buildImageUrl,

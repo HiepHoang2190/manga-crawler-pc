@@ -12,6 +12,7 @@ module.exports = {
   imageReferer: COMICDAYS_IMAGE_REFERER,
   isImageCdnHost: isComicDaysImageCdnHost,
   supportsApiFetch: true,
+  supportsLatestUpdates: true,
 
   load(url) {
     return service.load(url);
@@ -19,5 +20,9 @@ module.exports = {
 
   downloadChapter(payload) {
     return service.downloadChapter(payload, LABEL);
+  },
+
+  fetchLatestUpdates(options) {
+    return service.fetchLatestUpdates(options || {});
   },
 };

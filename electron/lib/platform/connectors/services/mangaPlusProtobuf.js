@@ -93,10 +93,33 @@ const ROOT = protobuf.Root.fromJSON({
             chapterListGroup: { rule: 'repeated', type: 'ChapterListGroup', id: 28 },
           },
         },
+        UpdatedTitle: {
+          fields: {
+            title: { type: 'Title', id: 1 },
+          },
+        },
+        UpdatedTitleV2Group: {
+          fields: {
+            titles: { rule: 'repeated', type: 'UpdatedTitle', id: 1 },
+          },
+        },
+        AllTitlesGroup: {
+          fields: {
+            theTitle: { type: 'string', id: 1 },
+            titles: { rule: 'repeated', type: 'Title', id: 2 },
+          },
+        },
+        AllTitlesViewV2: {
+          fields: {
+            AllTitlesGroup: { rule: 'repeated', type: 'AllTitlesGroup', id: 1 },
+          },
+        },
         SuccessResult: {
           fields: {
             titleDetailView: { type: 'TitleDetailView', id: 8 },
             mangaViewer: { type: 'MangaViewer', id: 10 },
+            updatedTitleV2Group: { type: 'UpdatedTitleV2Group', id: 20 },
+            allTitlesViewV2: { type: 'AllTitlesViewV2', id: 25 },
           },
         },
         Response: {

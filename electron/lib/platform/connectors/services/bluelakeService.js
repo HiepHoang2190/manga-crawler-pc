@@ -152,9 +152,119 @@ class BlueLakeService extends HtmlConnectorService {
 
 const service = new BlueLakeService();
 
+const BLUELAKE_MAX_PAGES = 20;
+
+function cleanBluelakeTitle(raw) {
+  return String(raw || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/^Truyện tranh\s+/i, '')
+    .replace(/\s*-\s*TruyenQQ\s*$/i, '')
+    .trim();
+}
+
+function parseBluelakeListingHtml(html, pageUrl) {
+  const $ = cheerio.load(String(html || ''));
+  const items = [];
+  const seen = new Set();
+
+  $('a[href*="/truyen-tranh/"]').each((_, el) => {
+    const $a = $(el);
+    const $img = $a.find('img').first();
+    if (!$img.length) return;
+
+    const href = ($a.attr('href') || '').trim();
+    const mangaUrl = resolveUrl(pageUrl, href);
+    if (!mangaUrl || seen.has(mangaUrl)) return;
+    seen.add(mangaUrl);
+
+    const $card = $a.closest('figure, article, li, .item, div');
+    const rawTitle =
+      $card.find('figcaption a').first().text() ||
+      $a.attr('title') ||
+      $img.attr('alt') ||
+      '';
+    const title = cleanBluelakeTitle(rawTitle);
+    if (!title) return;
+
+    const rawCover = ($img.attr('data-src') || $img.attr('src') || '').trim();
+    const coverUrl = rawCover && !/^data:/i.test(rawCover) ? resolveUrl(pageUrl, rawCover) : '';
+
+    const latestChapterLabel = (
+      $card.find('.info span.fw-normal, .info span').first().text() ||
+      $card.find('a[href*="/chuong-"]').first().text() ||
+      ''
+    ).trim().replace(/\s+/g, ' ');
+
+    items.push({ title, mangaUrl, coverUrl, latestChapterLabel });
+  });
+
+  let totalPages = 1;
+  $('a[href*="trang-"], a[href*="page="]').each((_, el) => {
+    const href = String($(el).attr('href') || '');
+    const m = href.match(/trang-(\d+)/i) || href.match(/[?&]page=(\d+)/i);
+    if (m) {
+      const p = parseInt(m[1], 10);
+      if (Number.isFinite(p) && p > totalPages) totalPages = p;
+    }
+  });
+
+  return {
+    items,
+    totalPages: Math.min(BLUELAKE_MAX_PAGES, Math.max(1, totalPages)),
+  };
+}
+
+async function fetchLatestUpdates(options = {}) {
+  const signal = options.signal || null;
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, siteId: 'bluelake', page: 1, totalPages: 1, items: [] };
+  }
+  const page = Math.min(BLUELAKE_MAX_PAGES, Math.max(1, Math.floor(Number(options.page) || 1)));
+  const rawSearch = options.latestUpdatesSearch ?? options.searchQuery;
+  const searchQuery = String(rawSearch || '').trim();
+  const fetchImpl = typeof options.fetchHtmlImpl === 'function' ? options.fetchHtmlImpl : fetchHtml;
+
+  const listingUrl = searchQuery
+    ? `${DOMAIN}tim-truyen?q=${encodeURIComponent(searchQuery)}`
+    : page > 1
+      ? `${DOMAIN}truyen-moi-nhat/trang-${page}`
+      : DOMAIN;
+
+  let fetched;
+  try {
+    fetched = await fetchImpl(listingUrl, {
+      userAgent: options.userAgent || USER_AGENT_JSOUP,
+      referer: DOMAIN,
+      ...(signal ? { signal } : {}),
+    });
+  } catch (err) {
+    if (signal?.aborted || err?.name === 'AbortError') {
+      return { ok: false, aborted: true, siteId: 'bluelake', page, totalPages: 1, items: [] };
+    }
+    return { ok: false, error: String(err?.message || err) + VPN_REQUIRED_HINT };
+  }
+  if (signal?.aborted || fetched?.aborted) {
+    return { ok: false, aborted: true, siteId: 'bluelake', page, totalPages: 1, items: [] };
+  }
+  if (!fetched?.ok) {
+    return { ok: false, error: (fetched?.error || 'Không tải được danh sách BlueLake.') + VPN_REQUIRED_HINT };
+  }
+
+  const parsed = parseBluelakeListingHtml(fetched.html, fetched.finalUrl || listingUrl);
+  return {
+    ok: true,
+    siteId: 'bluelake',
+    page,
+    totalPages: Math.max(page, parsed.totalPages),
+    items: parsed.items,
+  };
+}
+
 module.exports = {
   DOMAIN,
   LABEL,
   load: (url, options) => service.load(url, options),
   downloadChapter: (payload, connector) => service.downloadChapter(payload, connector || LABEL),
+  fetchLatestUpdates,
 };

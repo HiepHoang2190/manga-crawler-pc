@@ -91,6 +91,110 @@ class MutualHeightsService extends HtmlConnectorService {
 
 const service = new MutualHeightsService();
 
+const MUTUALHEIGHTS_MAX_PAGES = 20;
+
+function pickMutualHeightsCover($img, pageUrl) {
+  if (!$img || !$img.length) return '';
+  for (const raw of [$img.attr('data-src'), $img.attr('data-lazy-src'), $img.attr('src')]) {
+    const s = String(raw || '').trim();
+    if (!s || /^data:/i.test(s)) continue;
+    return resolveUrl(pageUrl, s);
+  }
+  return '';
+}
+
+function parseMutualHeightsListingHtml(html, pageUrl) {
+  const $ = cheerio.load(String(html || ''));
+  const items = [];
+  const seen = new Set();
+
+  $('a[href*="/truyen-tranh/"]').each((_, el) => {
+    const $a = $(el);
+    if ($a.closest('.swiper-slide').length) return;
+    const $img = $a.find('img').first();
+    if (!$img.length) return;
+
+    const href = ($a.attr('href') || '').trim();
+    const mangaUrl = resolveUrl(pageUrl, href);
+    if (!mangaUrl || seen.has(mangaUrl)) return;
+    seen.add(mangaUrl);
+
+    const $card = $a.closest('.truyen-item, .manga-item, .manga-inner, article, li, div').parent();
+    const $scope = $a.closest('.truyen-item, .manga-item').length ? $a.closest('.truyen-item, .manga-item') : $card;
+
+    const title = (
+      $scope.find('.truyen-title a, .manga-info h3 a, h3 a').first().text() ||
+      $a.attr('title') ||
+      $img.attr('alt') ||
+      ''
+    ).trim().replace(/\s+/g, ' ');
+    if (!title) return;
+
+    const coverUrl = pickMutualHeightsCover($img, pageUrl);
+    const rawChapter = (
+      $scope.find('.chapter, .truyen-chap, .chap, a[href*="/chuong-"]').first().text() || ''
+    ).trim().replace(/\s+/g, ' ');
+    const latestChapterLabel = rawChapter.replace(/^(?:»|Chương mới:?)\s*/i, '').trim();
+
+    items.push({ title, mangaUrl, coverUrl, latestChapterLabel });
+  });
+
+  let totalPages = 1;
+  $('a[href*="/page/"]').each((_, el) => {
+    const m = String($(el).attr('href') || '').match(/\/page\/(\d+)/i);
+    if (m) {
+      const p = parseInt(m[1], 10);
+      if (Number.isFinite(p) && p > totalPages) totalPages = p;
+    }
+  });
+
+  return {
+    items,
+    totalPages: Math.min(MUTUALHEIGHTS_MAX_PAGES, Math.max(1, totalPages)),
+  };
+}
+
+async function fetchLatestUpdates(options = {}) {
+  const signal = options.signal || null;
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, siteId: 'mutualheights', page: 1, totalPages: 1, items: [] };
+  }
+  const page = Math.min(MUTUALHEIGHTS_MAX_PAGES, Math.max(1, Math.floor(Number(options.page) || 1)));
+  const fetchImpl = typeof options.fetchHtmlImpl === 'function' ? options.fetchHtmlImpl : fetchHtml;
+
+  const listingUrl = page > 1
+    ? `${DOMAIN}truyen-moi-cap-nhat/page/${page}/`
+    : `${DOMAIN}truyen-moi-cap-nhat/`;
+
+  let fetched;
+  try {
+    fetched = await fetchImpl(listingUrl, {
+      referer: DOMAIN,
+      ...(signal ? { signal } : {}),
+    });
+  } catch (err) {
+    if (signal?.aborted || err?.name === 'AbortError') {
+      return { ok: false, aborted: true, siteId: 'mutualheights', page, totalPages: 1, items: [] };
+    }
+    return { ok: false, error: String(err?.message || err) + VPN_REQUIRED_HINT };
+  }
+  if (signal?.aborted || fetched?.aborted) {
+    return { ok: false, aborted: true, siteId: 'mutualheights', page, totalPages: 1, items: [] };
+  }
+  if (!fetched?.ok) {
+    return { ok: false, error: (fetched?.error || 'Không tải được danh sách MutualHeights.') + VPN_REQUIRED_HINT };
+  }
+
+  const parsed = parseMutualHeightsListingHtml(fetched.html, fetched.finalUrl || listingUrl);
+  return {
+    ok: true,
+    siteId: 'mutualheights',
+    page,
+    totalPages: Math.max(page, parsed.totalPages),
+    items: parsed.items,
+  };
+}
+
 module.exports = {
   DOMAIN,
   LABEL,
@@ -98,4 +202,5 @@ module.exports = {
   collectChapterImages,
   load: (url, options) => service.load(url, options),
   downloadChapter: (payload, connector) => service.downloadChapter(payload, connector || LABEL),
+  fetchLatestUpdates,
 };

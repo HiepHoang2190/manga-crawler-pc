@@ -320,6 +320,67 @@ class HoaphunglieunguyenService extends HtmlConnectorService {
 
 const service = new HoaphunglieunguyenService();
 
+async function fetchLatestUpdates(options = {}) {
+  const signal = options.signal || null;
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, siteId: SITE_ID, page: 1, totalPages: 1, items: [] };
+  }
+  const fetchImpl = typeof options.fetchHtmlImpl === 'function' ? options.fetchHtmlImpl : fetchHtml;
+
+  let fetched;
+  try {
+    fetched = await fetchImpl(DOMAIN, {
+      referer: DOMAIN,
+      userAgent: options.userAgent || USER_AGENT_JSOUP,
+      ...(signal ? { signal } : {}),
+    });
+  } catch (err) {
+    if (signal?.aborted || err?.name === 'AbortError') {
+      return { ok: false, aborted: true, siteId: SITE_ID, page: 1, totalPages: 1, items: [] };
+    }
+    return { ok: false, error: String(err?.message || err) };
+  }
+  if (signal?.aborted || fetched?.aborted) {
+    return { ok: false, aborted: true, siteId: SITE_ID, page: 1, totalPages: 1, items: [] };
+  }
+  if (!fetched?.ok) {
+    return { ok: false, error: fetched?.error || 'Không tải được trang Hỏa Phụng Liêu Nguyên.' };
+  }
+
+  const $ = cheerio.load(String(fetched.html || ''));
+  const meta = parseMangaMetadata($, fetched.html, DOMAIN);
+  let coverUrl = meta.coverUrl || '';
+  if (!coverUrl) {
+    const firstImg = $('.hp-latest img, img[src*="tap-cover"], img').first().attr('src') || '';
+    if (firstImg && !firstImg.startsWith('data:')) coverUrl = resolveUrl(DOMAIN, firstImg);
+  }
+
+  let latestChapterLabel = '';
+  $('#moi-cap-nhat a[href*="/hoi-"], .hp-latest a[href*="/hoi-"]').each((_, el) => {
+    if (latestChapterLabel) return;
+    const text = $(el).text().trim().replace(/\s+/g, ' ');
+    if (text && !/^(đọc ngay|đọc từ|danh sách)/i.test(text)) {
+      latestChapterLabel = text;
+    }
+  });
+  if (!latestChapterLabel) {
+    const chaps = parseChaptersFromSelect($, DOMAIN);
+    if (chaps.length > 0) {
+      latestChapterLabel = String(chaps[chaps.length - 1].title || '').trim();
+    }
+  }
+
+  return {
+    ok: true,
+    siteId: SITE_ID,
+    page: 1,
+    totalPages: 1,
+    items: meta.title
+      ? [{ title: meta.title, mangaUrl: DOMAIN, coverUrl, latestChapterLabel }]
+      : [],
+  };
+}
+
 module.exports = {
   DOMAIN,
   LABEL,
@@ -329,6 +390,7 @@ module.exports = {
   load: (url, options) => service.load(url, options),
   downloadChapter: (payload, label) => service.downloadChapter(payload, label || LABEL),
   fetchChapterImages: (chapterUrl, referer) => service.fetchChapterImages(chapterUrl, referer),
+  fetchLatestUpdates,
   normalizeToMangaUrl,
   cleanMangaTitle,
   parseChapterNumber,

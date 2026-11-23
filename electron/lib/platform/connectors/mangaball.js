@@ -24,6 +24,7 @@ module.exports = {
   isImageCdnHost: isMangaballCdnHost,
   supportsApiFetch: true,
   requiresCookie: true,
+  supportsLatestUpdates: true,
 
   load(url, options = {}) {
     const raw = String(options?.mangaballLanguage || 'en').toLowerCase();
@@ -36,5 +37,9 @@ module.exports = {
 
   downloadChapter(payload) {
     return service.downloadChapter(payload, LABEL);
+  },
+
+  fetchLatestUpdates(options) {
+    return service.fetchLatestUpdates(options || {});
   },
 };

@@ -364,9 +364,101 @@ function downloadChapter(payload, connector) {
   return service_instance.downloadChapter(payload, connector || SITE_LABEL);
 }
 
+const TRUYENTUOITHO_MAX_PAGES = 20;
+
+function parseTruyenTuoiThoHtml(html, pageUrl, { isSearch = false } = {}) {
+  const $ = cheerio.load(String(html || ''));
+  const items = [];
+  const seen = new Set();
+
+  const cardSelector = isSearch ? '.c-tabs-item__content' : '.page-item-detail';
+  $(cardSelector).each((_, el) => {
+    const $card = $(el);
+    const $titleLink = $card.find('.post-title h3 a, .post-title a').first();
+    const $thumbLink = $card.find('.item-thumb a, .tab-thumb a').first();
+    const href = ($titleLink.attr('href') || $thumbLink.attr('href') || '').trim();
+    const mangaUrl = resolveUrl(pageUrl, href);
+    if (!mangaUrl || seen.has(mangaUrl)) return;
+    seen.add(mangaUrl);
+
+    const $img = $card.find('.item-thumb img, .tab-thumb img, img').first();
+    const rawCover = $img.length ? getImageSrcFromEl($img) : '';
+    const coverUrl = rawCover && !/^data:/i.test(rawCover) ? resolveUrl(pageUrl, rawCover) : '';
+
+    const title = ($titleLink.text() || $thumbLink.attr('title') || $img.attr('alt') || '').trim().replace(/\s+/g, ' ');
+    if (!title) return;
+
+    const latestChapterLabel = (
+      $card.find('.list-chapter .chapter-item a, .latest-chap a, .chapter a').first().text() || ''
+    ).trim().replace(/\s+/g, ' ');
+
+    items.push({ title, mangaUrl, coverUrl, latestChapterLabel });
+  });
+
+  let totalPages = 1;
+  $('a[href*="/page/"]').each((_, el) => {
+    const m = String($(el).attr('href') || '').match(/\/page\/(\d+)/i);
+    if (m) {
+      const p = parseInt(m[1], 10);
+      if (Number.isFinite(p) && p > totalPages) totalPages = p;
+    }
+  });
+
+  return {
+    items,
+    totalPages: Math.min(TRUYENTUOITHO_MAX_PAGES, Math.max(1, totalPages)),
+  };
+}
+
+async function fetchLatestUpdates(options = {}) {
+  const signal = options.signal || null;
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, siteId: 'truyentuoitho', page: 1, totalPages: 1, items: [] };
+  }
+  const page = Math.min(TRUYENTUOITHO_MAX_PAGES, Math.max(1, Math.floor(Number(options.page) || 1)));
+  const rawSearch = options.latestUpdatesSearch ?? options.searchQuery;
+  const searchQuery = String(rawSearch || '').trim();
+  const fetchImpl = typeof options.fetchHtmlImpl === 'function' ? options.fetchHtmlImpl : fetchHtml;
+
+  const listingUrl = searchQuery
+    ? `${SITE_DOMAIN}?s=${encodeURIComponent(searchQuery)}&post_type=wp-manga`
+    : page > 1
+      ? `${SITE_DOMAIN}page/${page}/`
+      : SITE_DOMAIN;
+
+  let fetched;
+  try {
+    fetched = await fetchImpl(listingUrl, {
+      referer: SITE_DOMAIN,
+      ...(signal ? { signal } : {}),
+    });
+  } catch (err) {
+    if (signal?.aborted || err?.name === 'AbortError') {
+      return { ok: false, aborted: true, siteId: 'truyentuoitho', page, totalPages: 1, items: [] };
+    }
+    return { ok: false, error: String(err?.message || err) };
+  }
+  if (signal?.aborted || fetched?.aborted) {
+    return { ok: false, aborted: true, siteId: 'truyentuoitho', page, totalPages: 1, items: [] };
+  }
+  if (!fetched?.ok) {
+    return { ok: false, error: fetched?.error || 'Không tải được danh sách Truyen tuoi tho.' };
+  }
+
+  const parsed = parseTruyenTuoiThoHtml(fetched.html, fetched.finalUrl || listingUrl, { isSearch: Boolean(searchQuery) });
+  return {
+    ok: true,
+    siteId: 'truyentuoitho',
+    page: searchQuery ? 1 : page,
+    totalPages: searchQuery ? 1 : Math.max(page, parsed.totalPages),
+    items: parsed.items,
+  };
+}
+
 module.exports = {
   SITE_DOMAIN,
   SITE_LABEL,
   load,
   downloadChapter,
+  fetchLatestUpdates,
 };

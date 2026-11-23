@@ -557,6 +557,52 @@ function downloadChapter(payload, connector) {
   return service.downloadChapter(payload, connector || LABEL);
 }
 
+/**
+ * Fetch a single page of ComicVN /danh-muc/moi-nhat for the Latest Updates tab.
+ */
+async function fetchLatestUpdates(options = {}) {
+  const signal = options.signal || null;
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, siteId: 'comicvn', page: 1, totalPages: 1, items: [] };
+  }
+  const fetchImpl =
+    typeof options.fetchHtmlImpl === 'function' ? options.fetchHtmlImpl : fetchHtml;
+  const page = Math.max(1, Math.floor(Number(options.page) || 1));
+  const ua = options.userAgent || USER_AGENT;
+  const listingUrl = buildMoiNhatListingUrl(page);
+
+  let fetched;
+  try {
+    fetched = await fetchImpl(listingUrl, {
+      userAgent: ua,
+      referer: DOMAIN,
+      accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      ...(signal ? { signal } : {}),
+    });
+  } catch (err) {
+    if (signal?.aborted || err?.name === 'AbortError') {
+      return { ok: false, aborted: true, siteId: 'comicvn', page, totalPages: 1, items: [] };
+    }
+    return { ok: false, error: String(err?.message || err) };
+  }
+  if (signal?.aborted || fetched?.aborted) {
+    return { ok: false, aborted: true, siteId: 'comicvn', page, totalPages: 1, items: [] };
+  }
+  if (!fetched?.ok) {
+    return { ok: false, error: fetched?.error || 'Không tải được danh sách ComicVN.' };
+  }
+
+  const items = parseMoiNhatListingHtml(fetched.html, listingUrl);
+  const totalPages = Math.max(1, parseMoiNhatMaxPage(fetched.html));
+  return {
+    ok: true,
+    siteId: 'comicvn',
+    page,
+    totalPages,
+    items,
+  };
+}
+
 module.exports = {
   DOMAIN,
   LABEL,
@@ -566,6 +612,7 @@ module.exports = {
   parseMoiNhatListingHtml,
   parseMoiNhatMaxPage,
   fetchMoiNhatListing,
+  fetchLatestUpdates,
   isComicvnChapterImageUrl,
   isComicvnChapterLoginLocked,
   parseComicvnImageUrls,

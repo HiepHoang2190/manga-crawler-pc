@@ -368,6 +368,116 @@ class NetTruyenVietService extends HtmlConnectorService {
 // Create singleton instance
 const service = new NetTruyenVietService();
 
+const NETTRUYENVIET_MAX_PAGES = 20;
+
+function pickNetTruyenVietCover($img, pageUrl) {
+  if (!$img || !$img.length) return '';
+  const candidates = [
+    $img.attr('data-original'),
+    $img.attr('data-retries'),
+    $img.attr('data-src'),
+    $img.attr('src'),
+  ];
+  for (const raw of candidates) {
+    const s = String(raw || '').trim();
+    if (!s || /^data:/i.test(s) || /thumb-default\./i.test(s)) continue;
+    return resolveUrl(pageUrl, s);
+  }
+  return '';
+}
+
+function parseNetTruyenVietListingHtml(html, pageUrl) {
+  const $ = cheerio.load(String(html || ''));
+  const items = [];
+  const seen = new Set();
+
+  $('.items .item').each((_, el) => {
+    const $item = $(el);
+    const $titleLink = $item.find('figcaption h3 a, h3 a').first();
+    const $imageLink = $item.find('.image a, a').first();
+    const href = ($titleLink.attr('href') || $imageLink.attr('href') || '').trim();
+    const mangaUrl = resolveUrl(pageUrl, href);
+    if (!mangaUrl || seen.has(mangaUrl)) return;
+    seen.add(mangaUrl);
+
+    const $img = $item.find('.image img, img').first();
+    const coverUrl = pickNetTruyenVietCover($img, pageUrl);
+    const rawTitle = ($titleLink.text() || $imageLink.attr('title') || $img.attr('alt') || '').trim().replace(/\s+/g, ' ');
+    const title = rawTitle.replace(/^Truyện tranh\s+/i, '').trim();
+    if (!title) return;
+
+    const latestChapterLabel = $item
+      .find('.comic-item li.chapter a, ul.comic-item li a, .chapter a')
+      .first()
+      .text()
+      .trim()
+      .replace(/\s+/g, ' ');
+
+    items.push({ title, mangaUrl, coverUrl, latestChapterLabel });
+  });
+
+  let totalPages = 1;
+  $('.pagination a[href], ul.pagination a[href]').each((_, el) => {
+    const m = String($(el).attr('href') || '').match(/[?&]page=(\d+)/i);
+    if (m) {
+      const p = parseInt(m[1], 10);
+      if (Number.isFinite(p) && p > totalPages) totalPages = p;
+    }
+  });
+
+  return {
+    items,
+    totalPages: Math.min(NETTRUYENVIET_MAX_PAGES, Math.max(1, totalPages)),
+  };
+}
+
+async function fetchLatestUpdates(options = {}) {
+  const signal = options.signal || null;
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, siteId: 'nettruyenviet', page: 1, totalPages: 1, items: [] };
+  }
+  const page = Math.min(NETTRUYENVIET_MAX_PAGES, Math.max(1, Math.floor(Number(options.page) || 1)));
+  const rawSearch = options.latestUpdatesSearch ?? options.searchQuery;
+  const searchQuery = String(rawSearch || '').trim();
+  const fetchImpl = typeof options.fetchHtmlImpl === 'function' ? options.fetchHtmlImpl : fetchHtml;
+
+  const listingUrl = searchQuery
+    ? `${DOMAIN}tim-truyen?keyword=${encodeURIComponent(searchQuery)}&page=${page}`
+    : `${DOMAIN}truyen-tranh-moi?page=${page}`;
+
+  let fetched;
+  try {
+    fetched = await fetchImpl(listingUrl, {
+      userAgent: options.userAgent || USER_AGENT,
+      referer: DOMAIN,
+      siteId: 'nettruyenviet',
+      requiresCookie: true,
+      ...(options.cookie ? { cookie: options.cookie } : {}),
+      ...(signal ? { signal } : {}),
+    });
+  } catch (err) {
+    if (signal?.aborted || err?.name === 'AbortError') {
+      return { ok: false, aborted: true, siteId: 'nettruyenviet', page, totalPages: 1, items: [] };
+    }
+    return { ok: false, error: String(err?.message || err) };
+  }
+  if (signal?.aborted || fetched?.aborted) {
+    return { ok: false, aborted: true, siteId: 'nettruyenviet', page, totalPages: 1, items: [] };
+  }
+  if (!fetched?.ok) {
+    return { ok: false, error: fetched?.error || 'Không tải được danh sách NetTruyenViet.' };
+  }
+
+  const parsed = parseNetTruyenVietListingHtml(fetched.html, listingUrl);
+  return {
+    ok: true,
+    siteId: 'nettruyenviet',
+    page,
+    totalPages: Math.max(page, parsed.totalPages),
+    items: parsed.items,
+  };
+}
+
 module.exports = {
   DOMAIN,
   LABEL,
@@ -376,4 +486,6 @@ module.exports = {
   extractSlug,
   parseChapterListResponse,
   parseChapterImagesFromHtml,
+  parseNetTruyenVietListingHtml,
+  fetchLatestUpdates,
 };

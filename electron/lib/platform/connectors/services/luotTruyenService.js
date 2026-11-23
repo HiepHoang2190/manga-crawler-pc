@@ -387,6 +387,101 @@ class LuotTruyenService extends HtmlConnectorService {
 // Create service instance
 const service = new LuotTruyenService();
 
+const LUOTTRUYEN_MAX_PAGES = 20;
+
+function parseLuotTruyenListingHtml(html, pageUrl) {
+  const $ = cheerio.load(String(html || ''));
+  const items = [];
+  const seen = new Set();
+
+  $('.items .item').each((_, el) => {
+    const $item = $(el);
+    const $titleLink = $item.find('figcaption h3 a, h3 a').first();
+    const $imgLink = $item.find('.image a, a').first();
+    const href = ($titleLink.attr('href') || $imgLink.attr('href') || '').trim();
+    const mangaUrl = resolveUrl(pageUrl, href);
+    if (!mangaUrl || seen.has(mangaUrl)) return;
+    seen.add(mangaUrl);
+
+    const $img = $item.find('.image img, img').first();
+    const rawCover = (
+      $img.attr('data-original') ||
+      $img.attr('data-src') ||
+      $img.attr('src') ||
+      ''
+    ).trim();
+    const coverUrl = rawCover && !/^data:/i.test(rawCover) ? resolveUrl(pageUrl, rawCover) : '';
+
+    const title = ($titleLink.text() || $imgLink.attr('title') || $img.attr('alt') || '').trim().replace(/\s+/g, ' ');
+    if (!title) return;
+
+    const latestChapterLabel = $item.find('figcaption ul li.chapter a, ul li.chapter a, .chapter a').first().text().trim();
+    items.push({ title, mangaUrl, coverUrl, latestChapterLabel });
+  });
+
+  let totalPages = 1;
+  $('a[href*="page="]').each((_, el) => {
+    const m = String($(el).attr('href') || '').match(/[?&]page=(\d+)/i);
+    if (m) {
+      const p = parseInt(m[1], 10);
+      if (Number.isFinite(p) && p > totalPages) totalPages = p;
+    }
+  });
+
+  return {
+    items,
+    totalPages: Math.min(LUOTTRUYEN_MAX_PAGES, Math.max(1, totalPages)),
+  };
+}
+
+async function fetchLatestUpdates(options = {}) {
+  const signal = options.signal || null;
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, siteId: 'luottruyen', page: 1, totalPages: 1, items: [] };
+  }
+  const page = Math.min(LUOTTRUYEN_MAX_PAGES, Math.max(1, Math.floor(Number(options.page) || 1)));
+  const rawSearch = options.latestUpdatesSearch ?? options.searchQuery;
+  const searchQuery = String(rawSearch || '').trim();
+  const { fetchHtml } = require('../../../download/connector/htmlConnectorUtils');
+  const fetchImpl = typeof options.fetchHtmlImpl === 'function' ? options.fetchHtmlImpl : fetchHtml;
+
+  const listingUrl = searchQuery
+    ? `${DOMAIN}tim-truyen?keyword=${encodeURIComponent(searchQuery)}${page > 1 ? `&page=${page}` : ''}`
+    : `${DOMAIN}?page=${page}&typegroup=0`;
+
+  const cookie = (options.cookie && String(options.cookie).trim()) || cookieManager.getEffectiveCookie('luottruyen') || '';
+  let fetched;
+  try {
+    fetched = await fetchImpl(listingUrl, {
+      userAgent: options.userAgent || USER_AGENT_JSOUP,
+      referer: DOMAIN,
+      ...(cookie ? { cookie } : {}),
+      ...(signal ? { signal } : {}),
+    });
+  } catch (err) {
+    if (signal?.aborted || err?.name === 'AbortError') {
+      return { ok: false, aborted: true, siteId: 'luottruyen', page, totalPages: 1, items: [] };
+    }
+    return { ok: false, error: String(err?.message || err) };
+  }
+  if (signal?.aborted || fetched?.aborted) {
+    return { ok: false, aborted: true, siteId: 'luottruyen', page, totalPages: 1, items: [] };
+  }
+  if (!fetched?.ok) {
+    return { ok: false, error: fetched?.error || 'Không tải được danh sách LuotTruyen.' };
+  }
+
+  const baseUrl = fetched.finalUrl || listingUrl;
+  const parsed = parseLuotTruyenListingHtml(fetched.html, baseUrl);
+  return {
+    ok: true,
+    siteId: 'luottruyen',
+    page,
+    totalPages: Math.max(page, parsed.totalPages),
+    items: parsed.items,
+  };
+}
+
 module.exports = {
   DOMAIN,
   LABEL,
@@ -394,4 +489,5 @@ module.exports = {
   downloadChapter: (payload, connector) => service.downloadChapter(payload, connector || LABEL),
   parseChapterImages,
   service,
+  fetchLatestUpdates,
 };

@@ -13,6 +13,7 @@ module.exports = {
   isImageCdnHost: isFanfoxImageCdnHost,
   supportsApiFetch: false,
   requiresCookie: false,
+  supportsLatestUpdates: true,
 
   load(url) {
     return service.load(url);
@@ -20,5 +21,9 @@ module.exports = {
 
   downloadChapter(payload) {
     return service.downloadChapter(payload, LABEL);
+  },
+
+  fetchLatestUpdates(options) {
+    return service.fetchLatestUpdates(options || {});
   },
 };

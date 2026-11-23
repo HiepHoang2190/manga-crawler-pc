@@ -207,9 +207,104 @@ function downloadChapter(payload, connector) {
   return service.downloadChapter(payload, connector || LABEL);
 }
 
+const ANTBYW_MAX_PAGES = 20;
+
+function parseAntbywListingHtml(html, pageUrl) {
+  const $ = cheerio.load(String(html || ''));
+  const items = [];
+  const seen = new Set();
+
+  $('.uk-card, .uk-card-wrap').each((_, el) => {
+    const $card = $(el);
+    const $imgLink = $card.find('a[href*="kuid="]').filter((__, a) => $(a).find('img').length > 0).first();
+    const $titleLink = $card.find('p a[href*="kuid="]').first();
+    const href = ($titleLink.attr('href') || $imgLink.attr('href') || '').trim();
+    const mangaUrl = href ? resolveUrl(pageUrl, href) : '';
+    if (!mangaUrl || seen.has(mangaUrl)) return;
+    seen.add(mangaUrl);
+
+    const $img = $imgLink.find('img').first();
+    const rawCover = ($img.attr('data-src') || $img.attr('src') || '').trim();
+    const coverUrl = rawCover && !/^data:/i.test(rawCover) ? resolveUrl(pageUrl, rawCover) : '';
+
+    const title = ($titleLink.text() || $img.attr('alt') || $imgLink.attr('title') || '').trim();
+    if (!title) return;
+
+    const latestChapterLabel = $card.find('.uk-overlay a.xs1, .uk-overlay a').last().text().trim();
+    items.push({ title, mangaUrl, coverUrl, latestChapterLabel });
+  });
+
+  let totalPages = 1;
+  $('.pg a, div.pg a').each((_, el) => {
+    const href = String($(el).attr('href') || '');
+    const mHref = href.match(/[?&]page=(\d+)/i);
+    if (mHref) {
+      const p = parseInt(mHref[1], 10);
+      if (Number.isFinite(p) && p > totalPages) totalPages = p;
+    }
+    const textNums = String($(el).text() || '').match(/\d+/g);
+    if (textNums) {
+      for (const n of textNums) {
+        const p = parseInt(n, 10);
+        if (Number.isFinite(p) && p > totalPages) totalPages = p;
+      }
+    }
+  });
+
+  return {
+    items,
+    totalPages: Math.min(ANTBYW_MAX_PAGES, Math.max(1, totalPages)),
+  };
+}
+
+async function fetchLatestUpdates(options = {}) {
+  const signal = options.signal || null;
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, siteId: 'antbyw', page: 1, totalPages: 1, items: [] };
+  }
+  const page = Math.min(ANTBYW_MAX_PAGES, Math.max(1, Math.floor(Number(options.page) || 1)));
+  const rawSearch = options.latestUpdatesSearch ?? options.searchQuery;
+  const searchQuery = String(rawSearch || '').trim();
+  const fetchImpl = typeof options.fetchHtmlImpl === 'function' ? options.fetchHtmlImpl : fetchHtml;
+
+  const listingUrl = searchQuery
+    ? `${BASE_URL}/plugin.php?id=jameson_manhua&c=index&a=search&keyword=${encodeURIComponent(searchQuery)}${page > 1 ? `&page=${page}` : ''}`
+    : `${BASE_URL}/plugin.php?id=jameson_manhua&c=index&a=ku&odfie=addtime&order=desc&page=${page}`;
+
+  let fetched;
+  try {
+    fetched = await fetchImpl(listingUrl, {
+      userAgent: options.userAgent || USER_AGENT,
+      referer: `${BASE_URL}/`,
+      ...(signal ? { signal } : {}),
+    });
+  } catch (err) {
+    if (signal?.aborted || err?.name === 'AbortError') {
+      return { ok: false, aborted: true, siteId: 'antbyw', page, totalPages: 1, items: [] };
+    }
+    return { ok: false, error: String(err?.message || err) };
+  }
+  if (signal?.aborted || fetched?.aborted) {
+    return { ok: false, aborted: true, siteId: 'antbyw', page, totalPages: 1, items: [] };
+  }
+  if (!fetched?.ok) {
+    return { ok: false, error: fetched?.error || 'Không tải được danh sách Antbyw.' };
+  }
+
+  const parsed = parseAntbywListingHtml(fetched.html, listingUrl);
+  return {
+    ok: true,
+    siteId: 'antbyw',
+    page,
+    totalPages: Math.max(page, parsed.totalPages),
+    items: parsed.items,
+  };
+}
+
 module.exports = {
   BASE_URL,
   LABEL,
   load,
   downloadChapter,
+  fetchLatestUpdates,
 };

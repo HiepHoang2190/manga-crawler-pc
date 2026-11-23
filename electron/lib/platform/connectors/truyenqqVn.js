@@ -19,6 +19,8 @@ module.exports = {
   imageReferer: TRUYENQQVN_IMAGE_REFERER,
   isImageCdnHost: isTruyenQQImageCdnHost,
   supportsApiFetch: false,
+  supportsLatestUpdates: true,
+  supportsLatestUpdatesSearch: true,
 
   load(url, options) {
     return service.load(url, options);
@@ -26,5 +28,9 @@ module.exports = {
 
   downloadChapter(payload) {
     return service.downloadChapter(payload, LABEL);
+  },
+
+  fetchLatestUpdates(options) {
+    return service.fetchLatestUpdates(options || {});
   },
 };

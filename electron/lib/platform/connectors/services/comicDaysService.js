@@ -115,6 +115,101 @@ function load(url, options = {}) {
   return service.load(url, options);
 }
 
+const COMIC_DAYS_PAGE_SIZE = 48;
+const COMIC_DAYS_MAX_PAGES = 20;
+
+function parseComicDaysHomeHtml(html) {
+  const match = String(html || '').match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+  if (!match) return [];
+
+  let nextData;
+  try {
+    nextData = JSON.parse(match[1]);
+  } catch {
+    return [];
+  }
+
+  const originalSerials = nextData?.props?.pageProps?.data?.originalSerials;
+  if (!originalSerials || typeof originalSerials !== 'object') return [];
+
+  const buckets = Object.values(originalSerials)
+    .filter((b) => b && typeof b === 'object' && Array.isArray(b.latestEpisodes))
+    .sort((a, b) => {
+      const ta = Date.parse(a.serialUpdatedDate || '') || 0;
+      const tb = Date.parse(b.serialUpdatedDate || '') || 0;
+      return tb - ta;
+    });
+
+  const seenSeries = new Set();
+  const items = [];
+  for (const bucket of buckets) {
+    for (const ep of bucket.latestEpisodes) {
+      if (!ep || typeof ep !== 'object') continue;
+      const series = ep.series && typeof ep.series === 'object' ? ep.series : null;
+      const mangaUrl = String(ep.permalink || '').trim();
+      if (!mangaUrl) continue;
+      const dedupeKey = String(series?.id || mangaUrl);
+      if (seenSeries.has(dedupeKey)) continue;
+      seenSeries.add(dedupeKey);
+
+      const title = String(series?.title || ep.title || '').trim();
+      if (!title) continue;
+      const rawThumb = String(series?.thumbnailUriTemplate || series?.thumbnailUriSquareTemplate || '').trim();
+      const coverUrl = rawThumb
+        ? rawThumb.replace('{width}', '480').replace('{height}', '640')
+        : '';
+      const latestChapterLabel = String(ep.title || '').trim();
+      items.push({ title, mangaUrl, coverUrl, latestChapterLabel });
+    }
+  }
+  return items;
+}
+
+async function fetchLatestUpdates(options = {}) {
+  const signal = options.signal || null;
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, siteId: 'comicdays', page: 1, totalPages: 1, items: [] };
+  }
+  const page = Math.min(COMIC_DAYS_MAX_PAGES, Math.max(1, Math.floor(Number(options.page) || 1)));
+  const { fetchHtml } = require('../../../download/connector/htmlConnectorUtils');
+  const fetchImpl = typeof options.fetchHtmlImpl === 'function' ? options.fetchHtmlImpl : fetchHtml;
+
+  let fetched;
+  try {
+    fetched = await fetchImpl(DOMAIN, {
+      userAgent: options.userAgent || service.getUserAgent(),
+      referer: DOMAIN,
+      ...(signal ? { signal } : {}),
+    });
+  } catch (err) {
+    if (signal?.aborted || err?.name === 'AbortError') {
+      return { ok: false, aborted: true, siteId: 'comicdays', page, totalPages: 1, items: [] };
+    }
+    return { ok: false, error: String(err?.message || err) };
+  }
+  if (signal?.aborted || fetched?.aborted) {
+    return { ok: false, aborted: true, siteId: 'comicdays', page, totalPages: 1, items: [] };
+  }
+  if (!fetched?.ok) {
+    return { ok: false, error: fetched?.error || 'Không tải được danh sách ComicDays.' };
+  }
+
+  const allItems = parseComicDaysHomeHtml(fetched.html);
+  const totalPages = allItems.length > 0
+    ? Math.min(COMIC_DAYS_MAX_PAGES, Math.max(1, Math.ceil(allItems.length / COMIC_DAYS_PAGE_SIZE)))
+    : 1;
+  const clampedPage = Math.min(page, totalPages);
+  const start = (clampedPage - 1) * COMIC_DAYS_PAGE_SIZE;
+
+  return {
+    ok: true,
+    siteId: 'comicdays',
+    page: clampedPage,
+    totalPages,
+    items: allItems.slice(start, start + COMIC_DAYS_PAGE_SIZE),
+  };
+}
+
 /**
  * Download chapter using the base class template method with custom descrambling
  * @param {object} payload - Download configuration
@@ -130,6 +225,7 @@ module.exports = {
   LABEL,
   load,
   downloadChapter,
+  fetchLatestUpdates,
   // Export for testing and compatibility
   service,
   ComicDaysService,

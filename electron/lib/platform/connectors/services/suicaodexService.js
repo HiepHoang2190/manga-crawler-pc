@@ -3,7 +3,10 @@
  */
 
 const { ApiConnectorService } = require('../base/ApiConnectorService');
-const { SuicaoDexApiClient } = require('./suicaodexApiClient');
+const {
+  SuicaoDexApiClient,
+  fetchLatestUpdates: fetchSuicaoDexLatestUpdates,
+} = require('./suicaodexApiClient');
 
 const DOMAIN = 'https://suicaodex.com/';
 const LABEL = 'SuicaoDex';
@@ -51,11 +54,16 @@ function downloadChapter(payload, connector = LABEL) {
   return service.downloadChapter(payload, connector);
 }
 
+function fetchLatestUpdates(options = {}) {
+  return fetchSuicaoDexLatestUpdates(options);
+}
+
 module.exports = {
   DOMAIN,
   LABEL,
   load,
   downloadChapter,
+  fetchLatestUpdates,
   service,
   SuicaoDexService,
 };

@@ -20,6 +20,7 @@ module.exports = {
   isImageCdnHost: isMutualheightsImageCdnHost,
   supportsApiFetch: false,
   requiresVpn: true,
+  supportsLatestUpdates: true,
 
   load(url, options) {
     return service.load(url, options);
@@ -27,5 +28,9 @@ module.exports = {
 
   downloadChapter(payload) {
     return service.downloadChapter(payload, LABEL);
+  },
+
+  fetchLatestUpdates(options) {
+    return service.fetchLatestUpdates(options || {});
   },
 };

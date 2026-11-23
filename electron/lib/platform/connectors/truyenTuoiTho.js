@@ -19,6 +19,8 @@ module.exports = {
   isImageCdnHost: isTruyenTuoiThoCdnHost,
   supportsApiFetch: false,
   requiresVpn: true,
+  supportsLatestUpdates: true,
+  supportsLatestUpdatesSearch: true,
 
   load(url) {
     return service.load(url);
@@ -26,5 +28,9 @@ module.exports = {
 
   downloadChapter(payload) {
     return service.downloadChapter(payload, SITE_LABEL);
+  },
+
+  fetchLatestUpdates(options) {
+    return service.fetchLatestUpdates(options || {});
   },
 };

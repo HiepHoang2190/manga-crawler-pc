@@ -11,6 +11,8 @@ module.exports = {
   icon: getIconPath('pokemonspecial'),
   supportsApiFetch: false,
   requiresCookie: false,
+  supportsLatestUpdates: true,
+  supportsLatestUpdatesSearch: true,
   imageReferer: 'https://www.pokemonspecial.com/',
 
   load(url) {
@@ -19,5 +21,9 @@ module.exports = {
 
   downloadChapter(payload) {
     return service.downloadChapter(payload, LABEL);
+  },
+
+  fetchLatestUpdates(options) {
+    return service.fetchLatestUpdates(options || {});
   },
 };

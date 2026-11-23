@@ -17,6 +17,7 @@ module.exports = {
   icon: getIconPath('manhwatv'),
   imageReferer: null,
   supportsApiFetch: false,
+  supportsLatestUpdates: true,
 
   load(url) {
     return service.load(url);
@@ -24,5 +25,9 @@ module.exports = {
 
   downloadChapter(payload) {
     return service.downloadChapter(payload, LABEL);
+  },
+
+  fetchLatestUpdates(options) {
+    return service.fetchLatestUpdates(options || {});
   },
 };

@@ -671,10 +671,165 @@ function getImageFetchHeadersForRemoteUi() {
   return null;
 }
 
+const GTT_PAGE_SIZE = 48;
+const GTT_MAX_PAGES = 20;
+
+function pickGttCover($img, pageUrl) {
+  if (!$img || !$img.length) return '';
+  for (const raw of [$img.attr('data-original'), $img.attr('data-src'), $img.attr('src')]) {
+    const s = String(raw || '').trim();
+    if (!s || /^data:/i.test(s) || /\/contents\/images\/bg2\.gif$/i.test(s) || s.includes('/banner/')) continue;
+    return resolveUrl(pageUrl, s);
+  }
+  return '';
+}
+
+function parseGttHomeHtml(html, pageUrl) {
+  const $ = cheerio.load(String(html || ''));
+  const items = [];
+  const seen = new Set();
+
+  $('a[href*="/truyen/"]').each((_, el) => {
+    const $a = $(el);
+    const $img = $a.find('img').first();
+    if (!$img.length) return;
+    const rawAnyImg = String($img.attr('data-original') || $img.attr('data-src') || $img.attr('src') || '');
+    if (rawAnyImg.includes('/banner/')) return;
+
+    const href = ($a.attr('href') || '').trim();
+    const mangaUrl = resolveUrl(pageUrl, href);
+    if (!mangaUrl || seen.has(mangaUrl)) return;
+    seen.add(mangaUrl);
+
+    const $card = $a.closest('.card').length ? $a.closest('.card') : $a.parent();
+    const title = (
+      $card.find('.card-title, h3, .name').first().text() ||
+      $img.attr('alt') ||
+      $a.attr('title') ||
+      ''
+    ).trim().replace(/\s+/g, ' ');
+    if (!title) return;
+
+    const coverUrl = pickGttCover($img, pageUrl);
+    items.push({ title, mangaUrl, coverUrl, latestChapterLabel: '' });
+  });
+
+  return items;
+}
+
+async function fetchLatestUpdates(options = {}) {
+  const signal = options.signal || null;
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, siteId: 'goctruyentranh', page: 1, totalPages: 1, items: [] };
+  }
+  const page = Math.min(GTT_MAX_PAGES, Math.max(1, Math.floor(Number(options.page) || 1)));
+  const rawSearch = options.latestUpdatesSearch ?? options.searchQuery;
+  const searchQuery = String(rawSearch || '').trim();
+  const cookie = (options.cookie && String(options.cookie).trim()) || cookieManager.getEffectiveCookie('goctruyentranh') || '';
+
+  if (searchQuery) {
+    const searchUrl = `${DOMAIN}api/comic/search?name=${encodeURIComponent(searchQuery)}`;
+    const fetchJson = typeof options.fetchImpl === 'function' ? options.fetchImpl : globalThis.fetch;
+    if (typeof fetchJson !== 'function') {
+      return { ok: false, error: 'Fetch API không khả dụng.' };
+    }
+    let res;
+    try {
+      res = await fetchJson(searchUrl, {
+        headers: {
+          'User-Agent': options.userAgent || USER_AGENT,
+          Accept: 'application/json, text/plain, */*',
+          Referer: DOMAIN,
+          ...(cookie ? { Cookie: cookie } : {}),
+        },
+        ...(signal ? { signal } : {}),
+      });
+    } catch (err) {
+      if (signal?.aborted || err?.name === 'AbortError') {
+        return { ok: false, aborted: true, siteId: 'goctruyentranh', page: 1, totalPages: 1, items: [] };
+      }
+      return { ok: false, error: String(err?.message || err) };
+    }
+    if (signal?.aborted) {
+      return { ok: false, aborted: true, siteId: 'goctruyentranh', page: 1, totalPages: 1, items: [] };
+    }
+    if (!res?.ok) {
+      return { ok: false, error: `GocTruyenTranh HTTP ${res?.status || 'error'}` };
+    }
+    let payload;
+    try {
+      payload = await res.json();
+    } catch {
+      return { ok: false, error: 'Không đọc được JSON tìm kiếm GocTruyenTranh.' };
+    }
+    const rows = Array.isArray(payload?.result) ? payload.result : [];
+    const seen = new Set();
+    const items = [];
+    for (const row of rows) {
+      const slug = String(row?.nameEn || '').trim();
+      const title = String(row?.name || '').trim();
+      if (!slug || !title) continue;
+      const mangaUrl = `${DOMAIN}truyen/${slug}`;
+      if (seen.has(mangaUrl)) continue;
+      seen.add(mangaUrl);
+      const coverUrl = row?.photo ? resolveUrl(DOMAIN, String(row.photo).trim()) : '';
+      const ch = Array.isArray(row?.chapterLatest) && row.chapterLatest[0] != null
+        ? String(row.chapterLatest[0]).trim()
+        : '';
+      items.push({
+        title,
+        mangaUrl,
+        coverUrl,
+        latestChapterLabel: ch ? `Chương ${ch}` : '',
+      });
+    }
+    return { ok: true, siteId: 'goctruyentranh', page: 1, totalPages: 1, items };
+  }
+
+  const htmlFetch = typeof options.fetchHtmlImpl === 'function' ? options.fetchHtmlImpl : fetchHtml;
+  let fetched;
+  try {
+    fetched = await htmlFetch(DOMAIN, {
+      siteId: 'goctruyentranh',
+      requiresCookie: true,
+      referer: DOMAIN,
+      userAgent: options.userAgent || USER_AGENT,
+      ...(cookie ? { cookie } : {}),
+      ...(signal ? { signal } : {}),
+    });
+  } catch (err) {
+    if (signal?.aborted || err?.name === 'AbortError') {
+      return { ok: false, aborted: true, siteId: 'goctruyentranh', page, totalPages: 1, items: [] };
+    }
+    return { ok: false, error: String(err?.message || err) };
+  }
+  if (signal?.aborted || fetched?.aborted) {
+    return { ok: false, aborted: true, siteId: 'goctruyentranh', page, totalPages: 1, items: [] };
+  }
+  if (!fetched?.ok) {
+    return { ok: false, error: fetched?.error || 'Không tải được danh sách GocTruyenTranh.' };
+  }
+
+  const allItems = parseGttHomeHtml(fetched.html, fetched.finalUrl || DOMAIN);
+  const totalPages = allItems.length > 0
+    ? Math.min(GTT_MAX_PAGES, Math.max(1, Math.ceil(allItems.length / GTT_PAGE_SIZE)))
+    : 1;
+  const clampedPage = Math.min(page, totalPages);
+  const start = (clampedPage - 1) * GTT_PAGE_SIZE;
+  return {
+    ok: true,
+    siteId: 'goctruyentranh',
+    page: clampedPage,
+    totalPages,
+    items: allItems.slice(start, start + GTT_PAGE_SIZE),
+  };
+}
+
 module.exports = {
   DOMAIN,
   LABEL,
   load,
   downloadChapter,
   getImageFetchHeadersForRemoteUi,
+  fetchLatestUpdates,
 };

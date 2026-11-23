@@ -14,6 +14,7 @@ module.exports = {
   icon: getIconPath('rawkuma'),
   imageReferer: IMG_REFERER,
   supportsApiFetch: true,
+  supportsLatestUpdates: true,
 
   load(url, options) {
     return service.load(url, options);
@@ -21,5 +22,9 @@ module.exports = {
 
   downloadChapter(payload) {
     return service.downloadChapter(payload, LABEL);
+  },
+
+  fetchLatestUpdates(options) {
+    return service.fetchLatestUpdates(options || {});
   },
 };

@@ -376,9 +376,102 @@ class TruyenTranhPhapBiService extends HtmlConnectorService {
 // Create service instance
 const service = new TruyenTranhPhapBiService();
 
+const PHAPBI_MAX_RESULTS = 24;
+const PHAPBI_MAX_PAGES = 20;
+
+function upgradePhapBiThumbnail(rawUrl, baseUrl) {
+  const s = String(rawUrl || '').trim();
+  if (!s) return '';
+  const upgraded = s.replace(/\/[sw]\d+[^/]*\//, '/s640/');
+  return upgraded.startsWith('http') ? upgraded : resolveUrl(baseUrl, upgraded);
+}
+
+async function fetchLatestUpdates(options = {}) {
+  const signal = options.signal || null;
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, siteId: 'truyentranhphapbi', page: 1, totalPages: 1, items: [] };
+  }
+  const page = Math.min(PHAPBI_MAX_PAGES, Math.max(1, Math.floor(Number(options.page) || 1)));
+  const startIndex = (page - 1) * PHAPBI_MAX_RESULTS + 1;
+  const rawSearch = options.latestUpdatesSearch ?? options.searchQuery;
+  const searchQuery = String(rawSearch || '').trim();
+
+  let feedUrl = `${DOMAIN}feeds/posts/default?alt=json&start-index=${startIndex}&max-results=${PHAPBI_MAX_RESULTS}`;
+  if (searchQuery) {
+    feedUrl += `&q=${encodeURIComponent(searchQuery)}`;
+  }
+
+  const fetchImpl = typeof options.fetchImpl === 'function' ? options.fetchImpl : globalThis.fetch;
+  if (typeof fetchImpl !== 'function') {
+    return { ok: false, error: 'Fetch API không khả dụng.' };
+  }
+
+  let res;
+  try {
+    res = await fetchImpl(feedUrl, {
+      headers: {
+        Accept: 'application/json',
+        Referer: DOMAIN,
+        'User-Agent': USER_AGENT_JSOUP || 'Mozilla/5.0',
+      },
+      ...(signal ? { signal } : {}),
+    });
+  } catch (err) {
+    if (signal?.aborted || err?.name === 'AbortError') {
+      return { ok: false, aborted: true, siteId: 'truyentranhphapbi', page, totalPages: 1, items: [] };
+    }
+    return { ok: false, error: String(err?.message || err) };
+  }
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, siteId: 'truyentranhphapbi', page, totalPages: 1, items: [] };
+  }
+  if (!res?.ok) {
+    return { ok: false, error: `TruyenTranhPhapBi HTTP ${res?.status || 'error'}` };
+  }
+
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    return { ok: false, error: 'Không đọc được JSON từ TruyenTranhPhapBi.' };
+  }
+
+  const entries = Array.isArray(data?.feed?.entry) ? data.feed.entry : [];
+  const seen = new Set();
+  const items = [];
+  for (const entry of entries) {
+    const links = Array.isArray(entry?.link) ? entry.link : [];
+    const alt = links.find((l) => l && l.rel === 'alternate' && l.href);
+    const mangaUrl = alt ? resolveUrl(DOMAIN, alt.href) : '';
+    if (!mangaUrl || seen.has(mangaUrl)) continue;
+    seen.add(mangaUrl);
+
+    const title = String(entry?.title?.$t || '').trim();
+    if (!title) continue;
+
+    const thumb = entry?.media$thumbnail?.url || '';
+    const coverUrl = upgradePhapBiThumbnail(thumb, DOMAIN);
+    items.push({ title, mangaUrl, coverUrl, latestChapterLabel: '' });
+  }
+
+  const totalResults = Number(data?.feed?.['openSearch$totalResults']?.$t || 0);
+  const totalPages = totalResults > 0
+    ? Math.min(PHAPBI_MAX_PAGES, Math.max(1, Math.ceil(totalResults / PHAPBI_MAX_RESULTS)))
+    : (items.length >= PHAPBI_MAX_RESULTS ? Math.min(PHAPBI_MAX_PAGES, page + 1) : page);
+
+  return {
+    ok: true,
+    siteId: 'truyentranhphapbi',
+    page,
+    totalPages,
+    items,
+  };
+}
+
 module.exports = {
   DOMAIN,
   LABEL,
   load: (url, options) => service.load(url, options),
   downloadChapter: (payload, connector) => service.downloadChapter(payload, connector || LABEL),
+  fetchLatestUpdates,
 };

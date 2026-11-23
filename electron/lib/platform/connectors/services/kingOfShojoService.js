@@ -191,4 +191,109 @@ function downloadChapter(payload, connector) {
   return service.downloadChapter(payload, connector || LABEL);
 }
 
-module.exports = { DOMAIN, LABEL, load, downloadChapter };
+function parseKingOfShojoMaxPage(html) {
+  const $ = cheerio.load(String(html || ''));
+  let maxPage = 1;
+  $('.hpage a, .pagination a, a.page-numbers').each((_, el) => {
+    const href = String($(el).attr('href') || '');
+    const m = /[?&]page=(\d+)/i.exec(href) || /\/page\/(\d+)\//i.exec(href);
+    if (m) {
+      const n = parseInt(m[1], 10);
+      if (Number.isFinite(n) && n > maxPage) maxPage = n;
+    }
+    const numText = parseInt($(el).text().trim(), 10);
+    if (Number.isFinite(numText) && numText > maxPage) maxPage = numText;
+  });
+  return maxPage;
+}
+
+function parseKingOfShojoListingHtml(html, pageUrl) {
+  const $ = cheerio.load(String(html || ''));
+  const items = [];
+  const seen = new Set();
+
+  $('.bsx').each((_, el) => {
+    const $card = $(el);
+    const $a = $card.find('a[href*="/manga/"]').first();
+    const href = String($a.attr('href') || '').trim();
+    if (!href) return;
+    const mangaUrl = resolveUrl(pageUrl, href);
+    if (!mangaUrl || seen.has(mangaUrl)) return;
+    seen.add(mangaUrl);
+
+    const title =
+      $card.find('.tt').first().text().trim().replace(/\s+/g, ' ') ||
+      String($a.attr('title') || '').trim();
+    if (!title) return;
+
+    let coverUrl = '';
+    const $img = $card.find('img').first();
+    if ($img.length) {
+      const raw = ($img.attr('data-src') || $img.attr('data-lazy-src') || $img.attr('src') || '').trim();
+      if (raw && !/^data:/i.test(raw)) coverUrl = resolveUrl(pageUrl, raw);
+    }
+
+    const latestChapterLabel = $card.find('.epxs').first().text().trim().replace(/\s+/g, ' ');
+    items.push({ title, mangaUrl, coverUrl, latestChapterLabel });
+  });
+
+  return items;
+}
+
+async function fetchLatestUpdates(options = {}) {
+  const signal = options.signal || null;
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, siteId: 'kingofshojo', page: 1, totalPages: 1, items: [] };
+  }
+  const fetchImpl = typeof options.fetchHtmlImpl === 'function' ? options.fetchHtmlImpl : fetchHtml;
+  const page = Math.max(1, Math.floor(Number(options.page) || 1));
+  const rawSearch = options.latestUpdatesSearch ?? options.searchQuery;
+  const searchQuery = String(rawSearch || '').trim();
+
+  const listingUrl = searchQuery
+    ? `${DOMAIN}${page > 1 ? `page/${page}/` : ''}?s=${encodeURIComponent(searchQuery)}`
+    : page > 1
+      ? `${DOMAIN}manga/?order=update&page=${page}`
+      : `${DOMAIN}manga/?order=update`;
+
+  let fetched;
+  try {
+    fetched = await fetchImpl(listingUrl, {
+      userAgent: options.userAgent || USER_AGENT_JSOUP,
+      referer: DOMAIN,
+      accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      ...(signal ? { signal } : {}),
+    });
+  } catch (err) {
+    if (signal?.aborted || err?.name === 'AbortError') {
+      return { ok: false, aborted: true, siteId: 'kingofshojo', page, totalPages: 1, items: [] };
+    }
+    return { ok: false, error: String(err?.message || err) };
+  }
+  if (signal?.aborted || fetched?.aborted) {
+    return { ok: false, aborted: true, siteId: 'kingofshojo', page, totalPages: 1, items: [] };
+  }
+  if (!fetched?.ok) {
+    return { ok: false, error: fetched?.error || 'Không tải được danh sách KingOfShojo.' };
+  }
+
+  const items = parseKingOfShojoListingHtml(fetched.html, listingUrl);
+  const totalPages = Math.max(1, parseKingOfShojoMaxPage(fetched.html));
+  return {
+    ok: true,
+    siteId: 'kingofshojo',
+    page,
+    totalPages,
+    items,
+  };
+}
+
+module.exports = {
+  DOMAIN,
+  LABEL,
+  load,
+  downloadChapter,
+  fetchLatestUpdates,
+  parseKingOfShojoListingHtml,
+  parseKingOfShojoMaxPage,
+};

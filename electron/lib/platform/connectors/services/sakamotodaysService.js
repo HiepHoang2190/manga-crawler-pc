@@ -216,9 +216,79 @@ function downloadChapter(payload, connector) {
   return service.downloadChapter(payload, connector || LABEL);
 }
 
+async function fetchLatestUpdates(options = {}) {
+  const signal = options.signal || null;
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, siteId: 'sakamotodays', page: 1, totalPages: 1, items: [] };
+  }
+  const fetchImpl = typeof options.fetchHtmlImpl === 'function' ? options.fetchHtmlImpl : fetchHtml;
+
+  let fetched;
+  try {
+    fetched = await fetchImpl(DOMAIN, {
+      userAgent: options.userAgent || USER_AGENT_JSOUP,
+      referer: DOMAIN,
+      ...(signal ? { signal } : {}),
+    });
+  } catch (err) {
+    if (signal?.aborted || err?.name === 'AbortError') {
+      return { ok: false, aborted: true, siteId: 'sakamotodays', page: 1, totalPages: 1, items: [] };
+    }
+    return { ok: false, error: String(err?.message || err) };
+  }
+  if (signal?.aborted || fetched?.aborted) {
+    return { ok: false, aborted: true, siteId: 'sakamotodays', page: 1, totalPages: 1, items: [] };
+  }
+  if (!fetched?.ok) {
+    return { ok: false, error: fetched?.error || 'Không tải được trang SakamotoDays.' };
+  }
+
+  const $ = cheerio.load(String(fetched.html || ''));
+  const title = ($('h1').first().text() || 'Sakamoto Days').trim();
+  let coverUrl = '';
+  $('.saka-cover img').each((_, el) => {
+    if (coverUrl) return;
+    const raw = ($(el).attr('data-src') || $(el).attr('src') || '').trim();
+    if (raw && !raw.startsWith('data:')) {
+      coverUrl = resolveUrl(DOMAIN, raw);
+    }
+  });
+  if (!coverUrl) {
+    $('img').each((_, el) => {
+      if (coverUrl) return;
+      const raw = ($(el).attr('data-src') || $(el).attr('src') || '').trim();
+      if (raw && !raw.startsWith('data:') && raw.includes('wp-content') && !/logo/i.test(raw)) {
+        coverUrl = resolveUrl(DOMAIN, raw);
+      }
+    });
+  }
+
+  let latestChapterLabel = '';
+  let maxNum = -1;
+  $('.chapter-grid a[href*="chapter"], a[href*="chapter-"]').each((_, el) => {
+    const href = String($(el).attr('href') || '');
+    const m = href.match(/chapter[-_](\d+)/i);
+    const num = m ? parseInt(m[1], 10) : -1;
+    const label = $(el).text().trim().replace(/\s+/g, ' ');
+    if (num >= maxNum && label) {
+      maxNum = num;
+      latestChapterLabel = label;
+    }
+  });
+
+  return {
+    ok: true,
+    siteId: 'sakamotodays',
+    page: 1,
+    totalPages: 1,
+    items: title ? [{ title, mangaUrl: DOMAIN, coverUrl, latestChapterLabel }] : [],
+  };
+}
+
 module.exports = {
   DOMAIN,
   LABEL,
   load,
   downloadChapter,
+  fetchLatestUpdates,
 };

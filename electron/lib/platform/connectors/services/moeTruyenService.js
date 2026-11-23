@@ -268,10 +268,17 @@ function createMoeTruyenFamilyService(siteConfig = {}) {
    * @param {number} [options.page]  1-based
    */
   async function fetchLatestUpdates(options = {}) {
+    const signal = options.signal || null;
+    if (signal?.aborted) {
+      return { ok: false, aborted: true, siteId: SITE_ID, page: 1, totalPages: 1, items: [] };
+    }
     const rawSearch = options.latestUpdatesSearch ?? options.searchQuery;
     const searchQuery = String(rawSearch || '').trim();
     if (searchQuery) {
       const r = await fetchMangaSearchFromApi(searchQuery, options);
+      if (signal?.aborted || r?.aborted) {
+        return { ok: false, aborted: true, siteId: SITE_ID, page: 1, totalPages: 1, items: [] };
+      }
       if (!r.ok) {
         return { ok: false, error: r.error || 'Không tải được kết quả tìm kiếm.' };
       }
@@ -289,7 +296,11 @@ function createMoeTruyenFamilyService(siteConfig = {}) {
     const fetched = await fetchHtml(listingUrl, {
       userAgent: options.userAgent || USER_AGENT_JSOUP,
       referer: DOMAIN,
+      ...(signal ? { signal } : {}),
     });
+    if (signal?.aborted || fetched?.aborted) {
+      return { ok: false, aborted: true, siteId: SITE_ID, page, totalPages: 1, items: [] };
+    }
     if (!fetched.ok) {
       return { ok: false, error: fetched.error || 'Không tải được danh sách truyện.' };
     }
