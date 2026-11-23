@@ -52,6 +52,7 @@ function normalizeHistoryColWidths(obj) {
 const OFFLINE_SORT_MODES = ['titleAsc', 'titleDesc'];
 
 const BULK_SCAN_PAGE_SIZES = [20, 50, 100];
+const BULK_SCAN_MAX_PAGES_OPTIONS = [3, 5, 10, 20, 50];
 
 const DEFAULTS = {
   queueTab: 'queue',
@@ -71,12 +72,18 @@ const DEFAULTS = {
   bulkScan: {
     viewMode: 'grid',
     pageSize: 20,
+    maxPages: 10,
   },
 };
 
 function normalizeBulkScanPageSize(n) {
   const num = Number(n);
   return BULK_SCAN_PAGE_SIZES.includes(num) ? num : DEFAULTS.bulkScan.pageSize;
+}
+
+function normalizeBulkScanMaxPages(n) {
+  const num = Number(n);
+  return BULK_SCAN_MAX_PAGES_OPTIONS.includes(num) ? num : DEFAULTS.bulkScan.maxPages;
 }
 
 function normalize(loaded) {
@@ -109,13 +116,14 @@ function normalize(loaded) {
   const bs = loaded.bulkScan && typeof loaded.bulkScan === 'object' ? loaded.bulkScan : {};
   const bulkScanViewMode = bs.viewMode === 'list' ? 'list' : 'grid';
   const bulkScanPageSize = normalizeBulkScanPageSize(bs.pageSize);
+  const bulkScanMaxPages = normalizeBulkScanMaxPages(bs.maxPages);
 
   return {
     queueTab,
     favorites: { viewMode, siteFilter, sortMode },
     offlineRead: { viewMode: offlineViewMode, sortMode: offlineSortMode },
     history: { statusFilter, colWidths },
-    bulkScan: { viewMode: bulkScanViewMode, pageSize: bulkScanPageSize },
+    bulkScan: { viewMode: bulkScanViewMode, pageSize: bulkScanPageSize, maxPages: bulkScanMaxPages },
   };
 }
 
@@ -195,6 +203,9 @@ export function savePanelUi(partial) {
         ...(partial.bulkScan && typeof partial.bulkScan === 'object' ? partial.bulkScan : {}),
         pageSize: normalizeBulkScanPageSize(
           partial.bulkScan?.pageSize != null ? partial.bulkScan.pageSize : cur.bulkScan.pageSize,
+        ),
+        maxPages: normalizeBulkScanMaxPages(
+          partial.bulkScan?.maxPages != null ? partial.bulkScan.maxPages : cur.bulkScan.maxPages,
         ),
         viewMode:
           (partial.bulkScan?.viewMode ?? cur.bulkScan.viewMode) === 'list' ? 'list' : 'grid',

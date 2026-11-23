@@ -18,7 +18,7 @@ import {
   loadFavoriteAutoDownloadWorkflowId,
   saveFavoriteAutoDownloadWorkflowId,
 } from '../../utils/appSettings';
-import { loadSavedWorkflows } from '../workflow';
+import { loadSavedWorkflows } from '../workflow/utils/workflowStorage.mjs';
 import { computeFavoriteNotifyAfterSync } from './favoriteNotifyState';
 import {
   loadBellReadRemoteById,

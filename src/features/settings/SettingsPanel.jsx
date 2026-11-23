@@ -9,7 +9,7 @@ import ThemeCardPicker from './ThemeCardPicker.jsx';
 import BrandingSettingsSection from './BrandingSettingsSection.jsx';
 import { ExtrasSettingsSection } from '../extras';
 import { SiteCookieSection } from '../download';
-import { loadSavedWorkflows } from '../workflow';
+import { loadSavedWorkflows } from '../workflow/utils/workflowStorage.mjs';
 import { hasAppSession, isAdminSession, FREE_USER_TOKEN_MAX } from '../../utils/authSession';
 import { findLatestEntitlementRow } from '../../utils/packageEntitlementView.mjs';
 import { publicAsset } from '../../utils/publicAsset';

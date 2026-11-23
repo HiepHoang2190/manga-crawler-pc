@@ -3,7 +3,7 @@ import { useI18n } from '../../context/I18nContext';
 import { EmptyState, FetchErrorState, SearchableSelect, StudioLayout, useStudioLayout, ViewModeToggle } from '../../shared';
 import { ChaptersDrawer } from '../reader';
 import { dedupeChaptersByNumber } from '../download';
-import { ExploreSourceSelect } from '../explore';
+import ExploreSourceSelect from '../explore/components/ExploreSourceSelect.jsx';
 import {
   buildSessionAfterScan,
   filterBulkScanItems,
@@ -15,6 +15,7 @@ import {
 import { loadPanelUi, savePanelUi } from '../../utils/panelUiPrefs';
 
 const PAGE_SIZES = [20, 50, 100];
+const SCAN_MAX_PAGES_OPTIONS = [3, 5, 10, 20, 50];
 const BULK_DRAWER_CACHE_TTL_MS = 30 * 60 * 1000;
 const BULK_DRAWER_CACHE_MAX_ENTRIES = 48;
 const BULK_GRID_SKELETON_ITEMS = Array.from({ length: 12 }, (_, idx) => idx);
@@ -208,6 +209,10 @@ export default function BulkScanPanel({
   const [pageSize, setPageSize] = useState(() => {
     const n = Number(loadPanelUi().bulkScan?.pageSize);
     return PAGE_SIZES.includes(n) ? n : 20;
+  });
+  const [maxPages, setMaxPages] = useState(() => {
+    const n = Number(loadPanelUi().bulkScan?.maxPages);
+    return SCAN_MAX_PAGES_OPTIONS.includes(n) ? n : 10;
   });
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
@@ -659,8 +664,8 @@ export default function BulkScanPanel({
   const controlsBusy = busyList || enqueueBusy;
 
   useEffect(() => {
-    savePanelUi({ bulkScan: { viewMode, pageSize } });
-  }, [viewMode, pageSize]);
+    savePanelUi({ bulkScan: { viewMode, pageSize, maxPages } });
+  }, [viewMode, pageSize, maxPages]);
 
   useEffect(() => {
     setPage(1);
@@ -704,7 +709,22 @@ export default function BulkScanPanel({
     setFetchError('');
     setListProgress(null);
     try {
-      const res = await api.fetchBulkScan({ siteId: selectedSiteId });
+      const res = await api.fetchBulkScan({
+        siteId: selectedSiteId,
+        maxPages,
+        ...(mangaLoadOpts?.mangadexLanguage
+          ? { mangadexLanguage: mangaLoadOpts.mangadexLanguage }
+          : {}),
+        ...(mangaLoadOpts?.comickLanguage
+          ? { comickLanguage: mangaLoadOpts.comickLanguage }
+          : {}),
+        ...(mangaLoadOpts?.mangaballLanguage
+          ? { mangaballLanguage: mangaLoadOpts.mangaballLanguage }
+          : {}),
+        ...(mangaLoadOpts?.minotruyenListingCategory
+          ? { minotruyenListingCategory: mangaLoadOpts.minotruyenListingCategory }
+          : {}),
+      });
       if (res?.aborted || scanCancelRef.current) {
         return;
       }
@@ -742,7 +762,7 @@ export default function BulkScanPanel({
       setListProgress(null);
       scanCancelRef.current = false;
     }
-  }, [t, selectedSiteId, selected, items]);
+  }, [t, selectedSiteId, selected, items, maxPages, mangaLoadOpts]);
 
   const checkAll = useCallback(() => {
     const next = new Set(items.map((i) => i.mangaUrl));
@@ -853,7 +873,11 @@ export default function BulkScanPanel({
   }, [busyList, cancellingScan, listProgress, enqueueBusy, enqueueProgress, t]);
 
   const cookieHint =
-    selectedSiteId === 'comicvn' ? t('bulkScan.cookieHintComicvn') : null;
+    selectedSiteId === 'comicvn'
+      ? t('bulkScan.cookieHintComicvn')
+      : activeConnector?.requiresCookie
+        ? t('bulkScan.cookieHintGeneric', { site: activeConnector.label || selectedSiteId })
+        : null;
 
   const restoredHint =
     scannedAt && items.length && !busyList
@@ -863,6 +887,16 @@ export default function BulkScanPanel({
   const pageSizeOptions = useMemo(
     () => PAGE_SIZES.map((n) => ({ value: String(n), label: String(n) })),
     [],
+  );
+
+  const maxPagesOptions = useMemo(
+    () =>
+      SCAN_MAX_PAGES_OPTIONS.map((n) => ({
+        value: String(n),
+        label: t('bulkScan.maxPagesOption', { count: n }),
+        materialIcon: 'layers',
+      })),
+    [t],
   );
 
   const masterIcon = allSelected
@@ -975,6 +1009,31 @@ export default function BulkScanPanel({
               onChange={handleSiteChange}
               disabled={controlsBusy}
             />
+
+            {/* 1b. Độ sâu quét (Scan Depth) */}
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/60 mb-1.5 px-1">
+                {t('bulkScan.maxPagesLabel')}
+              </div>
+              <SearchableSelect
+                options={maxPagesOptions}
+                value={String(maxPages)}
+                onChange={(val) => {
+                  const n = Number(val);
+                  if (SCAN_MAX_PAGES_OPTIONS.includes(n)) setMaxPages(n);
+                }}
+                disabled={controlsBusy}
+                ariaLabel={t('bulkScan.maxPagesLabel')}
+                className="w-full"
+              />
+            </div>
+
+            {cookieHint ? (
+              <div className="rounded-xl border border-amber-500/35 bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-200 flex items-start gap-2">
+                <span className="material-symbols-outlined text-[16px] shrink-0 mt-0.5">vpn_key</span>
+                <span className="leading-snug">{cookieHint}</span>
+              </div>
+            ) : null}
 
             {/* 2. Trạng thái (Mẫu 2: Vertical 3-row list — zero truncation, tabular counts) */}
             {items.length > 0 && (
@@ -1115,7 +1174,7 @@ export default function BulkScanPanel({
                     )}
                   </div>
 
-                  {(scannedAt || cookieHint || t('bulkScan.shiftTip')) && (
+                  {(scannedAt || t('bulkScan.shiftTip')) && (
                     <div className="mt-2.5 pt-2 border-t border-primary/10 space-y-1.5 text-[10px] text-on-surface-variant/75 leading-relaxed">
                       {(restoredHint || listStatus) && (
                         <div className="flex items-start gap-1.5">
@@ -1123,14 +1182,6 @@ export default function BulkScanPanel({
                             <span className="material-symbols-outlined text-[13px] leading-none">schedule</span>
                           </span>
                           <span className="flex-1 min-w-0 leading-snug pt-0.5">{restoredHint || listStatus}</span>
-                        </div>
-                      )}
-                      {cookieHint && (
-                        <div className="flex items-start gap-1.5 text-amber-700 dark:text-amber-300">
-                          <span className="w-4 h-4 flex items-center justify-center shrink-0">
-                            <span className="material-symbols-outlined text-[13px] leading-none">vpn_key</span>
-                          </span>
-                          <span className="flex-1 min-w-0 leading-snug pt-0.5">{cookieHint}</span>
                         </div>
                       )}
                       <div className="flex items-start gap-1.5">
@@ -1198,20 +1249,8 @@ export default function BulkScanPanel({
           ) : items.length === 0 ? (
             <EmptyState
               icon="document_scanner"
-              {...{ title: t('bulkScan.pickSource') }}
+              {...{ title: t('bulkScan.emptyTitle') }}
               description={t('bulkScan.emptySubtitle')}
-              action={
-                selectedSiteId && !busyList ? (
-                  <button
-                    type="button"
-                    onClick={() => void runLoad()}
-                    className="h-8 px-4 rounded-xl bg-primary text-on-primary hover:opacity-90 text-xs font-semibold inline-flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
-                  >
-                    <span className="material-symbols-outlined text-[16px]">sync</span>
-                    <span>{t('bulkScan.scanSource')}</span>
-                  </button>
-                ) : null
-              }
             />
           ) : visibleItems.length === 0 ? (
             <EmptyState

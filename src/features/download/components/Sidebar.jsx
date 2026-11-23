@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useI18n } from '../../../context/I18nContext';
 import MangaInfo from './MangaInfo.jsx';
-import { SearchableSelect } from '../../../shared';
+import { SearchableSelect, classifyFetchError } from '../../../shared';
 import {
   buildCookieExtractFeedback,
   resolveCookieExtractTargetUrl,
@@ -271,7 +271,54 @@ export default function Sidebar({
               {t('sidebar.cookie.needOpenHint')}
             </div>
           ) : null}
-          {fetchError ? <p className="text-xs text-red-500 dark:text-red-400">{fetchError}</p> : null}
+          {fetchError ? (() => {
+            const errorText =
+              typeof fetchError === 'string'
+                ? fetchError
+                : fetchError?.message || String(fetchError);
+            const errorMeta = classifyFetchError(errorText, {
+              requiresVpn: Boolean(selectedConnector?.requiresVpn),
+              suggestsVpn: Boolean(selectedConnector?.suggestsVpn),
+            });
+            const isWarningTone = errorMeta.kind === 'vpn' || errorMeta.kind === 'network' || errorMeta.kind === 'auth';
+            return (
+              <div
+                role="alert"
+                data-testid="sidebar-fetch-error"
+                className={`rounded-xl border p-3 space-y-2 text-xs ${
+                  isWarningTone
+                    ? 'border-amber-500/35 bg-amber-500/10 text-amber-900 dark:text-amber-100'
+                    : 'border-error/35 bg-error/10 text-error'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-1.5 font-bold min-w-0">
+                    <span className="material-symbols-outlined text-[16px] shrink-0 leading-none" aria-hidden>
+                      {errorMeta.icon}
+                    </span>
+                    <span className="leading-snug">{t(errorMeta.titleKey)}</span>
+                  </div>
+                  {typeof onFetch === 'function' ? (
+                    <button
+                      type="button"
+                      onClick={() => onFetch()}
+                      disabled={fetchDisabled}
+                      className="shrink-0 h-7 px-2.5 rounded-lg bg-surface-container-highest/80 hover:bg-surface-container-highest text-on-surface border border-outline-variant/25 font-semibold text-[11px] inline-flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
+                    >
+                      <span className="material-symbols-outlined text-[14px] leading-none">refresh</span>
+                      <span>{t('fetchError.retry')}</span>
+                    </button>
+                  ) : null}
+                </div>
+                {errorMeta.hintKey ? (
+                  <p className="text-[11px] opacity-90 leading-snug">{t(errorMeta.hintKey)}</p>
+                ) : null}
+                <p className="max-h-28 overflow-y-auto custom-scrollbar [overflow-wrap:anywhere] rounded-lg bg-surface-container-highest/65 px-2.5 py-1.5 text-[11px] text-on-surface-variant break-words leading-snug select-text">
+                  {errorText}
+                </p>
+              </div>
+            );
+          })() : null}
         </div>
 
         {urlLooksLikePage && !site ? (

@@ -8,7 +8,7 @@ import ProgressPanel from './ProgressPanel';
 import QueueCoverThumb from './QueueCoverThumb.jsx';
 import QueueWorkflowSelector from './QueueWorkflowSelector';
 import { useDownload } from '../DownloadProvider';
-import { SearchableSelect, EmptyState, StudioTable } from '../../../shared';
+import { SearchableSelect, EmptyState, StudioTable, ConfirmModal } from '../../../shared';
 
 function useDownloadSafe() {
   try {
@@ -577,6 +577,7 @@ export default function QueuePanel({
   onStopQueue,
   onClearCompleted,
   onRemoveItem,
+  onRemoveSelectedGroups: propOnRemoveSelectedGroups,
   onSetGroupsPaused,
   downloadProgress,
   activeChapterLabel,
@@ -602,6 +603,8 @@ export default function QueuePanel({
   const setGroupWorkflow = propOnSetGroupWorkflow ?? downloadCtx.setGroupWorkflow;
   const setAllGroupsWorkflow = propOnSetAllGroupsWorkflow ?? downloadCtx.setAllGroupsWorkflow;
   const retryGroupWorkflow = propOnRetryGroupWorkflow ?? downloadCtx.retryGroupWorkflow;
+  const removeSelectedGroups = propOnRemoveSelectedGroups ?? downloadCtx.removeQueueGroups;
+  const [confirmRemoveSelectedOpen, setConfirmRemoveSelectedOpen] = useState(false);
 
   const [dragOverIndex, setDragOverIndex] = useState(null);
   const dragFromIndexRef = useRef(null);
@@ -766,6 +769,18 @@ export default function QueuePanel({
     return list;
   }, [queue, query, statusFilter]);
 
+  const visibleSelectedIds = useMemo(
+    () => filteredQueue.filter((g) => selectedIds.has(g.id)).map((g) => g.id),
+    [filteredQueue, selectedIds]
+  );
+
+  const selectedHasActiveDownload = useMemo(() => {
+    const visSet = new Set(visibleSelectedIds);
+    return queue.some(
+      (g) => visSet.has(g.id) && g.chapters.some((c) => c.status === 'downloading')
+    );
+  }, [queue, visibleSelectedIds]);
+
   const filteredAllSelected =
     filteredQueue.length > 0 && filteredQueue.every((g) => selectedIds.has(g.id));
 
@@ -831,6 +846,22 @@ export default function QueuePanel({
             >
               <span className="material-symbols-outlined text-[20px] leading-none">delete_sweep</span>
             </button>
+            {visibleSelectedIds.length > 0 && typeof removeSelectedGroups === 'function' ? (
+              <button
+                type="button"
+                disabled={selectedHasActiveDownload}
+                onClick={() => setConfirmRemoveSelectedOpen(true)}
+                data-tooltip={
+                  selectedHasActiveDownload
+                    ? t('queue.removeSelectedActiveTooltip')
+                    : t('queue.removeSelectedTooltip', { count: visibleSelectedIds.length })
+                }
+                className="flex items-center justify-center gap-1.5 h-11 px-3.5 rounded-xl border border-error/30 bg-error/10 text-error text-xs font-semibold hover:bg-error/20 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0 whitespace-nowrap"
+              >
+                <span className="material-symbols-outlined !text-[18px]">delete</span>
+                <span>{t('queue.removeSelected', { count: visibleSelectedIds.length })}</span>
+              </button>
+            ) : null}
             {failedGroups.length > 0 && typeof onRetryFailedChapters === 'function' ? (
               <button
                 type="button"
@@ -1389,6 +1420,24 @@ export default function QueuePanel({
               activeChapterLabel={activeChapterLabel}
             />
           </div>
+          <ConfirmModal
+            open={confirmRemoveSelectedOpen && visibleSelectedIds.length > 0}
+            variant="danger"
+            icon="delete_forever"
+            title={t('queue.removeSelectedConfirmTitle')}
+            message={t('queue.removeSelectedConfirmMessage', { count: visibleSelectedIds.length })}
+            confirmLabel={t('queue.removeSelected', { count: visibleSelectedIds.length })}
+            cancelLabel={t('confirmModal.cancel')}
+            onConfirm={() => {
+              const visSet = new Set(visibleSelectedIds);
+              const safeIds = queue
+                .filter((g) => visSet.has(g.id) && !g.chapters.some((c) => c.status === 'downloading'))
+                .map((g) => g.id);
+              if (safeIds.length > 0) removeSelectedGroups?.(safeIds);
+              setConfirmRemoveSelectedOpen(false);
+            }}
+            onCancel={() => setConfirmRemoveSelectedOpen(false)}
+          />
         </div>
     );
   }

@@ -130,6 +130,7 @@ export default function HomeWorkspace({
     enqueueChapters,
     enqueueHistoryRows,
     removeQueueGroup,
+    removeQueueGroups,
     removeQueueChapter,
     skipQueueChapter,
     retryQueueChapter,
@@ -653,6 +654,7 @@ export default function HomeWorkspace({
                 onStopQueue={stopQueue}
                 onClearCompleted={clearCompletedFromQueue}
                 onRemoveItem={removeQueueGroup}
+                onRemoveSelectedGroups={removeQueueGroups}
                 onRemoveChapter={removeQueueChapter}
                 onSkipChapter={skipQueueChapter}
                 onRetryChapter={retryQueueChapter}

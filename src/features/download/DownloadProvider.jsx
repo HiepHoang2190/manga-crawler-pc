@@ -17,6 +17,7 @@ import {
   countNewChaptersForManga,
   mergeChaptersIntoQueue,
   removeQueueGroup as removeQueueGroupState,
+  removeQueueGroups as removeQueueGroupsState,
   removeQueueChapter as removeQueueChapterState,
   skipQueueChapter as skipQueueChapterState,
   retryQueueChapter as retryQueueChapterState,
@@ -140,20 +141,16 @@ export function DownloadProvider({ children }) {
     queueProcessingRef.current = queueProcessing;
   }, [queueProcessing]);
 
-  /** Drop ids no longer in queue (after delete / clear) or already fully downloaded. */
+  /** Drop ids no longer in queue (after delete / clear), preserving completed/error selections for bulk actions. */
   useEffect(() => {
     const valid = new Set(queue.map((g) => g.id));
-    // Completed group: every chapter is 'done' (including failed), none still 'waiting'
-    const completed = new Set(
-      queue
-        .filter((g) => g.chapters.length > 0 && g.chapters.every((c) => c.status === 'done'))
-        .map((g) => g.id)
-    );
     setQueueSelectedIds((prev) => {
       const next = new Set();
       for (const id of prev) {
-        if (valid.has(id) && !completed.has(id)) next.add(id);
+        if (valid.has(id)) next.add(id);
       }
+      if (next.size === prev.size) return prev;
+      queueSelectedIdsRef.current = next;
       return next;
     });
   }, [queue]);
@@ -763,6 +760,23 @@ export function DownloadProvider({ children }) {
     setQueue((prev) => removeQueueGroupState(prev, group_id));
   }, []);
 
+  const removeQueueGroups = useCallback((group_ids) => {
+    const ids = group_ids instanceof Set ? group_ids : new Set(Array.isArray(group_ids) ? group_ids : []);
+    if (ids.size === 0) return;
+    const nextQueue = removeQueueGroupsState(queueRef.current || [], ids);
+    if (nextQueue !== queueRef.current) {
+      queueRef.current = nextQueue;
+      setQueue(nextQueue);
+    }
+    const baseSelected = queueSelectedIdsRef.current instanceof Set ? queueSelectedIdsRef.current : new Set();
+    const nextSelected = new Set(baseSelected);
+    ids.forEach((id) => nextSelected.delete(id));
+    if (nextSelected.size !== baseSelected.size) {
+      queueSelectedIdsRef.current = nextSelected;
+      setQueueSelectedIds(nextSelected);
+    }
+  }, []);
+
   const removeQueueChapter = useCallback((group_id, chapter_id) => {
     setQueue((prev) => removeQueueChapterState(prev, group_id, chapter_id));
   }, []);
@@ -907,6 +921,7 @@ export function DownloadProvider({ children }) {
       enqueueChapters,
       enqueueHistoryRows,
       removeQueueGroup,
+      removeQueueGroups,
       removeQueueChapter,
       skipQueueChapter,
       retryQueueChapter,
@@ -944,6 +959,7 @@ export function DownloadProvider({ children }) {
       enqueueChapters,
       enqueueHistoryRows,
       removeQueueGroup,
+      removeQueueGroups,
       removeQueueChapter,
       skipQueueChapter,
       retryQueueChapter,

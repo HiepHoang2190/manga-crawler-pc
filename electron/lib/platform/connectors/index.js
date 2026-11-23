@@ -289,6 +289,60 @@ function connectorSupportsLatestUpdatesSearch(connector) {
 /** Khớp mobile Home + PC tab Mới cập nhật — tối đa số trang hiển thị/phân trang. */
 const LATEST_UPDATES_MAX_LISTING_PAGES = 20;
 
+const BULK_SCAN_DEFAULT_MAX_PAGES = 10;
+const BULK_SCAN_MAX_PAGES_CAP = 100;
+
+/** Single-series fan sites that are better fetched directly via URL rather than catalog Bulk Scan. */
+const SINGLE_SERIES_BULK_SCAN_EXCLUDED_IDS = new Set([
+  'sakamotodays',
+  'kingdomhoiquan',
+  'hoaphunglieunguyen',
+  'pokemonspecial',
+]);
+
+function connectorHasLatestUpdates(connector) {
+  if (!connector) return false;
+  if (connector.plugin) {
+    return typeof connector.plugin.fetchLatestUpdates === 'function';
+  }
+  return typeof connector.fetchLatestUpdates === 'function' && connector.supportsLatestUpdates !== false;
+}
+
+function connectorSupportsBulkScan(connector) {
+  if (!connector || !connector.id) return false;
+  if (connector.supportsBulkScan === false || SINGLE_SERIES_BULK_SCAN_EXCLUDED_IDS.has(connector.id)) {
+    return false;
+  }
+  if (connector.plugin) {
+    return (
+      connector.plugin.supportsBulkScan !== false &&
+      typeof connector.plugin.fetchLatestUpdates === 'function'
+    );
+  }
+  if (Boolean(connector.supportsBulkScan) || typeof connector.fetchBulkScanListing === 'function') {
+    return true;
+  }
+  return connectorHasLatestUpdates(connector);
+}
+
+function delayWithSignal(ms, signal) {
+  if (!ms || ms <= 0) return Promise.resolve();
+  if (signal?.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    let timer = null;
+    const onAbort = () => {
+      if (timer) clearTimeout(timer);
+      resolve();
+    };
+    timer = setTimeout(() => {
+      if (signal) signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    if (typeof timer.unref === 'function') timer.unref();
+    if (signal) signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
 function clampLatestUpdatesListingPage(pageNum) {
   const n = Math.floor(Number(pageNum) || 1);
   return Math.min(LATEST_UPDATES_MAX_LISTING_PAGES, Math.max(1, n));
@@ -320,7 +374,7 @@ function listConnectors() {
         supportsLatestUpdates,
         supportsLatestUpdatesSearch:
           supportsLatestUpdates && connectorSupportsLatestUpdatesSearch(c),
-        supportsBulkScan: Boolean(c.supportsBulkScan),
+        supportsBulkScan: connectorSupportsBulkScan(c),
         isJsPlugin: false,
       };
     });
@@ -339,6 +393,11 @@ function listConnectors() {
       const supportsSearch = Boolean(
         info.isEnabled && pluginObj && typeof pluginObj.searchManga === 'function',
       );
+      const supportsPluginBulk = Boolean(
+        supportsLatestUpdates &&
+        pluginObj?.supportsBulkScan !== false &&
+        !SINGLE_SERIES_BULK_SCAN_EXCLUDED_IDS.has(String(info.metadata.id || '')),
+      );
       return {
         id: info.metadata.id,
         label: info.metadata.name,
@@ -352,7 +411,7 @@ function listConnectors() {
         hasLockedChapters: false,
         supportsLatestUpdates,
         supportsLatestUpdatesSearch: supportsLatestUpdates && supportsSearch,
-        supportsBulkScan: false,
+        supportsBulkScan: supportsPluginBulk,
         isJsPlugin: true,
         isEnabled: info.isEnabled,
         autoDisabled: info.autoDisabled,
@@ -393,13 +452,182 @@ async function downloadChapter(siteId, payload) {
 }
 
 /**
+ * Universal multi-page Bulk Scan runner backed by any connector's fetchLatestUpdates().
+ *
+ * @param {object} connector
+ * @param {object} [options]
+ */
+async function fetchBulkScanFromLatestUpdates(connector, options = {}) {
+  const siteId = String(connector?.id || '').trim();
+  const signal = options.signal || null;
+  const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+  const cap = Math.min(
+    BULK_SCAN_MAX_PAGES_CAP,
+    Math.max(1, Math.floor(Number(options.maxPages) || BULK_SCAN_DEFAULT_MAX_PAGES)),
+  );
+  const pageDelayMs =
+    typeof options.pageDelayMs === 'number' && options.pageDelayMs >= 0
+      ? options.pageDelayMs
+      : 120;
+
+  const makeAbortedResult = (pagesFetched, totalPagesDetected, items = []) => ({
+    ok: false,
+    aborted: true,
+    siteId,
+    pagesFetched,
+    totalPagesDetected,
+    items,
+  });
+
+  if (signal?.aborted) {
+    return makeAbortedResult(0, 1, []);
+  }
+
+  const buildCallOpts = (page) => {
+    const opts = {
+      page,
+      latestUpdatesSearch: '',
+    };
+    if (signal) opts.signal = signal;
+    if (options.cookie !== undefined) opts.cookie = options.cookie;
+    if (options.userAgent) opts.userAgent = options.userAgent;
+    if (options.mangadexLanguage) opts.mangadexLanguage = options.mangadexLanguage;
+    if (options.comickLanguage) opts.comickLanguage = options.comickLanguage;
+    if (options.mangaballLanguage) opts.mangaballLanguage = options.mangaballLanguage;
+    if (options.minotruyenListingCategory) {
+      opts.minotruyenListingCategory = options.minotruyenListingCategory;
+    }
+    return opts;
+  };
+
+  const byUrl = new Map();
+  const mergeItems = (list) => {
+    let added = 0;
+    if (!Array.isArray(list)) return added;
+    for (const raw of list) {
+      const mangaUrl = String(raw?.mangaUrl || raw?.url || '').trim();
+      if (!mangaUrl || byUrl.has(mangaUrl)) continue;
+      byUrl.set(mangaUrl, {
+        title: String(raw?.title || mangaUrl).trim(),
+        mangaUrl,
+        coverUrl: String(raw?.coverUrl || '').trim(),
+        latestChapterLabel: String(raw?.latestChapterLabel || '').trim(),
+        siteId,
+      });
+      added += 1;
+    }
+    return added;
+  };
+
+  let page1Res;
+  try {
+    page1Res = await connector.fetchLatestUpdates(buildCallOpts(1));
+  } catch (err) {
+    if (signal?.aborted || err?.name === 'AbortError') {
+      return makeAbortedResult(0, 1, []);
+    }
+    return {
+      ok: false,
+      siteId,
+      pagesFetched: 0,
+      totalPagesDetected: 1,
+      items: [],
+      error: String(err?.message || err),
+    };
+  }
+
+  if (signal?.aborted || page1Res?.aborted) {
+    return makeAbortedResult(0, 1, []);
+  }
+  if (!page1Res || page1Res.ok !== true) {
+    return {
+      ok: false,
+      siteId,
+      pagesFetched: 0,
+      totalPagesDetected: 1,
+      items: [],
+      error: String(page1Res?.error || 'Không tải được danh sách.'),
+    };
+  }
+
+  const rawTotalPages = Number(page1Res.totalPages);
+  const hasPage1Items = Array.isArray(page1Res.items) && page1Res.items.length > 0;
+  const detected = hasPage1Items
+    ? Math.min(cap, Math.max(1, Number.isFinite(rawTotalPages) && rawTotalPages >= 1 ? Math.floor(rawTotalPages) : cap))
+    : 1;
+  mergeItems(page1Res.items);
+  if (onProgress) onProgress({ page: 1, totalPages: detected });
+
+  if (signal?.aborted) {
+    return makeAbortedResult(1, detected, Array.from(byUrl.values()));
+  }
+  if (!hasPage1Items) {
+    return {
+      ok: true,
+      siteId,
+      pagesFetched: 1,
+      totalPagesDetected: detected,
+      items: [],
+    };
+  }
+
+  let pagesFetched = 1;
+  let warn = '';
+
+  for (let page = 2; page <= detected; page += 1) {
+    if (pageDelayMs > 0) {
+      await delayWithSignal(pageDelayMs, signal);
+    }
+    if (signal?.aborted) {
+      return makeAbortedResult(pagesFetched, detected, Array.from(byUrl.values()));
+    }
+
+    let pageRes;
+    try {
+      pageRes = await connector.fetchLatestUpdates(buildCallOpts(page));
+    } catch (err) {
+      if (signal?.aborted || err?.name === 'AbortError') {
+        return makeAbortedResult(pagesFetched, detected, Array.from(byUrl.values()));
+      }
+      warn = String(err?.message || err);
+      break;
+    }
+
+    if (signal?.aborted || pageRes?.aborted) {
+      return makeAbortedResult(pagesFetched, detected, Array.from(byUrl.values()));
+    }
+    if (!pageRes || pageRes.ok !== true) {
+      warn = String(pageRes?.error || `Failed to load page ${page}`);
+      break;
+    }
+
+    const addedCount = mergeItems(pageRes.items);
+    if (!Array.isArray(pageRes.items) || pageRes.items.length === 0 || addedCount === 0) {
+      break;
+    }
+
+    pagesFetched += 1;
+    if (onProgress) onProgress({ page, totalPages: detected });
+  }
+
+  return {
+    ok: true,
+    siteId,
+    pagesFetched,
+    totalPagesDetected: detected,
+    items: Array.from(byUrl.values()),
+    ...(warn ? { error: warn } : {}),
+  };
+}
+
+/**
  * @param {string} siteId
  * @param {object} [options] — forwarded to site listing (maxPages, onProgress, …)
  */
 async function fetchBulkScan(siteId, options = {}) {
   const id = String(siteId || '').trim();
   const c = get(id);
-  if (!c || !c.supportsBulkScan) {
+  if (!c || !connectorSupportsBulkScan(c)) {
     return {
       ok: false,
       siteId: id || undefined,
@@ -414,6 +642,9 @@ async function fetchBulkScan(siteId, options = {}) {
   }
   if (typeof c.fetchBulkScanListing === 'function') {
     return c.fetchBulkScanListing(options || {});
+  }
+  if (connectorHasLatestUpdates(c)) {
+    return fetchBulkScanFromLatestUpdates(c, options || {});
   }
   return {
     ok: false,
@@ -547,6 +778,8 @@ module.exports = {
   downloadChapter,
   fetchLatestUpdates,
   fetchBulkScan,
+  fetchBulkScanFromLatestUpdates,
+  connectorSupportsBulkScan,
   connectorSupportsLatestUpdatesSearch,
   LATEST_UPDATES_SEARCH_SITE_IDS,
   LATEST_UPDATES_MAX_LISTING_PAGES,

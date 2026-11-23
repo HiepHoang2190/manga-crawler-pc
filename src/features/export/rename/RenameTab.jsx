@@ -1339,7 +1339,7 @@ export default function RenameTab({
                                     </p>
                                   ) : row_value.opType === 'unchanged' ? (
                                     <div className="flex items-center justify-between gap-2">
-                                      <span className="truncate text-on-surface-variant" title={row_value.fromRel}>
+                                      <span className="truncate text-on-surface-variant" data-tooltip={row_value.fromRel}>
                                         {row_value.fromRel}
                                       </span>
                                       <span className="shrink-0 rounded bg-surface-container-highest px-1.5 py-0.5 text-[10px] font-medium text-on-surface-variant/60">

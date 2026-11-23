@@ -1,6 +1,9 @@
 import React, { useMemo } from 'react';
 import { useI18n } from '../../../context/I18nContext';
 import { SearchableSelect } from '../../../shared';
+import { countSourceOptions } from './exploreSourceUtils.mjs';
+
+export { countSourceOptions };
 
 export function extractConnectorHost(domain) {
   if (!domain) return '';
@@ -46,6 +49,8 @@ export default function ExploreSourceSelect({
   className = 'w-full min-w-0',
   filterSupportedOnly = true,
   capability = 'list',
+  count = null,
+  showCount = true,
 }) {
   const { t } = useI18n();
 
@@ -77,6 +82,11 @@ export default function ExploreSourceSelect({
     return [];
   }, [options, mode, connectors, filterSupportedOnly, capability]);
 
+  const sourceCount = useMemo(() => {
+    if (typeof count === 'number' && Number.isFinite(count)) return count;
+    return countSourceOptions(computedOptions);
+  }, [count, computedOptions]);
+
   const displayLabel = label ?? t('explore.sourcesLabel');
   const displayPlaceholder =
     placeholder ??
@@ -88,7 +98,7 @@ export default function ExploreSourceSelect({
     <div className="space-y-1.5" data-testid="explore-source-select">
       {displayLabel ? (
         <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/70 mb-1.5 px-0.5 select-none">
-          {displayLabel}
+          {showCount ? `${displayLabel} (${sourceCount})` : displayLabel}
         </div>
       ) : null}
       <SearchableSelect

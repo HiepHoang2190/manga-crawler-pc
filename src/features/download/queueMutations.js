@@ -79,6 +79,13 @@ export function removeQueueGroup(prev, group_id) {
   return prev.filter((g) => g.id !== group_id);
 }
 
+export function removeQueueGroups(prev, group_ids) {
+  const ids = group_ids instanceof Set ? group_ids : new Set(Array.isArray(group_ids) ? group_ids : []);
+  if (ids.size === 0) return prev;
+  const next = prev.filter((g) => !ids.has(g.id));
+  return next.length === prev.length ? prev : next;
+}
+
 export function removeQueueChapter(prev, group_id, chapter_id) {
   return prev
     .map((g) => {

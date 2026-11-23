@@ -124,6 +124,7 @@ function registerDownloadIpc(ipc_context) {
         signal: controller.signal,
         getCookieForSite: (sid) => cookieManager.getEffectiveCookie(sid),
       });
+      fetchPromise.catch(() => {});
       return await Promise.race([fetchPromise, abortPromise]);
     } catch (e) {
       if (controller.signal.aborted || e?.name === 'AbortError') {
@@ -214,9 +215,31 @@ function registerDownloadIpc(ipc_context) {
     }
     const controller = new AbortController();
     activeBulkScanControllers.set(siteId, controller);
+    let onAbort;
+    const abortPromise = new Promise((resolve) => {
+      onAbort = () =>
+        resolve({
+          ok: false,
+          aborted: true,
+          siteId,
+          pagesFetched: 0,
+          totalPagesDetected: 1,
+          items: [],
+        });
+      controller.signal.addEventListener('abort', onAbort, { once: true });
+    });
+    const connector = connectors.get(siteId);
+    const cookie = connector?.requiresCookie ? cookieManager.getEffectiveCookie(siteId) : undefined;
     try {
-      return await connectors.fetchBulkScan(siteId, {
+      const scanPromise = connectors.fetchBulkScan(siteId, {
         maxPages,
+        ...(cookie !== undefined ? { cookie } : {}),
+        ...(payload?.mangadexLanguage ? { mangadexLanguage: payload.mangadexLanguage } : {}),
+        ...(payload?.comickLanguage ? { comickLanguage: payload.comickLanguage } : {}),
+        ...(payload?.mangaballLanguage ? { mangaballLanguage: payload.mangaballLanguage } : {}),
+        ...(payload?.minotruyenListingCategory
+          ? { minotruyenListingCategory: payload.minotruyenListingCategory }
+          : {}),
         signal: controller.signal,
         onProgress: (p) => {
           if (controller.signal.aborted) return;
@@ -227,6 +250,8 @@ function registerDownloadIpc(ipc_context) {
           }
         },
       });
+      scanPromise.catch(() => {});
+      return await Promise.race([scanPromise, abortPromise]);
     } catch (e) {
       if (controller.signal.aborted || e?.name === 'AbortError') {
         return {
@@ -247,6 +272,7 @@ function registerDownloadIpc(ipc_context) {
         error: String(e?.message || e),
       };
     } finally {
+      controller.signal.removeEventListener('abort', onAbort);
       if (activeBulkScanControllers.get(siteId) === controller) {
         activeBulkScanControllers.delete(siteId);
       }

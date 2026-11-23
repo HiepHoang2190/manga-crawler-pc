@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useI18n } from '../../context/I18nContext';
 import { StudioLayout, useStudioLayout, SearchableSelect } from '../../shared';
 import { buildCookieExtractFeedback } from '../../utils/cookieExtractFeedback';
-import { sortConnectorsForChecker, buildHealthReportMarkdown } from './siteCheckerUtils';
+import { sortConnectorsForChecker, buildHealthReportMarkdown, getUntestedConnectors } from './siteCheckerUtils';
 
 const BTN_ROW =
   'inline-flex items-center justify-center gap-1.5 min-h-9 px-3.5 rounded-lg text-xs font-semibold transition-all active:scale-[0.98] disabled:opacity-45 disabled:pointer-events-none cursor-pointer select-none';
@@ -38,6 +38,9 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
   const [extractBusy, setExtractBusy] = useState({});
   const [messageDialog, setMessageDialog] = useState(null);
   const [copiedUrl, setCopiedUrl] = useState(null);
+  const [highlightedSiteId, setHighlightedSiteId] = useState(null);
+  const cardRefsMap = useRef(new Map());
+  const highlightTimerRef = useRef(null);
   const api = typeof window !== 'undefined' ? window.electronAPI : null;
 
   // Initialize testResults directly from localStorage so state is immediately available on mount
@@ -100,14 +103,29 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
     };
   }, [api]);
 
-  // Abort running connector tests on unmount to prevent lingering background processes
+  // Abort running connector tests & clear highlight timer on unmount
   useEffect(() => {
     return () => {
+      if (highlightTimerRef.current) {
+        clearTimeout(highlightTimerRef.current);
+      }
       if (api?.cancelTestConnector) {
         api.cancelTestConnector().catch(() => {});
       }
     };
   }, [api]);
+
+  const handleJumpToConnector = useCallback((siteId) => {
+    const el = cardRefsMap.current.get(siteId);
+    if (el && typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    setHighlightedSiteId(siteId);
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    highlightTimerRef.current = setTimeout(() => {
+      setHighlightedSiteId((prev) => (prev === siteId ? null : prev));
+    }, 1800);
+  }, []);
 
   // Compute busy state across batch tests, single tests, and domain extractions
   const isBusy = Boolean(
@@ -255,9 +273,18 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
       isFullRun: filteredConnectors.length === connectors.length,
     });
 
+  const untestedConnectors = useMemo(
+    () => getUntestedConnectors(connectors, testResults),
+    [connectors, testResults]
+  );
+
   const startTestBrokenOnly = () => {
     const brokenTargets = connectors.filter((c) => results[c.id]?.status === 'failed');
     return runConnectorBatch(brokenTargets, { isFullRun: false });
+  };
+
+  const startTestUntestedOnly = () => {
+    return runConnectorBatch(untestedConnectors, { isFullRun: false });
   };
 
   const cancelTestAll = async () => {
@@ -424,10 +451,11 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
 
     const vpn = connectors.filter((c) => c.requiresVpn || c.suggestsVpn).length;
     const cookie = connectors.filter((c) => c.requiresCookie).length;
+    const untested = untestedConnectors.length;
     const progressPercent = total > 0 ? (tested / total) * 100 : 0;
 
-    return { total, working, broken, vpn, cookie, tested, progressPercent };
-  }, [results, connectors]);
+    return { total, working, broken, untested, vpn, cookie, tested, progressPercent };
+  }, [results, connectors, untestedConnectors.length]);
 
   // Active test batch progress for scoped testing
   const batchTested = useMemo(() => {
@@ -511,6 +539,7 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
       const isInActiveBatch = batchTargetIdSet.has(c.id);
       if (statusFilter === 'working') return res?.status === 'success' || isInActiveBatch;
       if (statusFilter === 'broken') return res?.status === 'failed' || isInActiveBatch;
+      if (statusFilter === 'untested') return (res?.status !== 'success' && res?.status !== 'failed') || isInActiveBatch;
       if (statusFilter === 'vpn') return c.requiresVpn || c.suggestsVpn;
       if (statusFilter === 'cookie') return c.requiresCookie;
       return true;
@@ -543,6 +572,7 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
     { id: 'all', label: t('siteChecker.filter.all'), count: stats.total },
     { id: 'working', label: t('siteChecker.filter.working'), count: stats.working },
     { id: 'broken', label: t('siteChecker.filter.broken'), count: stats.broken },
+    { id: 'untested', label: t('siteChecker.filter.untested'), count: stats.untested },
     { id: 'vpn', label: t('siteChecker.filter.needVpn'), count: stats.vpn },
     { id: 'cookie', label: t('siteChecker.filter.needCookie'), count: stats.cookie },
   ];
@@ -764,13 +794,20 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
                     : 'bg-outline-variant/40';
 
                   return (
-                    <div
+                    <button
                       key={c.id}
-                      className="flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs hover:bg-surface-container-high transition-colors select-none"
+                      type="button"
+                      onClick={() => handleJumpToConnector(c.id)}
+                      data-tooltip={t('siteChecker.jumpToSiteTooltip', { site: c.label })}
+                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors select-none cursor-pointer text-left ${
+                        highlightedSiteId === c.id
+                          ? 'bg-primary/15 text-primary font-semibold'
+                          : 'hover:bg-surface-container-high text-on-surface'
+                      }`}
                     >
-                      <span className="truncate text-on-surface font-medium pr-2">{c.label}</span>
+                      <span className="truncate font-medium pr-2">{c.label}</span>
                       <span className={`w-2 h-2 rounded-full shrink-0 ${statusDot}`} />
-                    </div>
+                    </button>
                   );
                 })}
               </div>
@@ -796,7 +833,7 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
                     <button
                       type="button"
                       onClick={startTestAll}
-                      disabled={filteredConnectors.length === 0}
+                      disabled={isBusy || filteredConnectors.length === 0}
                       className={BTN_PRIMARY}
                       data-tooltip={
                         filteredConnectors.length === 0
@@ -818,12 +855,26 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
                       <button
                         type="button"
                         onClick={startTestBrokenOnly}
+                        disabled={isBusy}
                         className={BTN_SURFACE}
                         data-tooltip={t('siteChecker.retestBrokenTooltip')}
                         aria-label={t('siteChecker.retestBroken')}
                       >
                         <span className="material-symbols-outlined text-[16px] text-error">refresh</span>
                         <span>{t('siteChecker.retestBroken', { count: stats.broken })}</span>
+                      </button>
+                    )}
+                    {untestedConnectors.length > 0 && stats.tested > 0 && (
+                      <button
+                        type="button"
+                        onClick={startTestUntestedOnly}
+                        disabled={isBusy}
+                        className={BTN_SURFACE}
+                        data-tooltip={t('siteChecker.testUntestedTooltip')}
+                        aria-label={t('siteChecker.testUntestedTooltip')}
+                      >
+                        <span className="material-symbols-outlined text-[16px] text-amber-500">pending_actions</span>
+                        <span>{t('siteChecker.testUntested', { count: untestedConnectors.length })}</span>
                       </button>
                     )}
                     {stats.tested > 0 && (
@@ -886,7 +937,15 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
                 return (
                   <div
                     key={c.id}
-                    className="flex flex-col rounded-xl border border-outline-variant/15 bg-surface-container-low/60 shadow-xs p-4 relative overflow-hidden transition-all hover:bg-surface-container-low/95"
+                    ref={(el) => {
+                      if (el) cardRefsMap.current.set(c.id, el);
+                      else cardRefsMap.current.delete(c.id);
+                    }}
+                    className={`flex flex-col rounded-xl border bg-surface-container-low/60 shadow-xs p-4 relative overflow-hidden transition-all hover:bg-surface-container-low/95 ${
+                      highlightedSiteId === c.id
+                        ? 'border-primary ring-2 ring-primary/40 bg-primary/5'
+                        : 'border-outline-variant/15'
+                    }`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       {/* Site Info */}

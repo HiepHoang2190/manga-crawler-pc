@@ -86,3 +86,14 @@ export function buildHealthReportMarkdown(connectors = [], results = {}, stats =
 
   return lines.join('\n');
 }
+
+export function getUntestedConnectors(connectors = [], results = {}) {
+  if (!Array.isArray(connectors)) return [];
+  return connectors.filter((c) => {
+    if (!c || !c.id) return false;
+    const r = results?.[c.id];
+    if (!r) return true;
+    if (r.checking || r.queued || r.status === 'testing') return false;
+    return r.status !== 'success' && r.status !== 'failed';
+  });
+}

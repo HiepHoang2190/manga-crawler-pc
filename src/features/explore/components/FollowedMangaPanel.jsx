@@ -9,7 +9,8 @@ import {
   SearchableSelect,
 } from '../../../shared';
 import { MemoFollowedMangaCard } from './FollowedMangaCard';
-import ExploreSourceSelect from './ExploreSourceSelect';
+import ExploreSourceSelect, { extractConnectorHost } from './ExploreSourceSelect';
+import { buildFollowedSourceOptions } from './exploreSourceUtils.mjs';
 import { ChaptersDrawer } from '../../reader';
 import { dedupeChaptersByNumber } from '../../download';
 import {
@@ -497,26 +498,18 @@ export default function FollowedMangaPanel({
     contentScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
   }, [rawPageInput, page, totalPages]);
 
-  // Dropdown options for Web Sources
-  const siteOptions = useMemo(() => {
-    const list = [
-      {
-        value: '',
-        label: `${t('followedManga.filter.allSources')} (${stats.total})`,
-        icon: 'public',
-      },
-    ];
-    stats.siteBreakdown.forEach((s) => {
-      const label = siteMap.labels.get(s.siteId) || s.siteId;
-      const icon = siteMap.icons.get(s.siteId);
-      list.push({
-        value: s.siteId,
-        label: `${label} (${s.count})`,
-        icon: icon || 'language',
-      });
-    });
-    return list;
-  }, [stats.siteBreakdown, stats.total, siteMap, t]);
+  // Dropdown options for Web Sources (unified with LatestUpdates & BulkScan, scoped to connectors with bookmarks)
+  const siteOptions = useMemo(
+    () =>
+      buildFollowedSourceOptions({
+        connectors,
+        siteBreakdown: stats.siteBreakdown,
+        siteMap,
+        allSourcesLabel: t('followedManga.filter.allSources'),
+        extractHost: extractConnectorHost,
+      }),
+    [connectors, stats.siteBreakdown, siteMap, t],
+  );
 
   // Dropdown options for Sorting
   const sortOptions = useMemo(

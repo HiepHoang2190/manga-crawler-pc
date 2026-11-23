@@ -48,6 +48,9 @@ export default function SearchableSelect({
   size = 'md',
   zIndex = 10050,
   showPlaceholderOption = true,
+  ariaLabel = '',
+  'aria-label': ariaLabelAttr = '',
+  'data-tooltip': dataTooltip,
 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -390,6 +393,8 @@ export default function SearchableSelect({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-disabled={disabled}
+        aria-label={ariaLabelAttr || ariaLabel || undefined}
+        data-tooltip={dataTooltip || undefined}
       >
         <span className={`flex items-center ${size === 'sm' ? 'gap-1.5' : 'gap-2'} truncate min-w-0 flex-1 ${!selected ? 'text-on-surface-variant' : 'text-on-surface'}`}>
           {renderOptionIcon(selected, false, size === 'sm')}

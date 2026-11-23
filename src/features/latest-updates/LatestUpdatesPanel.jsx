@@ -10,7 +10,7 @@ import {
 } from '../../shared';
 import { ChaptersDrawer } from '../reader';
 import { dedupeChaptersByNumber } from '../download';
-import { ExploreSourceSelect } from '../explore';
+import ExploreSourceSelect from '../explore/components/ExploreSourceSelect.jsx';
 import { useI18n } from '../../context/I18nContext';
 import { latestListingItemChapterActionsEnabled } from './latestListingChapterActions.js';
 
@@ -850,106 +850,10 @@ export default function LatestUpdatesPanel({
       };
     }
     const siteLabel = String(selectedDescriptor?.label || selectedSiteId || '').trim();
-    if (selectedDescriptor?.isJsPlugin && selectedDescriptor.supportsLatestUpdatesSearch) {
+    if (siteLabel) {
       return {
-        placeholder: t('latestUpdates.searchPlaceholderJsPlugin', { site: siteLabel }),
-        ariaLabel: t('latestUpdates.searchAriaJsPlugin', { site: siteLabel }),
-      };
-    }
-    if (selectedSiteId === 'cuutruyen') {
-      return {
-        placeholder: t('latestUpdates.searchPlaceholderCuutruyen'),
-        ariaLabel: t('latestUpdates.searchAriaCuutruyen'),
-      };
-    }
-    if (selectedSiteId === 'mangadex') {
-      return {
-        placeholder: t('latestUpdates.searchPlaceholderMangadex'),
-        ariaLabel: t('latestUpdates.searchAriaMangadex'),
-      };
-    }
-    if (selectedSiteId === 'truyenqq') {
-      return {
-        placeholder: t('latestUpdates.searchPlaceholderTruyenqq'),
-        ariaLabel: t('latestUpdates.searchAriaTruyenqq'),
-      };
-    }
-    if (selectedSiteId === 'minotruyen') {
-      return {
-        placeholder: t('latestUpdates.searchPlaceholderMinotruyen'),
-        ariaLabel: t('latestUpdates.searchAriaMinotruyen'),
-      };
-    }
-    if (selectedSiteId === 'toptruyenzone2') {
-      return {
-        placeholder: t('latestUpdates.searchPlaceholderToptruyenzone2'),
-        ariaLabel: t('latestUpdates.searchAriaToptruyenzone2'),
-      };
-    }
-    if (selectedSiteId === 'zettruyen') {
-      return {
-        placeholder: t('latestUpdates.searchPlaceholderZettruyen'),
-        ariaLabel: t('latestUpdates.searchAriaZettruyen'),
-      };
-    }
-    if (selectedSiteId === 'yurineko') {
-      return {
-        placeholder: t('latestUpdates.searchPlaceholderYurineko') || t('latestUpdates.searchPlaceholder'),
-        ariaLabel: t('latestUpdates.searchAriaYurineko') || t('latestUpdates.searchAria'),
-      };
-    }
-    if (selectedSiteId === 'batcave') {
-      return {
-        placeholder: t('latestUpdates.searchPlaceholderBatcave'),
-        ariaLabel: t('latestUpdates.searchAriaBatcave'),
-      };
-    }
-    if (selectedSiteId === 'truyengg') {
-      return {
-        placeholder: t('latestUpdates.searchPlaceholderTruyengg') || t('latestUpdates.searchPlaceholder'),
-        ariaLabel: t('latestUpdates.searchAriaTruyengg') || t('latestUpdates.searchAria'),
-      };
-    }
-    if (selectedSiteId === 'baotangtruyen') {
-      return {
-        placeholder: t('latestUpdates.searchPlaceholderBaotangtruyen') || t('latestUpdates.searchPlaceholder'),
-        ariaLabel: t('latestUpdates.searchAriaBaotangtruyen') || t('latestUpdates.searchAria'),
-      };
-    }
-    if (selectedSiteId === 'nhattruyen') {
-      return {
-        placeholder: t('latestUpdates.searchPlaceholderNhattruyen') || t('latestUpdates.searchPlaceholder'),
-        ariaLabel: t('latestUpdates.searchAriaNhattruyen') || t('latestUpdates.searchAria'),
-      };
-    }
-    if (selectedSiteId === 'asurascans') {
-      return {
-        placeholder: t('latestUpdates.searchPlaceholderAsurascans') || t('latestUpdates.searchPlaceholder'),
-        ariaLabel: t('latestUpdates.searchAriaAsurascans') || t('latestUpdates.searchAria'),
-      };
-    }
-    if (selectedSiteId === 'flamecomics') {
-      return {
-        placeholder: t('latestUpdates.searchPlaceholderFlamecomics') || t('latestUpdates.searchPlaceholder'),
-        ariaLabel: t('latestUpdates.searchAriaFlamecomics') || t('latestUpdates.searchAria'),
-      };
-    }
-    if (selectedSiteId === 'sangchanhteam') {
-      return {
-        placeholder: t('latestUpdates.searchPlaceholderSangchanhteam') || t('latestUpdates.searchPlaceholder'),
-        ariaLabel: t('latestUpdates.searchAriaSangchanhteam') || t('latestUpdates.searchAria'),
-      };
-    }
-    if (selectedSiteId === 'tcbscanmanga') {
-      return {
-        placeholder: t('latestUpdates.searchPlaceholderTcbscanmanga') || t('latestUpdates.searchPlaceholder'),
-        ariaLabel: t('latestUpdates.searchAriaTcbscanmanga') || t('latestUpdates.searchAria'),
-      };
-    }
-    if (selectedSiteId === 'nettruyenar') {
-      return {
-        placeholder: t('latestUpdates.searchPlaceholderNettruyenar'),
-        ariaLabel: t('latestUpdates.searchAriaNettruyenar'),
+        placeholder: t('latestUpdates.searchPlaceholderSite', { site: siteLabel }),
+        ariaLabel: t('latestUpdates.searchAriaSite', { site: siteLabel }),
       };
     }
     return {
