@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useI18n } from '../../context/I18nContext';
 import { loadPanelUi, savePanelUi } from '../../utils/panelUiPrefs';
 import LatestUpdatesPanel from '../latest-updates';
@@ -7,6 +7,13 @@ import FollowedMangaPanel from './components/FollowedMangaPanel';
 
 export const EXPLORE_SUBTAB_KEY = 'explore_subtab_v1';
 export const EXPLORE_VIEW_MODE_KEY = 'explore_view_mode_v1';
+
+const KeepAliveSubtab = React.memo(
+  function KeepAliveSubtab({ active, children }) {
+    return <div className={`w-full h-full ${active ? 'block' : 'hidden'}`}>{children}</div>;
+  },
+  (prev, next) => !prev.active && !next.active,
+);
 
 function loadExploreViewMode(fallback = 'grid') {
   if (typeof localStorage === 'undefined') return fallback;
@@ -64,6 +71,13 @@ export default function ExplorePanel({
     }
     return loadExploreSubtab('latest');
   });
+  const [visitedSubtabs, setVisitedSubtabs] = useState(() => {
+    const start =
+      initialSubtab === 'bulk' || initialSubtab === 'latest' || initialSubtab === 'followed'
+        ? initialSubtab
+        : loadExploreSubtab('latest');
+    return new Set([start]);
+  });
   const [viewMode, setViewMode] = useState(() => loadExploreViewMode('grid'));
 
   const handleViewModeChange = useCallback((next) => {
@@ -82,12 +96,14 @@ export default function ExplorePanel({
   useEffect(() => {
     if (initialSubtab === 'bulk' || initialSubtab === 'latest' || initialSubtab === 'followed') {
       setActiveSubtab(initialSubtab);
+      setVisitedSubtabs((prev) => (prev.has(initialSubtab) ? prev : new Set(prev).add(initialSubtab)));
     }
   }, [initialSubtab]);
 
   const handleSelectSubtab = useCallback((subtab) => {
     if (subtab !== 'latest' && subtab !== 'bulk' && subtab !== 'followed') return;
     setActiveSubtab(subtab);
+    setVisitedSubtabs((prev) => (prev.has(subtab) ? prev : new Set(prev).add(subtab)));
     try {
       localStorage.setItem(EXPLORE_SUBTAB_KEY, subtab);
     } catch {
@@ -154,68 +170,75 @@ export default function ExplorePanel({
 
   return (
     <div className="w-full h-full relative overflow-hidden">
-      <div className={`w-full h-full ${activeSubtab === 'latest' ? 'block' : 'hidden'}`}>
-        <LatestUpdatesPanel
-          connectors={connectors}
-          mangaLoadOpts={mangaLoadOpts}
-          onEnqueueLoadedManga={onEnqueueLoadedManga}
-          queue={queue}
-          onAddQueuedFromLatest={onAddQueuedFromLatest}
-          onDownloadMangadexCovers={onDownloadMangadexCovers}
-          savePath={savePath}
-          prepareDrawerMangaForRead={prepareDrawerMangaForRead}
-          onOpenReaderForDrawerChapter={onOpenReaderForDrawerChapter}
-          onReadChapterOnlineForDrawerChapter={onReadChapterOnlineForDrawerChapter}
-          favorites={favorites}
-          onToggleFavorite={onToggleFavorite}
-          subtabsSlot={subtabsSlot}
-          viewMode={viewMode}
-          onViewModeChange={handleViewModeChange}
-        />
-      </div>
-      <div className={`w-full h-full ${activeSubtab === 'followed' ? 'block' : 'hidden'}`}>
-        <FollowedMangaPanel
-          connectors={connectors}
-          favorites={favorites}
-          favoriteSyncById={favoriteSyncById}
-          onToggleFavorite={onToggleFavorite}
-          onEnqueuePendingChapters={onEnqueuePendingChapters}
-          savePath={savePath}
-          mangaLoadOpts={mangaLoadOpts}
-          prepareDrawerMangaForRead={prepareDrawerMangaForRead}
-          onOpenReaderForDrawerChapter={onOpenReaderForDrawerChapter}
-          onReadChapterOnlineForDrawerChapter={onReadChapterOnlineForDrawerChapter}
-          subtabsSlot={subtabsSlot}
-          queue={queue}
-          queueProcessing={queueProcessing}
-          downloadProgress={downloadProgress}
-          onStartQueue={onStartQueue}
-          onStopQueue={onStopQueue}
-          onAddQueuedFromLatest={onAddQueuedFromLatest}
-          onDownloadMangadexCovers={onDownloadMangadexCovers}
-          viewMode={viewMode}
-          onViewModeChange={handleViewModeChange}
-        />
-      </div>
-      <div className={`w-full h-full ${activeSubtab === 'bulk' ? 'block' : 'hidden'}`}>
-        <BulkScanPanel
-          connectors={connectors}
-          onEnqueueLoadedManga={onEnqueueLoadedManga}
-          savePath={savePath}
-          mangaLoadOpts={mangaLoadOpts}
-          subtabsSlot={subtabsSlot}
-          queue={queue}
-          favorites={favorites}
-          onToggleFavorite={onToggleFavorite}
-          prepareDrawerMangaForRead={prepareDrawerMangaForRead}
-          onOpenReaderForDrawerChapter={onOpenReaderForDrawerChapter}
-          onReadChapterOnlineForDrawerChapter={onReadChapterOnlineForDrawerChapter}
-          onAddQueuedFromLatest={onAddQueuedFromLatest}
-          onDownloadMangadexCovers={onDownloadMangadexCovers}
-          viewMode={viewMode}
-          onViewModeChange={handleViewModeChange}
-        />
-      </div>
+      {visitedSubtabs.has('latest') ? (
+        <KeepAliveSubtab active={activeSubtab === 'latest'}>
+          <LatestUpdatesPanel
+            isActive={activeSubtab === 'latest'}
+            connectors={connectors}
+            mangaLoadOpts={mangaLoadOpts}
+            onEnqueueLoadedManga={onEnqueueLoadedManga}
+            queue={queue}
+            onAddQueuedFromLatest={onAddQueuedFromLatest}
+            onDownloadMangadexCovers={onDownloadMangadexCovers}
+            savePath={savePath}
+            prepareDrawerMangaForRead={prepareDrawerMangaForRead}
+            onOpenReaderForDrawerChapter={onOpenReaderForDrawerChapter}
+            onReadChapterOnlineForDrawerChapter={onReadChapterOnlineForDrawerChapter}
+            favorites={favorites}
+            onToggleFavorite={onToggleFavorite}
+            subtabsSlot={subtabsSlot}
+            viewMode={viewMode}
+            onViewModeChange={handleViewModeChange}
+          />
+        </KeepAliveSubtab>
+      ) : null}
+      {visitedSubtabs.has('followed') ? (
+        <KeepAliveSubtab active={activeSubtab === 'followed'}>
+          <FollowedMangaPanel
+            connectors={connectors}
+            favorites={favorites}
+            favoriteSyncById={favoriteSyncById}
+            onToggleFavorite={onToggleFavorite}
+            onEnqueuePendingChapters={onEnqueuePendingChapters}
+            savePath={savePath}
+            mangaLoadOpts={mangaLoadOpts}
+            prepareDrawerMangaForRead={prepareDrawerMangaForRead}
+            onOpenReaderForDrawerChapter={onOpenReaderForDrawerChapter}
+            onReadChapterOnlineForDrawerChapter={onReadChapterOnlineForDrawerChapter}
+            subtabsSlot={subtabsSlot}
+            queue={queue}
+            queueProcessing={queueProcessing}
+            downloadProgress={downloadProgress}
+            onStartQueue={onStartQueue}
+            onStopQueue={onStopQueue}
+            onAddQueuedFromLatest={onAddQueuedFromLatest}
+            onDownloadMangadexCovers={onDownloadMangadexCovers}
+            viewMode={viewMode}
+            onViewModeChange={handleViewModeChange}
+          />
+        </KeepAliveSubtab>
+      ) : null}
+      {visitedSubtabs.has('bulk') ? (
+        <KeepAliveSubtab active={activeSubtab === 'bulk'}>
+          <BulkScanPanel
+            connectors={connectors}
+            onEnqueueLoadedManga={onEnqueueLoadedManga}
+            savePath={savePath}
+            mangaLoadOpts={mangaLoadOpts}
+            subtabsSlot={subtabsSlot}
+            queue={queue}
+            favorites={favorites}
+            onToggleFavorite={onToggleFavorite}
+            prepareDrawerMangaForRead={prepareDrawerMangaForRead}
+            onOpenReaderForDrawerChapter={onOpenReaderForDrawerChapter}
+            onReadChapterOnlineForDrawerChapter={onReadChapterOnlineForDrawerChapter}
+            onAddQueuedFromLatest={onAddQueuedFromLatest}
+            onDownloadMangadexCovers={onDownloadMangadexCovers}
+            viewMode={viewMode}
+            onViewModeChange={handleViewModeChange}
+          />
+        </KeepAliveSubtab>
+      ) : null}
     </div>
   );
 }

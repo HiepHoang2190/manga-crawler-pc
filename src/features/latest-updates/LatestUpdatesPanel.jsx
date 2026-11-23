@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  EmptyState,
   MultiSelectDropdown,
   SearchableSelect,
   StudioLayout,
@@ -11,6 +12,74 @@ import { dedupeChaptersByNumber } from '../download';
 import { ExploreSourceSelect } from '../explore';
 import { useI18n } from '../../context/I18nContext';
 import { latestListingItemChapterActionsEnabled } from './latestListingChapterActions.js';
+
+const GRID_SKELETON_ITEMS = Array.from({ length: 12 }, (_, idx) => idx);
+const LIST_SKELETON_ITEMS = Array.from({ length: 8 }, (_, idx) => idx);
+
+const LatestUpdatesSkeleton = React.memo(function LatestUpdatesSkeleton({ viewMode, statusText }) {
+  return (
+    <div
+      data-testid="latest-updates-skeleton"
+      aria-busy="true"
+      aria-label={statusText}
+      className="space-y-4 select-none"
+    >
+      <div className="flex items-center gap-2 text-xs font-medium text-on-surface-variant">
+        <span className="material-symbols-outlined text-[18px] animate-spin text-primary shrink-0 leading-none">
+          progress_activity
+        </span>
+        <span>{statusText}</span>
+      </div>
+
+      {viewMode === 'list' ? (
+        <ul className="flex flex-col gap-2">
+          {LIST_SKELETON_ITEMS.map((idx) => (
+            <li
+              key={idx}
+              className="flex items-center justify-between gap-3 px-3 py-2.5 sm:px-4 rounded-xl border border-outline-variant/20 bg-surface-container-high/35 animate-pulse"
+            >
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <div className="h-14 w-10 sm:h-16 sm:w-11 shrink-0 rounded-lg bg-surface-container-highest" />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="h-4 w-48 max-w-[65%] rounded bg-surface-container-highest" />
+                    <div className="h-4 w-16 rounded bg-surface-container-highest/80" />
+                  </div>
+                  <div className="h-3 w-28 rounded bg-surface-container-highest/70" />
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <div className="h-8 w-24 rounded-lg bg-surface-container-highest" />
+                <div className="h-8 w-8 rounded-lg bg-surface-container-highest/80" />
+                <div className="h-8 w-8 rounded-lg bg-surface-container-highest/80" />
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+          {GRID_SKELETON_ITEMS.map((idx) => (
+            <li
+              key={idx}
+              className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-outline-variant/20 bg-surface-container-high/35 animate-pulse"
+            >
+              <div className="aspect-[3/4.2] bg-surface-container-highest" />
+              <div className="flex flex-col gap-2 p-3">
+                <div className="h-3.5 w-11/12 rounded bg-surface-container-highest" />
+                <div className="h-3.5 w-2/3 rounded bg-surface-container-highest/80" />
+                <div className="h-3 w-1/2 rounded bg-surface-container-highest/60" />
+                <div className="flex items-center gap-1.5 pt-1">
+                  <div className="flex-1 h-8 rounded-lg bg-surface-container-highest" />
+                  <div className="h-8 w-8 shrink-0 rounded-lg bg-surface-container-highest/80" />
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+});
 
 function connectorHost(domain) {
   try {
@@ -307,9 +376,12 @@ export default function LatestUpdatesPanel({
   subtabsSlot = null,
   viewMode: propViewMode,
   onViewModeChange,
+  isActive = true,
 }) {
   const { t } = useI18n();
   const {
+    showLeftSidebar,
+    toggleLeftSidebar,
     leftWidth,
     handleLeftResizeStart,
   } = useStudioLayout({
@@ -335,12 +407,21 @@ export default function LatestUpdatesPanel({
     return `${sid}::${url}`;
   }, []);
 
-  // Kiểm tra xem manga có trong favorites không
+  const favoriteIdSet = useMemo(() => {
+    const set = new Set();
+    if (Array.isArray(favorites)) {
+      for (const f of favorites) {
+        if (f?.id) set.add(f.id);
+      }
+    }
+    return set;
+  }, [favorites]);
+
+  // Kiểm tra xem manga có trong favorites không (O(1))
   const isMangaFavorite = useCallback((manga, siteId) => {
     if (!manga?.mangaUrl || !siteId) return false;
-    const id = makeFavoriteId(manga, siteId);
-    return favorites.some((f) => f.id === id);
-  }, [favorites, makeFavoriteId]);
+    return favoriteIdSet.has(makeFavoriteId(manga, siteId));
+  }, [favoriteIdSet, makeFavoriteId]);
 
   // Toggle favorite cho manga từ latest updates
   const handleToggleFavorite = useCallback((manga, siteId) => {
@@ -446,19 +527,21 @@ export default function LatestUpdatesPanel({
   }, []);
 
   useEffect(() => {
+    if (!isActive) return undefined;
     const handleKeyDown = (e) => {
       if (e.key === 'f' && (e.ctrlKey || e.metaKey)) {
         const targetTag = e.target?.tagName?.toLowerCase();
         if (targetTag === 'input' || targetTag === 'textarea') return;
+        if (!searchInputRef.current || searchInputRef.current.offsetParent === null) return;
         e.preventDefault();
         focusSearchInput();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [focusSearchInput]);
+  }, [focusSearchInput, isActive]);
 
-  // Passive cross-feed sync: if any favorite appears in latest rows, update followed sync cache (0ms cost)
+  // Passive cross-feed sync: if any favorite appears in latest rows, update followed sync cache (O(F + R))
   useEffect(() => {
     if (!rows.length || !favorites.length || typeof localStorage === 'undefined') return;
     try {
@@ -466,11 +549,16 @@ export default function LatestUpdatesPanel({
       const stored = JSON.parse(localStorage.getItem(SYNC_STORAGE_KEY) || '{}');
       let changed = false;
 
+      const rowByUrl = new Map();
+      for (const r of rows) {
+        if (!r) continue;
+        if (r.mangaUrl && !rowByUrl.has(r.mangaUrl)) rowByUrl.set(r.mangaUrl, r);
+        if (r.url && !rowByUrl.has(r.url)) rowByUrl.set(r.url, r);
+      }
+
       favorites.forEach((fav) => {
         if (!fav?.mangaUrl) return;
-        const matchingRow = rows.find(
-          (r) => r && (r.mangaUrl === fav.mangaUrl || r.url === fav.mangaUrl)
-        );
+        const matchingRow = rowByUrl.get(fav.mangaUrl);
         if (matchingRow) {
           const rowChapter = String(
             matchingRow.latestChapterLabel || matchingRow.latestChapter || matchingRow.chapterTitle || ''
@@ -1139,6 +1227,7 @@ export default function LatestUpdatesPanel({
   const go_first_page = useCallback(() => {
     setPage(1);
     setRawPageInput('1');
+    contentScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
     void runFetchForPage(1);
   }, [runFetchForPage]);
 
@@ -1146,6 +1235,7 @@ export default function LatestUpdatesPanel({
     const last_num = clampLatestListingPage(listingTotalPages);
     setPage(last_num);
     setRawPageInput(String(last_num));
+    contentScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
     void runFetchForPage(last_num);
   }, [listingTotalPages, runFetchForPage]);
 
@@ -1160,6 +1250,7 @@ export default function LatestUpdatesPanel({
     setRawPageInput(String(clamped_page));
     setPage(clamped_page);
     if (clamped_page !== page) {
+      contentScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
       void runFetchForPage(clamped_page);
     }
   }, [raw_page_input, listingTotalPages, page, runFetchForPage]);
@@ -1540,6 +1631,12 @@ export default function LatestUpdatesPanel({
       </div>
     ) : null;
 
+  const loadingStatusText = isSearchLoading
+    ? t('latestUpdates.searchingHint')
+    : selectedDescriptor?.label
+      ? t('latestUpdates.loadingFromSite', { site: selectedDescriptor.label })
+      : t('latestUpdates.loadingList');
+
   if (!supported.length) {
     return (
       <StudioLayout>
@@ -1555,6 +1652,9 @@ export default function LatestUpdatesPanel({
   return (
     <StudioLayout>
       <StudioLayout.Toolbar
+        showLeftSidebar={showLeftSidebar}
+        onToggleLeftSidebar={toggleLeftSidebar}
+        leftSidebarTooltip={showLeftSidebar ? t('sidebar.hidePanel') : t('sidebar.showPanel')}
         leftSlot={subtabsSlot}
         rightSlot={
           <div className="flex items-center gap-2">
@@ -1562,7 +1662,7 @@ export default function LatestUpdatesPanel({
               type="button"
               disabled={busyList || !selectedSiteId}
               onClick={handleManualRefresh}
-              className="h-7 px-3 shrink-0 rounded-lg bg-primary text-xs font-semibold text-on-primary transition-all hover:opacity-95 active:scale-95 disabled:pointer-events-none disabled:opacity-50 flex items-center gap-1.5 cursor-pointer shadow-2xs"
+              className="h-8 px-3 shrink-0 rounded-lg bg-primary text-xs font-semibold text-on-primary transition-all hover:opacity-95 active:scale-95 disabled:pointer-events-none disabled:opacity-50 flex items-center gap-1.5 cursor-pointer shadow-2xs"
             >
               <span className={`material-symbols-outlined text-[15px] leading-none ${busyList && !isSearchLoading ? 'animate-spin' : ''}`}>
                 refresh
@@ -1585,7 +1685,7 @@ export default function LatestUpdatesPanel({
                     : t('latestUpdates.pluginConsoleShow')
                 }
                 aria-expanded={pluginConsoleOpen}
-                className={`relative inline-flex h-7 w-7 items-center justify-center rounded-lg border border-outline-variant/30 transition-colors cursor-pointer ${
+                className={`relative inline-flex h-8 w-8 items-center justify-center rounded-lg border border-outline-variant/30 transition-colors cursor-pointer ${
                   pluginConsoleOpen
                     ? 'bg-primary/15 text-primary'
                     : pluginConsoleLines.length > 0
@@ -1606,7 +1706,7 @@ export default function LatestUpdatesPanel({
             <ViewModeToggle
               viewMode={viewMode}
               onChange={setViewModePersist}
-              size="sm"
+              size="md"
             />
           </div>
         }
@@ -1614,7 +1714,7 @@ export default function LatestUpdatesPanel({
 
       <StudioLayout.Body>
         <StudioLayout.LeftSidebar
-          open={true}
+          open={showLeftSidebar}
           width={leftWidth}
           onResizeStart={handleLeftResizeStart}
         >
@@ -1799,7 +1899,7 @@ export default function LatestUpdatesPanel({
         </StudioLayout.LeftSidebar>
 
         <StudioLayout.Content>
-          <div ref={contentScrollRef} className="custom-scrollbar flex-1 min-h-0 overflow-auto px-4 py-4 sm:px-6 sm:py-5">
+          <div ref={contentScrollRef} className="custom-scrollbar flex-1 min-h-0 overflow-auto p-4 sm:p-6">
             <div className="w-full min-w-0">
           {fetchError && !errorDismissed ? (
             multiErrorItems.length > 1 ? (
@@ -1919,9 +2019,10 @@ export default function LatestUpdatesPanel({
             </div>
           ) : null}
 
-          {rows.length > 0 ? (
-            <div className={`transition-opacity duration-200 ${isSearchLoading ? 'opacity-40 pointer-events-none' : ''}`}>
-              {viewMode === 'grid' ? (
+          {(busyList || isSearchLoading) ? (
+            <LatestUpdatesSkeleton viewMode={viewMode} statusText={loadingStatusText} />
+          ) : rows.length > 0 ? (
+            viewMode === 'grid' ? (
               <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
                 {displayedRows.map((row) => {
                   const k = `${row.siteId}::${row.mangaUrl}`;
@@ -1930,6 +2031,7 @@ export default function LatestUpdatesPanel({
                   const otherBusy =
                     (enqueueKey !== '' && enqueueKey !== k) ||
                     (inlineChapterBusyKey !== '' && inlineChapterBusyKey !== k);
+                  const isFav = isMangaFavorite(row, row.siteId);
                   const chapter_actions_enabled = rowChapterActionsEnabled(row);
                   const chapter_actions_disabled_title = chapter_actions_enabled
                     ? undefined
@@ -1970,7 +2072,7 @@ export default function LatestUpdatesPanel({
                           <img
                             src={row.coverUrl}
                             alt=""
-                            className="absolute inset-0 size-full object-cover"
+                            className="absolute inset-0 size-full object-cover group-hover:scale-105 transition-transform duration-300"
                             loading="lazy"
                             decoding="async"
                             onError={(e) => {
@@ -1985,24 +2087,24 @@ export default function LatestUpdatesPanel({
                             </span>
                           </div>
                         ) : null}
-                        <span className="pointer-events-none absolute left-2 top-2 z-[1] max-w-[calc(100%-1rem)] truncate rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                        <span className="pointer-events-none absolute left-2 top-2 z-[1] max-w-[calc(100%-3rem)] truncate rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
                           {row.siteLabel}
                         </span>
                         {typeof onToggleFavorite === 'function' ? (
                           <button
                             type="button"
-                            aria-pressed={isMangaFavorite(row, row.siteId)}
+                            aria-pressed={isFav}
                             onClick={(e) => {
                               e.stopPropagation();
                               handleToggleFavorite(row, row.siteId);
                             }}
                             className={`absolute right-2 top-2 z-[1] flex h-7 w-7 cursor-pointer items-center justify-center rounded-full shadow-md transition-all ${
-                              isMangaFavorite(row, row.siteId)
+                              isFav
                                 ? 'bg-rose-500/80 text-white ring-1 ring-white/40 backdrop-blur-[2px] hover:bg-rose-500/90'
                                 : 'border border-white/25 bg-black/40 text-white/95 shadow-black/10 backdrop-blur-sm hover:bg-black/50'
                             }`}
                             data-tooltip={
-                              isMangaFavorite(row, row.siteId)
+                              isFav
                                 ? t('mangaInfo.favoriteRemove')
                                 : t('mangaInfo.favoriteAdd')
                             }
@@ -2010,12 +2112,12 @@ export default function LatestUpdatesPanel({
                             <span
                               className="material-symbols-outlined block text-[15px] leading-none"
                               style={
-                                isMangaFavorite(row, row.siteId)
+                                isFav
                                   ? { fontVariationSettings: "'FILL' 1, 'wght' 300, 'GRAD' 0, 'opsz' 20" }
                                   : { fontVariationSettings: "'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 20" }
                               }
                             >
-                              {isMangaFavorite(row, row.siteId) ? 'favorite' : 'favorite_border'}
+                              {isFav ? 'favorite' : 'favorite_border'}
                             </span>
                           </button>
                         ) : null}
@@ -2090,6 +2192,7 @@ export default function LatestUpdatesPanel({
                   const otherBusy =
                     (enqueueKey !== '' && enqueueKey !== k) ||
                     (inlineChapterBusyKey !== '' && inlineChapterBusyKey !== k);
+                  const isFav = isMangaFavorite(row, row.siteId);
                   const chapter_actions_enabled = rowChapterActionsEnabled(row);
                   const chapter_actions_disabled_title = chapter_actions_enabled
                     ? undefined
@@ -2208,20 +2311,20 @@ export default function LatestUpdatesPanel({
                         {typeof onToggleFavorite === 'function' ? (
                           <button
                             type="button"
-                            aria-pressed={isMangaFavorite(row, row.siteId)}
+                            aria-pressed={isFav}
                             onClick={() => handleToggleFavorite(row, row.siteId)}
                             className={`h-8 w-8 shrink-0 rounded-lg border transition-all flex items-center justify-center cursor-pointer shadow-2xs ${
-                              isMangaFavorite(row, row.siteId)
+                              isFav
                                 ? 'border-rose-500/30 bg-rose-500/15 text-rose-500 hover:bg-rose-500/25'
                                 : 'border-outline-variant/20 bg-surface-container-highest hover:bg-surface-bright text-on-surface-variant hover:text-rose-500'
                             }`}
                             data-tooltip={
-                              isMangaFavorite(row, row.siteId)
+                              isFav
                                 ? t('mangaInfo.favoriteRemove')
                                 : t('mangaInfo.favoriteAdd')
                             }
                             aria-label={
-                              isMangaFavorite(row, row.siteId)
+                              isFav
                                 ? t('mangaInfo.favoriteRemove')
                                 : t('mangaInfo.favoriteAdd')
                             }
@@ -2229,12 +2332,12 @@ export default function LatestUpdatesPanel({
                             <span
                               className="material-symbols-outlined text-[15px] leading-none"
                               style={
-                                isMangaFavorite(row, row.siteId)
+                                isFav
                                   ? { fontVariationSettings: "'FILL' 1, 'wght' 300, 'GRAD' 0, 'opsz' 20" }
                                   : { fontVariationSettings: "'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 20" }
                               }
                             >
-                              {isMangaFavorite(row, row.siteId) ? 'favorite' : 'favorite_border'}
+                              {isFav ? 'favorite' : 'favorite_border'}
                             </span>
                           </button>
                         ) : null}
@@ -2243,19 +2346,13 @@ export default function LatestUpdatesPanel({
                   );
                 })}
               </ul>
-            )}
-            </div>
-          ) : isSearchLoading ? (
-            <div className="flex flex-col items-center justify-center py-24 gap-3 text-on-surface-variant select-none">
-              <span className="material-symbols-outlined text-4xl animate-spin text-primary">
-                progress_activity
-              </span>
-              <p className="text-sm font-medium text-on-surface">
-                {t('latestUpdates.searchingHint')}
-              </p>
-            </div>
-          ) : !busyList && !fetchError ? (
-            <p className="py-10 text-center text-sm text-on-surface-variant">{t('latestUpdates.hintBelow')}</p>
+            )
+          ) : !fetchError ? (
+            <EmptyState
+              icon="update"
+              {...{ title: t('latestUpdates.empty') }}
+              description={t('latestUpdates.hintBelow')}
+            />
           ) : null}
         </div>
       </div>
@@ -2311,6 +2408,7 @@ export default function LatestUpdatesPanel({
                   onClick={() => {
                     const next = Math.max(1, page - 1);
                     setPage(next);
+                    contentScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
                     void runFetchForPage(next);
                   }}
                   className="inline-flex h-8 px-2.5 shrink-0 items-center gap-1 rounded-xl border border-outline-variant/30 bg-surface-container-high text-on-surface-variant hover:bg-surface-bright hover:text-on-surface hover:border-outline-variant/60 active:scale-95 disabled:pointer-events-none disabled:opacity-40 transition-all cursor-pointer shadow-2xs font-medium"
@@ -2352,6 +2450,7 @@ export default function LatestUpdatesPanel({
                   onClick={() => {
                     const next = Math.min(listingTotalPages, page + 1);
                     setPage(next);
+                    contentScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
                     void runFetchForPage(next);
                   }}
                   className="inline-flex h-8 px-2.5 shrink-0 items-center gap-1 rounded-xl border border-outline-variant/30 bg-surface-container-high text-on-surface-variant hover:bg-surface-bright hover:text-on-surface hover:border-outline-variant/60 active:scale-95 disabled:pointer-events-none disabled:opacity-40 transition-all cursor-pointer shadow-2xs font-medium"

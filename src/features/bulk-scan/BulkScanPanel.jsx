@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from '../../context/I18nContext';
-import { ResizeSplitter, SearchableSelect, StudioLayout, useStudioLayout, ViewModeToggle } from '../../shared';
+import { EmptyState, SearchableSelect, StudioLayout, useStudioLayout, ViewModeToggle } from '../../shared';
 import { ChaptersDrawer } from '../reader';
 import { dedupeChaptersByNumber } from '../download';
 import { ExploreSourceSelect } from '../explore';
@@ -15,12 +15,107 @@ import {
 import { loadPanelUi, savePanelUi } from '../../utils/panelUiPrefs';
 
 const PAGE_SIZES = [20, 50, 100];
+const BULK_DRAWER_CACHE_TTL_MS = 30 * 60 * 1000;
+const BULK_DRAWER_CACHE_MAX_ENTRIES = 48;
+const BULK_GRID_SKELETON_ITEMS = Array.from({ length: 12 }, (_, idx) => idx);
+const BULK_LIST_SKELETON_ITEMS = Array.from({ length: 8 }, (_, idx) => idx);
 
-const BULK_SCAN_FILTERS = [
-  { id: 'all', labelKey: 'bulkScan.filterAll', icon: 'filter_alt' },
-  { id: 'selected', labelKey: 'bulkScan.filterSelected', icon: 'check_circle' },
-  { id: 'unselected', labelKey: 'bulkScan.filterUnselected', icon: 'radio_button_unchecked' },
-];
+const BulkScanSkeleton = React.memo(function BulkScanSkeleton({
+  viewMode,
+  statusText,
+  progressPercent = null,
+}) {
+  return (
+    <div
+      data-testid="bulk-scan-skeleton"
+      aria-busy="true"
+      aria-label={statusText}
+      className="space-y-4 select-none"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-xs font-medium text-on-surface-variant min-w-0">
+          <span className="material-symbols-outlined text-[18px] animate-spin text-primary shrink-0 leading-none">
+            progress_activity
+          </span>
+          <span className="truncate">{statusText}</span>
+        </div>
+        {progressPercent !== null && (
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="w-32 sm:w-44 h-1.5 rounded-full bg-surface-container-highest overflow-hidden">
+              <div
+                className="h-full bg-primary transition-all duration-300 rounded-full"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+            <span className="text-[11px] font-semibold tabular-nums text-on-surface-variant">
+              {progressPercent}%
+            </span>
+          </div>
+        )}
+      </div>
+
+      {viewMode === 'list' ? (
+        <ul className="flex flex-col gap-2">
+          {BULK_LIST_SKELETON_ITEMS.map((idx) => (
+            <li
+              key={idx}
+              className="flex items-center justify-between gap-3 px-3 py-2.5 sm:px-4 rounded-xl border border-outline-variant/20 bg-surface-container-high/35 animate-pulse"
+            >
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <div className="size-4 shrink-0 rounded bg-surface-container-highest" />
+                <div className="h-14 w-10 sm:h-16 sm:w-11 shrink-0 rounded-lg bg-surface-container-highest" />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="h-4 w-48 max-w-[65%] rounded bg-surface-container-highest" />
+                    <div className="h-4 w-16 rounded bg-surface-container-highest/80" />
+                  </div>
+                  <div className="h-3 w-28 rounded bg-surface-container-highest/70" />
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <div className="h-8 w-24 rounded-lg bg-surface-container-highest" />
+                <div className="h-8 w-8 rounded-lg bg-surface-container-highest/80" />
+                <div className="h-8 w-8 rounded-lg bg-surface-container-highest/80" />
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+          {BULK_GRID_SKELETON_ITEMS.map((idx) => (
+            <li
+              key={idx}
+              className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-outline-variant/20 bg-surface-container-high/35 animate-pulse"
+            >
+              <div className="aspect-[3/4.2] bg-surface-container-highest" />
+              <div className="flex flex-col gap-2 p-3">
+                <div className="h-3.5 w-11/12 rounded bg-surface-container-highest" />
+                <div className="h-3.5 w-2/3 rounded bg-surface-container-highest/80" />
+                <div className="h-3 w-1/2 rounded bg-surface-container-highest/60" />
+                <div className="flex items-center gap-1.5 pt-1">
+                  <div className="flex-1 h-8 rounded-lg bg-surface-container-highest" />
+                  <div className="h-8 w-8 shrink-0 rounded-lg bg-surface-container-highest/80" />
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+});
+
+function fingerprintMangaLoadOpts(opts) {
+  if (!opts || typeof opts !== 'object') return '';
+  try {
+    return Object.keys(opts)
+      .sort()
+      .map((k) => `${k}:${JSON.stringify(opts[k])}`)
+      .join('\u0002');
+  } catch {
+    return '';
+  }
+}
 
 function connectorHost(domain) {
   try {
@@ -60,6 +155,8 @@ export default function BulkScanPanel({
 }) {
   const { t } = useI18n();
   const {
+    showLeftSidebar,
+    toggleLeftSidebar,
     leftWidth,
     handleLeftResizeStart,
   } = useStudioLayout({
@@ -114,8 +211,11 @@ export default function BulkScanPanel({
   });
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const cancelRef = useRef(false);
   const selectedSiteIdRef = useRef('');
+  const contentScrollRef = useRef(null);
+  const chapterCacheRef = useRef(new Map());
   /** Absolute index in `visibleItems` — shift+click range select (ChapterList pattern). */
   const lastClickedIndexRef = useRef(null);
 
@@ -132,22 +232,42 @@ export default function BulkScanPanel({
     [connectors, selectedSiteId],
   );
 
+  const mangaLoadOptsFingerprint = useMemo(
+    () => fingerprintMangaLoadOpts(mangaLoadOpts),
+    [mangaLoadOpts],
+  );
+
+  const favoriteLookup = useMemo(() => {
+    const ids = new Set();
+    const urls = new Set();
+    const siteTitles = new Set();
+    if (Array.isArray(favorites)) {
+      for (const f of favorites) {
+        if (!f) continue;
+        if (f.id) ids.add(String(f.id).trim());
+        if (f.url) urls.add(String(f.url).trim());
+        if (f.mangaUrl) urls.add(String(f.mangaUrl).trim());
+        if (f.siteId && f.title) {
+          siteTitles.add(`${String(f.siteId).trim()}::${String(f.title)}`);
+        }
+      }
+    }
+    return { ids, urls, siteTitles };
+  }, [favorites]);
+
   const isMangaFavorite = useCallback(
     (manga) => {
-      if (!manga || !Array.isArray(favorites)) return false;
+      if (!manga) return false;
       const url = String(manga.mangaUrl || manga.url || '').trim();
       const mid = String(manga.id || manga.mangaId || '').trim();
       const sId = String(manga.siteId || selectedSiteId || '').trim();
       const compositeId = `${sId}::${url}`;
-      return favorites.some((f) => {
-        if (!f) return false;
-        if (f.id && (f.id === compositeId || (mid && f.id === mid))) return true;
-        if (url && (f.url === url || f.mangaUrl === url)) return true;
-        if (sId && f.siteId === sId && f.title && manga.title && f.title === manga.title) return true;
-        return false;
-      });
+      if (favoriteLookup.ids.has(compositeId) || (mid && favoriteLookup.ids.has(mid))) return true;
+      if (url && favoriteLookup.urls.has(url)) return true;
+      if (sId && manga.title && favoriteLookup.siteTitles.has(`${sId}::${manga.title}`)) return true;
+      return false;
     },
-    [favorites, selectedSiteId],
+    [favoriteLookup, selectedSiteId],
   );
 
   const handleToggleFavorite = useCallback(
@@ -279,6 +399,26 @@ export default function BulkScanPanel({
         setFetchError(t('latestUpdates.needElectron') || 'Electron required');
         return;
       }
+      const cacheKey = `${selectedSiteId}::${String(item.mangaUrl || '').trim()}::${mangaLoadOptsFingerprint}`;
+      const cacheMap = chapterCacheRef.current;
+      const cached = cacheMap.get(cacheKey);
+      if (
+        cached &&
+        Date.now() - cached.savedAt <= BULK_DRAWER_CACHE_TTL_MS &&
+        cached.manga?.title &&
+        Array.isArray(cached.chapters) &&
+        cached.chapters.length > 0
+      ) {
+        cacheMap.delete(cacheKey);
+        cacheMap.set(cacheKey, cached);
+        setDrawerManga(cached.manga);
+        setDrawerChapters(cached.chapters);
+        setDrawerSelectedUrls(new Set());
+        setFetchError('');
+        setChapterDrawerOpen(true);
+        return;
+      }
+
       setInlineBusyKey(item.mangaUrl);
       setFetchError('');
       try {
@@ -292,10 +432,21 @@ export default function BulkScanPanel({
           setFetchError(t('latestUpdates.noChaptersFetched') || 'No chapters fetched');
           return;
         }
-        setDrawerManga({
+        const mangaObj = {
           ...res.manga,
           siteId: selectedSiteId,
+        };
+        cacheMap.delete(cacheKey);
+        cacheMap.set(cacheKey, {
+          savedAt: Date.now(),
+          manga: mangaObj,
+          chapters: chapterList,
         });
+        while (cacheMap.size > BULK_DRAWER_CACHE_MAX_ENTRIES) {
+          const firstKey = cacheMap.keys().next().value;
+          cacheMap.delete(firstKey);
+        }
+        setDrawerManga(mangaObj);
         setDrawerChapters(chapterList);
         setDrawerSelectedUrls(new Set());
         setChapterDrawerOpen(true);
@@ -305,7 +456,7 @@ export default function BulkScanPanel({
         setInlineBusyKey('');
       }
     },
-    [selectedSiteId, mangaLoadOpts, t],
+    [selectedSiteId, mangaLoadOpts, mangaLoadOptsFingerprint, t],
   );
 
   const handleEnqueueSingle = useCallback(
@@ -438,12 +589,12 @@ export default function BulkScanPanel({
 
   const visibleItems = useMemo(() => {
     let list = filterBulkScanItems(items, selected, listFilter);
-    if (searchQuery.trim()) {
-      const q = searchQuery.trim().toLowerCase();
+    if (deferredSearchQuery.trim()) {
+      const q = deferredSearchQuery.trim().toLowerCase();
       list = list.filter((item) => (item.title || '').toLowerCase().includes(q));
     }
     return list;
-  }, [items, selected, listFilter, searchQuery]);
+  }, [items, selected, listFilter, deferredSearchQuery]);
 
   const totalPages = Math.max(1, Math.ceil(visibleItems.length / pageSize) || 1);
   const safePage = Math.min(Math.max(1, page), totalPages);
@@ -460,17 +611,34 @@ export default function BulkScanPanel({
     setRawPageInput(String(safePage));
   }, [safePage]);
 
+  const goToPage = useCallback(
+    (nextPage) => {
+      const clamped = Math.min(totalPages, Math.max(1, nextPage));
+      setPage(clamped);
+      setRawPageInput(String(clamped));
+      contentScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    [totalPages],
+  );
+
+  const handleResetFilters = useCallback(() => {
+    setListFilter('all');
+    setSearchQuery('');
+    setPage(1);
+    setRawPageInput('1');
+  }, []);
+
   const handleDirectPageSubmit = useCallback(
     (e) => {
       e.preventDefault();
       const num = parseInt(rawPageInput, 10);
       if (!Number.isNaN(num) && num >= 1 && num <= totalPages) {
-        setPage(num);
+        goToPage(num);
       } else {
         setRawPageInput(String(safePage));
       }
     },
-    [rawPageInput, totalPages, safePage]
+    [rawPageInput, totalPages, safePage, goToPage]
   );
 
   const controlsBusy = busyList || enqueueBusy;
@@ -655,24 +823,6 @@ export default function BulkScanPanel({
       ? t('bulkScan.restoredHint', { when: formatScannedWhen(scannedAt) })
       : '';
 
-  const filterOptions = useMemo(
-    () =>
-      BULK_SCAN_FILTERS.map((f) => {
-        const count =
-          f.id === 'all'
-            ? items.length
-            : f.id === 'selected'
-              ? selectedCount
-              : items.length - selectedCount;
-        return {
-          value: f.id,
-          label: `${t(f.labelKey)} (${count})`,
-          materialIcon: f.icon,
-        };
-      }),
-    [items.length, selectedCount, t],
-  );
-
   const pageSizeOptions = useMemo(
     () => PAGE_SIZES.map((n) => ({ value: String(n), label: String(n) })),
     [],
@@ -684,16 +834,29 @@ export default function BulkScanPanel({
       ? 'indeterminate_check_box'
       : 'check_box_outline_blank';
 
+  const activeProgressPercent = useMemo(() => {
+    if (busyList && listProgress && listProgress.totalPages > 0) {
+      return Math.min(100, Math.round(((listProgress.page || 0) / listProgress.totalPages) * 100));
+    }
+    if (enqueueBusy && enqueueProgress && enqueueProgress.total > 0) {
+      return Math.min(100, Math.round(((enqueueProgress.current || 0) / enqueueProgress.total) * 100));
+    }
+    return null;
+  }, [busyList, listProgress, enqueueBusy, enqueueProgress]);
+
   return (
     <StudioLayout className="w-full h-full">
       <StudioLayout.Toolbar
+        showLeftSidebar={showLeftSidebar}
+        onToggleLeftSidebar={toggleLeftSidebar}
+        leftSidebarTooltip={showLeftSidebar ? t('sidebar.hidePanel') : t('sidebar.showPanel')}
         leftSlot={subtabsSlot}
         rightSlot={
           <div className="flex items-center gap-2">
             {items.length > 0 ? (
               <button
                 type="button"
-                className="h-7 px-3 rounded-lg text-xs font-semibold bg-emerald-600 dark:bg-emerald-500 text-white hover:opacity-95 shadow-2xs inline-flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0"
+                className="h-8 px-3 rounded-lg text-xs font-semibold bg-emerald-600 dark:bg-emerald-500 text-white hover:opacity-95 shadow-2xs inline-flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0"
                 disabled={!selectedCount || controlsBusy || !selectedSiteId}
                 onClick={() => void runEnqueue()}
                 data-tooltip={
@@ -718,7 +881,7 @@ export default function BulkScanPanel({
             {enqueueBusy ? (
               <button
                 type="button"
-                className="h-7 px-3 rounded-lg text-xs font-semibold bg-error/15 text-error hover:bg-error/25 border border-error/30 inline-flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
+                className="h-8 px-3 rounded-lg text-xs font-semibold bg-error/15 text-error hover:bg-error/25 border border-error/30 inline-flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
                 onClick={stopEnqueue}
               >
                 <span className="material-symbols-outlined text-[15px] leading-none">cancel</span>
@@ -728,7 +891,7 @@ export default function BulkScanPanel({
 
             <button
               type="button"
-              className="h-7 px-3.5 rounded-lg text-xs font-semibold bg-primary text-on-primary hover:opacity-95 shadow-2xs inline-flex items-center justify-center gap-1.5 transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none cursor-pointer shrink-0"
+              className="h-8 px-3.5 rounded-lg text-xs font-semibold bg-primary text-on-primary hover:opacity-95 shadow-2xs inline-flex items-center justify-center gap-1.5 transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none cursor-pointer shrink-0"
               disabled={controlsBusy || !selectedSiteId}
               onClick={() => void runLoad()}
               data-tooltip={busyList ? t('bulkScan.loading') : items.length > 0 ? t('bulkScan.rescanSource') : t('bulkScan.scanSource')}
@@ -745,60 +908,23 @@ export default function BulkScanPanel({
               </span>
             </button>
 
-            {items.length > 0 ? (
-              <ViewModeToggle
-                viewMode={viewMode}
-                onChange={handleViewModeChange}
-                size="sm"
-                disabled={controlsBusy}
-              />
-            ) : null}
+            <ViewModeToggle
+              viewMode={viewMode}
+              onChange={handleViewModeChange}
+              size="md"
+              disabled={controlsBusy || items.length === 0}
+            />
           </div>
         }
       />
 
-      {/* Mini Progress Banner when scanning or enqueuing */}
-      {(busyList || enqueueBusy) && (
-        <div className="px-4 py-1.5 bg-primary/10 border-b border-primary/20 flex items-center justify-between text-xs transition-all shrink-0">
-          <div className="flex items-center gap-2 text-primary font-medium min-w-0 pr-4">
-            <span className="material-symbols-outlined text-[16px] animate-spin shrink-0">
-              {busyList ? 'sync' : 'playlist_add'}
-            </span>
-            <span className="truncate">
-              {listStatus || (busyList ? t('bulkScan.loading') : t('bulkScan.enqueueBusy'))}
-            </span>
-          </div>
-          {enqueueBusy && enqueueProgress && enqueueProgress.total > 0 && (
-            <div className="w-40 sm:w-56 h-1.5 rounded-full bg-surface-container-highest overflow-hidden shrink-0">
-              <div
-                className="h-full bg-primary transition-all duration-300"
-                style={{
-                  width: `${Math.min(100, Math.round(((enqueueProgress.current || 0) / enqueueProgress.total) * 100))}%`,
-                }}
-              />
-            </div>
-          )}
-          {busyList && listProgress && listProgress.totalPages > 0 && (
-            <div className="w-40 sm:w-56 h-1.5 rounded-full bg-surface-container-highest overflow-hidden shrink-0">
-              <div
-                className="h-full bg-primary transition-all duration-300"
-                style={{
-                  width: `${Math.min(100, Math.round(((listProgress.page || 0) / listProgress.totalPages) * 100))}%`,
-                }}
-              />
-            </div>
-          )}
-        </div>
-      )}
-
       <StudioLayout.Body>
         <StudioLayout.LeftSidebar
-          open={true}
+          open={showLeftSidebar}
           width={leftWidth}
           onResizeStart={handleLeftResizeStart}
-          className="bg-surface-container-low/50 relative border-r border-outline-variant/20 flex flex-col overflow-visible"
         >
-          <div className="custom-scrollbar flex-1 overflow-y-auto p-3 space-y-3.5 mr-1.5 flex flex-col min-h-0">
+          <div className="p-3.5 space-y-4 flex flex-col flex-1 min-h-0">
             {/* 1. Nguồn (Source Picker) */}
             <ExploreSourceSelect
               mode="picker"
@@ -808,74 +934,74 @@ export default function BulkScanPanel({
               disabled={controlsBusy}
             />
 
-            {/* 2. Trạng thái (Segmented pill grid: All / Selected / Unselected) */}
+            {/* 2. Trạng thái (Mẫu 2: Vertical 3-row list — zero truncation, tabular counts) */}
             {items.length > 0 && (
               <div>
-                <div className="flex items-center justify-between mb-1.5 px-1">
+                <div className="flex items-center justify-between gap-2 mb-1.5 px-1">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/60">
-                    {t('bulkScan.filter')}
+                    {t('bulkScan.statusFilter')}
                   </span>
                   <button
                     type="button"
                     onClick={toggleSelectAll}
                     disabled={controlsBusy}
-                    className="text-[11px] font-medium text-primary hover:opacity-80 transition-opacity cursor-pointer flex items-center gap-1"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold text-primary hover:bg-primary/10 transition-colors cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
                   >
-                    <span className="material-symbols-outlined text-[14px]">{masterIcon}</span>
+                    <span className="material-symbols-outlined text-[14px] leading-none">{masterIcon}</span>
                     <span>{allSelected ? t('bulkScan.uncheckAll') : t('bulkScan.checkAll')}</span>
                   </button>
                 </div>
-                <div className="grid grid-cols-3 gap-1 h-10 items-center bg-surface-container-highest/60 p-1 rounded-xl border border-outline-variant/20 text-xs">
-                  {/* Tất cả */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setListFilter('all');
-                      setPage(1);
-                    }}
-                    className={`flex items-center justify-center gap-1 h-8 px-1 rounded-lg font-semibold transition-all cursor-pointer ${
-                      listFilter === 'all'
-                        ? 'bg-primary text-on-primary font-semibold shadow-2xs'
-                        : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
-                    }`}
-                  >
-                    <span className="truncate">{t('bulkScan.filterAll')}</span>
-                    <span className="text-[10px] opacity-80 tabular-nums">({items.length})</span>
-                  </button>
-
-                  {/* Đã chọn */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setListFilter('selected');
-                      setPage(1);
-                    }}
-                    className={`flex items-center justify-center gap-1 h-8 px-1 rounded-lg font-semibold transition-all cursor-pointer ${
-                      listFilter === 'selected'
-                        ? 'bg-primary text-on-primary font-semibold shadow-2xs'
-                        : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
-                    }`}
-                  >
-                    <span className="truncate">{t('bulkScan.filterSelected')}</span>
-                    <span className="text-[10px] opacity-80 tabular-nums">({selectedCount})</span>
-                  </button>
-
-                  {/* Chưa chọn */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setListFilter('unselected');
-                      setPage(1);
-                    }}
-                    className={`flex items-center justify-center gap-1 h-8 px-1 rounded-lg font-semibold transition-all cursor-pointer ${
-                      listFilter === 'unselected'
-                        ? 'bg-primary text-on-primary font-semibold shadow-2xs'
-                        : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
-                    }`}
-                  >
-                    <span className="truncate">{t('bulkScan.filterUnselected')}</span>
-                    <span className="text-[10px] opacity-80 tabular-nums">({items.length - selectedCount})</span>
-                  </button>
+                <div
+                  role="group"
+                  aria-label={t('bulkScan.statusFilter')}
+                  className="rounded-xl border border-outline-variant/20 bg-surface-container-highest/60 p-1 space-y-0.5 text-xs"
+                >
+                  {[
+                    {
+                      id: 'all',
+                      label: t('bulkScan.filterAll'),
+                      count: items.length,
+                      dotClass: 'bg-primary',
+                    },
+                    {
+                      id: 'selected',
+                      label: t('bulkScan.filterSelected'),
+                      count: selectedCount,
+                      dotClass: selectedCount > 0 ? 'bg-emerald-500' : 'bg-emerald-500/40',
+                    },
+                    {
+                      id: 'unselected',
+                      label: t('bulkScan.filterUnselected'),
+                      count: items.length - selectedCount,
+                      dotClass: 'bg-on-surface-variant/45',
+                    },
+                  ].map((opt) => {
+                    const isActive = listFilter === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        aria-pressed={isActive}
+                        onClick={() => {
+                          setListFilter(opt.id);
+                          setPage(1);
+                          setRawPageInput('1');
+                          contentScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                        className={`w-full h-8 px-2.5 rounded-lg flex items-center justify-between gap-2 transition-colors cursor-pointer ${
+                          isActive
+                            ? 'bg-primary/15 text-primary font-semibold'
+                            : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high font-medium'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2 min-w-0">
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${opt.dotClass}`} />
+                          <span className="truncate">{opt.label}</span>
+                        </span>
+                        <span className="font-bold tabular-nums shrink-0">{opt.count}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -884,15 +1010,15 @@ export default function BulkScanPanel({
             {items.length > 0 && (
               <div>
                 <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/60 mb-1.5 px-1">
-                  {t('common.search') || 'Tìm kiếm'}
+                  {t('common.search')}
                 </div>
                 <div className="relative flex items-center">
                   <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder={t('bulkScan.filterPlaceholder') || 'Lọc truyện theo tên…'}
-                    aria-label={t('bulkScan.filterPlaceholder') || 'Lọc truyện theo tên…'}
+                    placeholder={t('bulkScan.filterPlaceholder')}
+                    aria-label={t('bulkScan.filterPlaceholder')}
                     className="h-10 w-full rounded-xl border border-outline-variant/25 bg-surface-container-highest px-3.5 pr-8 text-xs sm:text-sm text-on-surface placeholder:text-on-surface-variant/50 outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/30"
                     autoComplete="off"
                   />
@@ -900,8 +1026,9 @@ export default function BulkScanPanel({
                     <button
                       type="button"
                       onClick={() => setSearchQuery('')}
+                      data-tooltip={t('bulkScan.searchClear')}
+                      aria-label={t('bulkScan.searchClear')}
                       className="absolute right-2.5 text-on-surface-variant/60 hover:text-on-surface cursor-pointer p-0.5 rounded"
-                      aria-label="Xoá tìm kiếm"
                     >
                       <span className="material-symbols-outlined text-[16px] leading-none">close</span>
                     </button>
@@ -979,37 +1106,82 @@ export default function BulkScanPanel({
         </StudioLayout.LeftSidebar>
 
         <StudioLayout.Content>
-          {items.length === 0 ? (
-            <div className="flex h-full w-full flex-col items-center justify-center p-8 text-center">
-              <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-surface-container-highest/60 text-outline border border-outline-variant/20 mb-4 shadow-inner">
-                <span className="material-symbols-outlined text-4xl text-primary/70">
-                  document_scanner
+          {!busyList && enqueueBusy && items.length > 0 && (
+            <div
+              role="status"
+              className="px-4 py-1.5 bg-primary/10 border-b border-primary/20 flex items-center justify-between gap-3 text-xs shrink-0"
+            >
+              <div className="flex items-center gap-2 text-primary font-medium min-w-0">
+                <span className="material-symbols-outlined text-[16px] animate-spin shrink-0 leading-none">
+                  playlist_add
+                </span>
+                <span className="truncate">
+                  {listStatus || t('bulkScan.enqueueBusy')}
                 </span>
               </div>
-              <h3 className="text-base font-semibold text-on-surface mb-1.5">
-                {t('bulkScan.pickSource')}
-              </h3>
-              <p className="max-w-md text-xs text-on-surface-variant leading-relaxed mb-4">
-                {t('bulkScan.emptySubtitle') ||
-                  t('bulkScan.hint1') ||
-                  'Chọn nguồn truyện từ thanh bên trái và nhấn "Tải" để bắt đầu quét toàn bộ danh mục.'}
-              </p>
-              {selectedSiteId && !busyList ? (
+              {activeProgressPercent !== null && (
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className="w-36 sm:w-48 h-1.5 rounded-full bg-surface-container-highest overflow-hidden">
+                    <div
+                      className="h-full bg-primary transition-all duration-300 rounded-full"
+                      style={{ width: `${activeProgressPercent}%` }}
+                    />
+                  </div>
+                  <span className="text-[11px] font-semibold tabular-nums text-primary">
+                    {activeProgressPercent}%
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {busyList ? (
+            <div className="custom-scrollbar flex-1 min-h-0 overflow-auto p-4 sm:p-6">
+              <BulkScanSkeleton
+                viewMode={viewMode}
+                statusText={listStatus || t('bulkScan.loading')}
+                progressPercent={activeProgressPercent}
+              />
+            </div>
+          ) : items.length === 0 ? (
+            <EmptyState
+              icon="document_scanner"
+              {...{ title: t('bulkScan.pickSource') }}
+              description={t('bulkScan.emptySubtitle')}
+              action={
+                selectedSiteId && !busyList ? (
+                  <button
+                    type="button"
+                    onClick={() => void runLoad()}
+                    className="h-8 px-4 rounded-xl bg-primary text-on-primary hover:opacity-90 text-xs font-semibold inline-flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">sync</span>
+                    <span>{t('bulkScan.scanSource')}</span>
+                  </button>
+                ) : null
+              }
+            />
+          ) : visibleItems.length === 0 ? (
+            <EmptyState
+              icon="search_off"
+              {...{ title: t('bulkScan.emptyFilteredTitle') }}
+              description={t('bulkScan.emptyFilteredHint')}
+              action={
                 <button
                   type="button"
-                  onClick={() => void runLoad()}
-                  className="h-8 px-4 rounded-xl bg-primary text-on-primary hover:opacity-90 text-xs font-semibold inline-flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
+                  onClick={handleResetFilters}
+                  className="inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold border border-outline-variant/25 bg-surface-container-high text-on-surface hover:bg-surface-bright transition-all active:scale-95 cursor-pointer"
                 >
-                  <span className="material-symbols-outlined text-[16px]">sync</span>
-                  <span>{t('bulkScan.scanSource')}</span>
+                  <span className="material-symbols-outlined text-[15px]">filter_alt_off</span>
+                  <span>{t('bulkScan.resetFilters')}</span>
                 </button>
-              ) : null}
-            </div>
+              }
+            />
           ) : (
             <div className="flex h-full w-full flex-col min-h-0 overflow-hidden">
-              <div className="custom-scrollbar flex-1 min-h-0 overflow-auto p-4">
+              <div ref={contentScrollRef} className="custom-scrollbar flex-1 min-h-0 overflow-auto p-4 sm:p-6">
                 {viewMode === 'grid' ? (
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
                     {pageItems.map((item, index) => {
                       const checked = selected.has(item.mangaUrl);
                       const isFavorite = isMangaFavorite(item);
@@ -1401,7 +1573,7 @@ export default function BulkScanPanel({
                       {/* First page button */}
                       <button
                         type="button"
-                        onClick={() => setPage(1)}
+                        onClick={() => goToPage(1)}
                         disabled={safePage <= 1 || controlsBusy}
                         data-tooltip={t('latestUpdates.firstPage')}
                         aria-label={t('latestUpdates.firstPage')}
@@ -1413,7 +1585,7 @@ export default function BulkScanPanel({
                       {/* Prev page button */}
                       <button
                         type="button"
-                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        onClick={() => goToPage(safePage - 1)}
                         disabled={safePage <= 1 || controlsBusy}
                         aria-label={t('latestUpdates.prevPage')}
                         className="inline-flex h-8 px-2.5 shrink-0 items-center gap-1 rounded-xl border border-outline-variant/30 bg-surface-container-high text-on-surface-variant hover:bg-surface-bright hover:text-on-surface hover:border-outline-variant/60 active:scale-95 disabled:pointer-events-none disabled:opacity-40 transition-all cursor-pointer shadow-2xs font-medium"
@@ -1445,7 +1617,7 @@ export default function BulkScanPanel({
                       {/* Next page button */}
                       <button
                         type="button"
-                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                        onClick={() => goToPage(safePage + 1)}
                         disabled={safePage >= totalPages || controlsBusy}
                         aria-label={t('latestUpdates.nextPage')}
                         className="inline-flex h-8 px-2.5 shrink-0 items-center gap-1 rounded-xl border border-outline-variant/30 bg-surface-container-high text-on-surface-variant hover:bg-surface-bright hover:text-on-surface hover:border-outline-variant/60 active:scale-95 disabled:pointer-events-none disabled:opacity-40 transition-all cursor-pointer shadow-2xs font-medium"
@@ -1457,7 +1629,7 @@ export default function BulkScanPanel({
                       {/* Last page button */}
                       <button
                         type="button"
-                        onClick={() => setPage(totalPages)}
+                        onClick={() => goToPage(totalPages)}
                         disabled={safePage >= totalPages || controlsBusy}
                         data-tooltip={t('latestUpdates.lastPage')}
                         aria-label={t('latestUpdates.lastPage')}

@@ -167,19 +167,23 @@ export default function FollowedMangaCard({
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
               <span className="truncate">
                 {pendingNewCount > 0
-                  ? `+${pendingNewCount} chap mới`
+                  ? t('followedManga.badge.newChaptersShort', { count: pendingNewCount })
                   : t('followedManga.filter.hasNew')}
               </span>
             </span>
             <span className="text-[11px] text-on-surface-variant/60 tabular-nums shrink-0 ml-1">
-              • {remoteCount} chap
+              • {t('followedManga.badge.chapterCount', { count: remoteCount })}
             </span>
           </div>
         ) : (
           <div className="flex items-center text-xs text-on-surface-variant">
             <span className="inline-flex items-center gap-1 text-[11px] text-on-surface-variant/70 truncate">
               <span className="material-symbols-outlined text-[13px] text-emerald-500 leading-none shrink-0">check</span>
-              <span className="truncate">{remoteCount > 0 ? `${remoteCount} chap` : t('followedManga.badge.upToDate')}</span>
+              <span className="truncate">
+                {remoteCount > 0
+                  ? t('followedManga.badge.chapterCount', { count: remoteCount })
+                  : t('followedManga.badge.upToDate')}
+              </span>
             </span>
           </div>
         )}
@@ -276,3 +280,38 @@ export default function FollowedMangaCard({
     </div>
   );
 }
+
+function areFollowedCardPropsEqual(prev, next) {
+  if (
+    prev.item !== next.item ||
+    prev.sync !== next.sync ||
+    prev.siteLabel !== next.siteLabel ||
+    prev.siteIcon !== next.siteIcon ||
+    prev.isChecking !== next.isChecking ||
+    prev.isLoading !== next.isLoading ||
+    prev.isEnqueuing !== next.isEnqueuing ||
+    prev.onStartQueue !== next.onStartQueue ||
+    prev.onStopQueue !== next.onStopQueue ||
+    prev.onOpenManga !== next.onOpenManga ||
+    prev.onReadNow !== next.onReadNow ||
+    prev.onEnqueueNew !== next.onEnqueueNew ||
+    prev.onRecheck !== next.onRecheck ||
+    prev.onRemove !== next.onRemove
+  ) {
+    return false;
+  }
+  const pd = prev.downloadState;
+  const nd = next.downloadState;
+  if (pd === nd) return true;
+  if (!pd || !nd) return false;
+  return (
+    pd.done === nd.done &&
+    pd.total === nd.total &&
+    pd.percent === nd.percent &&
+    pd.isCurrentDownloading === nd.isCurrentDownloading &&
+    pd.activePage?.current === nd.activePage?.current &&
+    pd.activePage?.total === nd.activePage?.total
+  );
+}
+
+export const MemoFollowedMangaCard = React.memo(FollowedMangaCard, areFollowedCardPropsEqual);

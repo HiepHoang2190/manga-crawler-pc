@@ -6,6 +6,8 @@ const BTN_ROW =
   'inline-flex items-center justify-center gap-2 min-h-9 px-3.5 rounded-lg text-xs font-semibold transition-all active:scale-[0.98] disabled:opacity-45 disabled:pointer-events-none cursor-pointer select-none';
 const BTN_SURFACE = `${BTN_ROW} bg-surface-container-high text-on-surface hover:bg-surface-bright border border-outline-variant/20`;
 const BTN_PRIMARY = `${BTN_ROW} bg-primary text-on-primary border border-primary hover:opacity-95 shadow-2xs`;
+const BTN_TOOLBAR =
+  'inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold transition-all active:scale-[0.98] disabled:opacity-45 disabled:pointer-events-none cursor-pointer select-none bg-surface-container-high text-on-surface hover:bg-surface-bright border border-outline-variant/20';
 
 const PANEL_CARD =
   'rounded-xl border border-outline-variant/15 bg-surface-container-low/50 shadow-sm dark:bg-surface-container-low/25';
@@ -45,7 +47,7 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
   const [plugins, setPlugins] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'enabled' | 'disabled'
+  const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'enabled' | 'disabled' | 'url'
   const [message, setMessage] = useState(null);
 
   // Import from URL state
@@ -55,6 +57,17 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
   const [selectedPluginForSource, setSelectedPluginForSource] = useState(null);
   const [deleteConfirmTarget, setDeleteConfirmTarget] = useState(null); // { id, name }
   const [replaceConfirmTarget, setReplaceConfirmTarget] = useState(null); // { metadata, oldVersion, newVersion, onConfirm }
+
+  useEffect(() => {
+    if (!deleteConfirmTarget && !replaceConfirmTarget) return;
+    const handleKeyDown = (e) => {
+      if (e.key !== 'Escape') return;
+      if (deleteConfirmTarget) setDeleteConfirmTarget(null);
+      else if (replaceConfirmTarget) setReplaceConfirmTarget(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [deleteConfirmTarget, replaceConfirmTarget]);
 
   // Auto-Generator state
   const [autoGenPhase, setAutoGenPhase] = useState('idle'); // idle | input | analyzing | review | needChapter | analyzingChapter | generating
@@ -149,7 +162,7 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
               await loadPlugins();
               notifyConnectorListChanged();
             } else {
-              setMessage({ type: 'error', text: confirmResult?.errorMessage || 'Update failed' });
+              setMessage({ type: 'error', text: confirmResult?.errorMessage || t('plugins.msg.updateFailed') });
             }
           },
         });
@@ -196,7 +209,7 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
               await loadPlugins();
               notifyConnectorListChanged();
             } else {
-              setMessage({ type: 'error', text: confirmResult?.errorMessage || 'Update failed' });
+              setMessage({ type: 'error', text: confirmResult?.errorMessage || t('plugins.msg.updateFailed') });
             }
           },
         });
@@ -320,7 +333,7 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
           await loadPlugins();
           notifyConnectorListChanged();
         } else {
-          setMessage({ type: 'error', text: confirmResult?.errorMessage || 'Reload failed' });
+          setMessage({ type: 'error', text: confirmResult?.errorMessage || t('plugins.msg.reloadFailed') });
         }
       } else if (result.success) {
         setMessage({ type: 'success', text: t('plugins.msg.reloadOk') });
@@ -529,9 +542,25 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
 
       if (statusFilter === 'enabled') return p.isEnabled;
       if (statusFilter === 'disabled') return !p.isEnabled;
+      if (statusFilter === 'url') return Boolean(p?.sourceUrl || p?.metadata?.sourceUrl);
       return true;
     });
   }, [plugins, searchTerm, statusFilter]);
+
+  const hasActiveFilters = statusFilter !== 'all' || searchTerm.trim().length > 0;
+  const handleResetFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('all');
+  };
+  const handleSelectKpiFilter = (targetFilter) => {
+    const wasInstalled = activeSubtab === 'installed';
+    setActiveSubtab('installed');
+    if (targetFilter === 'all') {
+      setStatusFilter('all');
+      return;
+    }
+    setStatusFilter((prev) => (wasInstalled && prev === targetFilter ? 'all' : targetFilter));
+  };
 
   const subtabs = [
     {
@@ -583,7 +612,7 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
                   <span>{tab.label}</span>
                   {tab.badge !== undefined && (
                     <span
-                      className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
+                      className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full tabular-nums ${
                         isActive ? 'bg-on-primary/20 text-on-primary' : 'bg-surface-container-high text-on-surface-variant'
                       }`}
                     >
@@ -604,7 +633,7 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
                     type="button"
                     onClick={handleReloadAllUrlPlugins}
                     disabled={loading}
-                    className={BTN_SURFACE}
+                    className={BTN_TOOLBAR}
                     data-tooltip={t('plugins.reloadAllTooltip')}
                   >
                     <span className={`material-symbols-outlined text-[16px] ${loading ? 'animate-spin' : ''}`}>sync</span>
@@ -615,7 +644,7 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
                   type="button"
                   onClick={handleEnableAll}
                   disabled={loading || !plugins.some((p) => !p.isEnabled)}
-                  className={BTN_SURFACE}
+                  className={BTN_TOOLBAR}
                   data-tooltip={t('plugins.enableAll')}
                 >
                   <span className="material-symbols-outlined text-[16px]">done_all</span>
@@ -625,7 +654,7 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
                   type="button"
                   onClick={handleDisableAll}
                   disabled={loading || !plugins.some((p) => p.isEnabled)}
-                  className={BTN_SURFACE}
+                  className={BTN_TOOLBAR}
                   data-tooltip={t('plugins.disableAll')}
                 >
                   <span className="material-symbols-outlined text-[16px]">block</span>
@@ -639,7 +668,7 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
 
       {/* Main Workspace Body */}
       <StudioLayout.Body>
-        {/* Left Sidebar: Filters, KPI and Guides */}
+        {/* Left Sidebar: Search, KPI Cards and Guides */}
         <StudioLayout.LeftSidebar
           open={showLeftSidebar}
           width={leftWidth}
@@ -651,7 +680,13 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
               <input
                 type="text"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setSearchTerm(next);
+                  if (next.trim() && activeSubtab !== 'installed') {
+                    setActiveSubtab('installed');
+                  }
+                }}
                 placeholder={t('plugins.searchPlaceholder')}
                 className="w-full bg-surface-container-high border-none rounded-xl text-xs h-10 pl-8 pr-8 text-on-surface outline-none focus:ring-1 focus:ring-primary"
               />
@@ -671,88 +706,86 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
               )}
             </div>
 
-            {/* Filter Pills */}
+            {/* KPI Cards Grid (matching Site Checker standard) */}
             <div className="space-y-1.5">
               <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant/70">
-                {t('common.filter') || 'Trạng thái'}
+                {t('plugins.statsTitle')}
               </span>
-              <div className="grid grid-cols-3 gap-1 rounded-xl bg-surface-container-high/60 p-1 border border-outline-variant/15">
-                {[
-                  { id: 'all', label: t('plugins.filterAll') },
-                  { id: 'enabled', label: t('plugins.filterEnabled') },
-                  { id: 'disabled', label: t('plugins.filterDisabled') },
-                ].map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => setStatusFilter(item.id)}
-                    className={`py-1 text-[11px] font-semibold rounded-lg transition-all cursor-pointer text-center ${
-                      statusFilter === item.id
-                        ? 'bg-primary text-on-primary shadow-xs'
-                        : 'text-on-surface-variant hover:text-on-surface'
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* KPI Stats Grid */}
-            <div className="space-y-1.5">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant/70">
-                {t('dashboard.stats') || 'Thống kê'}
-              </span>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    setActiveSubtab('installed');
-                    setStatusFilter('all');
-                  }}
-                  className={`p-2.5 rounded-xl border flex flex-col items-center transition-all cursor-pointer select-none active:scale-95 ${
-                    statusFilter === 'all' && activeSubtab === 'installed'
-                      ? 'border-primary bg-primary/10 ring-2 ring-primary/30 shadow-xs'
-                      : 'border-outline-variant/15 bg-surface-container-low/60 hover:bg-surface-container-high hover:border-outline-variant/30'
-                  }`}
+                  onClick={() => handleSelectKpiFilter('all')}
+                  aria-pressed={statusFilter === 'all' && activeSubtab === 'installed'}
                   data-tooltip={t('plugins.filterAll')}
+                  aria-label={t('plugins.filterAll')}
+                  className={`p-2.5 rounded-xl border text-left flex flex-col justify-between transition-all cursor-pointer select-none active:scale-95 ${
+                    statusFilter === 'all' && activeSubtab === 'installed'
+                      ? 'border-primary bg-primary/15 ring-2 ring-primary/30 shadow-xs'
+                      : 'border-primary/20 bg-primary/5 hover:border-primary/40 hover:bg-primary/10'
+                  }`}
                 >
-                  <span className="text-[10px] font-bold text-on-surface-variant uppercase">{t('plugins.statTotal')}</span>
-                  <span className="text-base font-extrabold text-on-surface mt-0.5">{stats.total}</span>
+                  <span className="text-[10px] font-bold text-primary uppercase">{t('plugins.statTotal')}</span>
+                  <span className="text-xl font-extrabold text-primary mt-1 tabular-nums">{stats.total}</span>
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => {
-                    setActiveSubtab('installed');
-                    setStatusFilter((prev) => (prev === 'enabled' ? 'all' : 'enabled'));
-                  }}
-                  className={`p-2.5 rounded-xl border flex flex-col items-center transition-all cursor-pointer select-none active:scale-95 ${
+                  onClick={() => handleSelectKpiFilter('enabled')}
+                  aria-pressed={statusFilter === 'enabled' && activeSubtab === 'installed'}
+                  data-tooltip={t('plugins.filterEnabled')}
+                  aria-label={t('plugins.filterEnabled')}
+                  className={`p-2.5 rounded-xl border text-left flex flex-col justify-between transition-all cursor-pointer select-none active:scale-95 ${
                     statusFilter === 'enabled' && activeSubtab === 'installed'
                       ? 'border-emerald-500 bg-emerald-500/15 ring-2 ring-emerald-500/30 shadow-xs'
                       : 'border-emerald-500/15 bg-emerald-500/5 hover:border-emerald-500/40 hover:bg-emerald-500/10'
                   }`}
-                  data-tooltip={t('plugins.filterEnabled')}
                 >
-                  <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase">{t('plugins.statEnabled')}</span>
-                  <span className="text-base font-extrabold text-emerald-600 dark:text-emerald-400 mt-0.5">{stats.enabled}</span>
+                  <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase">
+                    {t('plugins.statEnabled')}
+                  </span>
+                  <span className="text-xl font-extrabold text-emerald-600 dark:text-emerald-400 mt-1 tabular-nums">
+                    {stats.enabled}
+                  </span>
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => {
-                    setActiveSubtab('installed');
-                    setStatusFilter((prev) => (prev === 'disabled' ? 'all' : 'disabled'));
-                  }}
-                  className={`p-2.5 rounded-xl border flex flex-col items-center transition-all cursor-pointer select-none active:scale-95 ${
-                    statusFilter === 'disabled' && activeSubtab === 'installed'
-                      ? 'border-outline-variant/60 bg-surface-container-high ring-2 ring-outline-variant/40 shadow-xs'
-                      : 'border-outline-variant/15 bg-surface-container-low/60 hover:bg-surface-container-high hover:border-outline-variant/30'
-                  }`}
+                  onClick={() => handleSelectKpiFilter('disabled')}
+                  aria-pressed={statusFilter === 'disabled' && activeSubtab === 'installed'}
                   data-tooltip={t('plugins.filterDisabled')}
+                  aria-label={t('plugins.filterDisabled')}
+                  className={`p-2.5 rounded-xl border text-left flex flex-col justify-between transition-all cursor-pointer select-none active:scale-95 ${
+                    statusFilter === 'disabled' && activeSubtab === 'installed'
+                      ? 'border-amber-500 bg-amber-500/15 ring-2 ring-amber-500/30 shadow-xs'
+                      : 'border-amber-500/15 bg-amber-500/5 hover:border-amber-500/40 hover:bg-amber-500/10'
+                  }`}
                 >
-                  <span className="text-[10px] font-bold text-on-surface-variant/60 uppercase">{t('plugins.statDisabled')}</span>
-                  <span className="text-base font-extrabold text-on-surface-variant/70 mt-0.5">{stats.disabled}</span>
+                  <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase">
+                    {t('plugins.statDisabled')}
+                  </span>
+                  <span className="text-xl font-extrabold text-amber-600 dark:text-amber-400 mt-1 tabular-nums">
+                    {stats.disabled}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSelectKpiFilter('url')}
+                  aria-pressed={statusFilter === 'url' && activeSubtab === 'installed'}
+                  data-tooltip={t('plugins.filterUrlSynced')}
+                  aria-label={t('plugins.filterUrlSynced')}
+                  className={`p-2.5 rounded-xl border text-left flex flex-col justify-between transition-all cursor-pointer select-none active:scale-95 ${
+                    statusFilter === 'url' && activeSubtab === 'installed'
+                      ? 'border-blue-500 bg-blue-500/15 ring-2 ring-blue-500/30 shadow-xs'
+                      : 'border-blue-500/15 bg-blue-500/5 hover:border-blue-500/40 hover:bg-blue-500/10'
+                  }`}
+                >
+                  <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase">
+                    {t('plugins.statUrlSynced')}
+                  </span>
+                  <span className="text-xl font-extrabold text-blue-600 dark:text-blue-400 mt-1 tabular-nums">
+                    {reloadablePlugins.length}
+                  </span>
                 </button>
               </div>
             </div>
@@ -824,6 +857,7 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
                   onClick={() => setMessage(null)}
                   className="shrink-0 -m-1 p-1.5 rounded-lg text-current opacity-70 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer"
                   aria-label={t('plugins.msg.dismissAria')}
+                  data-tooltip={t('plugins.msg.dismissAria')}
                 >
                   <span className="material-symbols-outlined text-[18px] leading-none">close</span>
                 </button>
@@ -833,18 +867,30 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
             {/* Subtab: Installed Plugins */}
             {activeSubtab === 'installed' && (
               <section className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-[20px] text-primary">extension</span>
-                  <h2 className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">
-                    {t('plugins.sectionInstalled')} ({filteredPlugins.length}/{plugins.length})
-                  </h2>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[20px] text-primary">extension</span>
+                    <h2 className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">
+                      {t('plugins.sectionInstalled')} ({filteredPlugins.length}/{plugins.length})
+                    </h2>
+                  </div>
+                  {hasActiveFilters && plugins.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleResetFilters}
+                      className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs font-medium text-on-surface-variant hover:text-on-surface bg-surface-container-high/70 hover:bg-surface-container-high border border-outline-variant/20 transition-colors cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[15px]">filter_alt_off</span>
+                      <span>{t('plugins.resetFilters')}</span>
+                    </button>
+                  )}
                 </div>
 
                 {filteredPlugins.length === 0 ? (
                   <EmptyState
                     icon="extension"
-                    title={plugins.length === 0 ? t('plugins.emptyTitle') : 'Không tìm thấy plugin phù hợp'}
-                    description={plugins.length === 0 ? t('plugins.emptyHint') : 'Thử thay đổi từ khóa tìm kiếm hoặc chuyển bộ lọc về "Tất cả".'}
+                    title={plugins.length === 0 ? t('plugins.emptyTitle') : t('plugins.emptyFilteredTitle')}
+                    description={plugins.length === 0 ? t('plugins.emptyHint') : t('plugins.emptyFilteredHint')}
                     action={
                       plugins.length === 0 ? (
                         <div className="flex justify-center gap-2.5 mt-2">
@@ -865,7 +911,18 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
                             {t('plugins.autoGen.button')}
                           </button>
                         </div>
-                      ) : null
+                      ) : (
+                        <div className="flex justify-center mt-2">
+                          <button
+                            type="button"
+                            onClick={handleResetFilters}
+                            className={BTN_SURFACE}
+                          >
+                            <span className="material-symbols-outlined text-[16px]">filter_alt_off</span>
+                            <span>{t('plugins.resetFilters')}</span>
+                          </button>
+                        </div>
+                      )
                     }
                   />
                 ) : (
@@ -909,7 +966,7 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
                         {t('plugins.importFromFile')}
                       </h3>
                       <p className="text-xs text-on-surface-variant leading-relaxed">
-                        Cài đặt plugin trực tiếp từ file script JavaScript (.js) trên máy tính của bạn.
+                        {t('plugins.importFromFileDesc')}
                       </p>
                     </div>
                     <button
@@ -933,7 +990,7 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
                         {t('plugins.importFromUrl')}
                       </h3>
                       <p className="text-xs text-on-surface-variant leading-relaxed">
-                        Nhập đường link trực tiếp (URL raw từ GitHub, Gist hoặc CDN) để tải và cài đặt.
+                        {t('plugins.importFromUrlDesc')}
                       </p>
                     </div>
                     <div className="space-y-2">
@@ -943,7 +1000,7 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
                         onChange={(e) => setImportUrl(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleImportFromUrl()}
                         placeholder={t('plugins.urlPlaceholder')}
-                        className="w-full bg-surface-container-highest border border-outline-variant/15 rounded-lg text-xs h-9 px-3 text-on-surface focus:ring-2 focus:ring-primary/40 focus:border-transparent outline-none"
+                        className="w-full bg-surface-container-highest border border-outline-variant/15 rounded-xl text-xs sm:text-sm h-10 px-3.5 text-on-surface focus:ring-2 focus:ring-primary/40 focus:border-transparent outline-none"
                         disabled={loading}
                       />
                       <button
@@ -1010,6 +1067,9 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
           className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs"
           role="dialog"
           aria-modal="true"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setDeleteConfirmTarget(null);
+          }}
         >
           <div className="max-w-md w-full rounded-2xl border border-outline-variant/20 bg-surface-container-lowest shadow-2xl p-5 space-y-4">
             <div className="flex items-start justify-between gap-3">
@@ -1024,7 +1084,9 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
               <button
                 type="button"
                 onClick={() => setDeleteConfirmTarget(null)}
-                className="p-1 rounded-lg text-on-surface-variant hover:bg-surface-container-high"
+                aria-label={t('plugins.closeModal')}
+                data-tooltip={t('plugins.closeModal')}
+                className="p-1 rounded-lg text-on-surface-variant hover:bg-surface-container-high cursor-pointer"
               >
                 <span className="material-symbols-outlined text-[18px]">close</span>
               </button>
@@ -1059,6 +1121,9 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
           className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs"
           role="dialog"
           aria-modal="true"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setReplaceConfirmTarget(null);
+          }}
         >
           <div className="max-w-md w-full rounded-2xl border border-outline-variant/20 bg-surface-container-lowest shadow-2xl p-5 space-y-4">
             <div className="flex items-start justify-between gap-3">
@@ -1073,7 +1138,9 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
               <button
                 type="button"
                 onClick={() => setReplaceConfirmTarget(null)}
-                className="p-1 rounded-lg text-on-surface-variant hover:bg-surface-container-high"
+                aria-label={t('plugins.closeModal')}
+                data-tooltip={t('plugins.closeModal')}
+                className="p-1 rounded-lg text-on-surface-variant hover:bg-surface-container-high cursor-pointer"
               >
                 <span className="material-symbols-outlined text-[18px]">close</span>
               </button>
@@ -1146,17 +1213,35 @@ function PluginSourceModal({ t, plugin, isOpen, onClose, onSave }) {
 
   useEffect(() => {
     if (!isOpen || !plugin) return;
+    let cancelled = false;
     setLoading(true);
     setError(null);
     window.electronAPI
       .getPluginSource(plugin.metadata.id)
       .then((res) => {
+        if (cancelled) return;
         if (res.ok) setSource(res.source || '');
-        else setError(res.error || 'Could not load source');
+        else setError(res.error || t('plugins.sourceLoadError'));
       })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
-  }, [isOpen, plugin]);
+      .catch((err) => {
+        if (!cancelled) setError(err.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, plugin, t]);
+
+  useEffect(() => {
+    if (!isOpen || !plugin || saving) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, plugin, saving, onClose]);
 
   if (!isOpen || !plugin) return null;
 
@@ -1174,7 +1259,7 @@ function PluginSourceModal({ t, plugin, isOpen, onClose, onSave }) {
     try {
       const res = await onSave(plugin.metadata.id, source);
       if (res && !res.success) {
-        setError(res.errorMessage || 'Cập nhật plugin thất bại');
+        setError(res.errorMessage || t('plugins.sourceSaveFailed'));
       } else {
         onClose();
       }
@@ -1186,7 +1271,14 @@ function PluginSourceModal({ t, plugin, isOpen, onClose, onSave }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs"
+      role="dialog"
+      aria-modal="true"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !saving) onClose();
+      }}
+    >
       <div className="max-w-3xl w-full rounded-2xl border border-outline-variant/20 bg-surface-container-lowest shadow-2xl flex flex-col max-h-[85vh] overflow-hidden">
         <div className="flex items-center justify-between gap-3 p-4 border-b border-outline-variant/15">
           <h3 className="font-semibold text-on-surface text-sm sm:text-base">
@@ -1195,7 +1287,10 @@ function PluginSourceModal({ t, plugin, isOpen, onClose, onSave }) {
           <button
             type="button"
             onClick={onClose}
-            className="p-1 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
+            disabled={saving}
+            aria-label={t('plugins.closeModal')}
+            data-tooltip={t('plugins.closeModal')}
+            className="p-1 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface cursor-pointer disabled:opacity-45 disabled:pointer-events-none"
           >
             <span className="material-symbols-outlined text-[20px]">close</span>
           </button>
@@ -1212,7 +1307,7 @@ function PluginSourceModal({ t, plugin, isOpen, onClose, onSave }) {
           {loading ? (
             <div className="flex items-center gap-2 py-8 justify-center text-sm text-on-surface-variant">
               <span className="material-symbols-outlined animate-spin text-[20px]">progress_activity</span>
-              Đang tải code...
+              <span>{t('plugins.sourceLoading')}</span>
             </div>
           ) : (
             <textarea
@@ -1236,7 +1331,7 @@ function PluginSourceModal({ t, plugin, isOpen, onClose, onSave }) {
             <span>{copied ? t('plugins.codeCopied') : t('plugins.copyCode')}</span>
           </button>
           <div className="flex items-center gap-2">
-            <button type="button" onClick={onClose} className={BTN_SURFACE}>
+            <button type="button" onClick={onClose} disabled={saving} className={BTN_SURFACE}>
               {t('plugins.autoGen.cancel')}
             </button>
             <button
@@ -1334,6 +1429,7 @@ function PluginCard({ plugin, onToggle, onDelete, onReload, onEditSource, disabl
                     onClick={() => onReload(metadata.id, sourceUrl)}
                     disabled={disabled}
                     aria-label={t('plugins.reloadFromSavedUrl')}
+                    data-tooltip={t('plugins.reloadFromSavedUrl')}
                     className={`${BTN_SURFACE} shrink-0 self-start sm:self-center text-xs min-h-8`}
                   >
                     <span className="material-symbols-outlined text-[16px] leading-none">refresh</span>
@@ -1502,6 +1598,8 @@ function AutoGeneratorWizard({
             <button
               type="button"
               onClick={onClearError}
+              aria-label={t('plugins.msg.dismissAria')}
+              data-tooltip={t('plugins.msg.dismissAria')}
               className="shrink-0 p-1 rounded text-current opacity-70 hover:opacity-100 cursor-pointer"
             >
               <span className="material-symbols-outlined text-[18px]">close</span>
@@ -1532,7 +1630,7 @@ function AutoGeneratorWizard({
                 onChange={(e) => onUrlChange(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && onAnalyze()}
                 placeholder={t('plugins.autoGen.urlPlaceholder')}
-                className="min-w-0 flex-1 bg-surface-container-highest border border-outline-variant/15 rounded-lg text-xs sm:text-sm h-10 px-3.5 text-on-surface focus:ring-2 focus:ring-primary/40 focus:border-transparent outline-none transition-shadow"
+                className="min-w-0 flex-1 bg-surface-container-highest border border-outline-variant/15 rounded-xl text-xs sm:text-sm h-10 px-3.5 text-on-surface focus:ring-2 focus:ring-primary/40 focus:border-transparent outline-none transition-shadow"
                 disabled={isLoading}
                 autoFocus
               />
@@ -1564,7 +1662,7 @@ function AutoGeneratorWizard({
                 onChange={(e) => onChapterUrlChange(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && onAnalyzeChapter()}
                 placeholder={t('plugins.autoGen.chapterUrlPlaceholder')}
-                className="min-w-0 flex-1 bg-surface-container-highest border border-outline-variant/15 rounded-lg text-xs sm:text-sm h-10 px-3.5 text-on-surface focus:ring-2 focus:ring-primary/40 focus:border-transparent outline-none transition-shadow"
+                className="min-w-0 flex-1 bg-surface-container-highest border border-outline-variant/15 rounded-xl text-xs sm:text-sm h-10 px-3.5 text-on-surface focus:ring-2 focus:ring-primary/40 focus:border-transparent outline-none transition-shadow"
                 disabled={isLoading}
                 autoFocus
               />
@@ -1601,7 +1699,7 @@ function AutoGeneratorWizard({
                   type="text"
                   value={editName}
                   onChange={(e) => onEditNameChange(e.target.value)}
-                  className="w-full bg-surface-container-highest border border-outline-variant/15 rounded-lg text-xs sm:text-sm h-9 px-3 text-on-surface focus:ring-2 focus:ring-primary/40 focus:border-transparent outline-none"
+                  className="w-full bg-surface-container-highest border border-outline-variant/15 rounded-xl text-xs sm:text-sm h-10 px-3.5 text-on-surface focus:ring-2 focus:ring-primary/40 focus:border-transparent outline-none"
                 />
               </div>
               <div className="space-y-1.5">
@@ -1612,7 +1710,7 @@ function AutoGeneratorWizard({
                   type="text"
                   value={editId}
                   onChange={(e) => onEditIdChange(e.target.value)}
-                  className="w-full bg-surface-container-highest border border-outline-variant/15 rounded-lg text-xs sm:text-sm h-9 px-3 text-on-surface font-mono focus:ring-2 focus:ring-primary/40 focus:border-transparent outline-none"
+                  className="w-full bg-surface-container-highest border border-outline-variant/15 rounded-xl text-xs sm:text-sm h-10 px-3.5 text-on-surface font-mono focus:ring-2 focus:ring-primary/40 focus:border-transparent outline-none"
                 />
               </div>
             </div>

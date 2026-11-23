@@ -10,11 +10,12 @@ describe('FollowedMangaPanel structure and standards', () => {
     expect(content).toMatch(/export\s+default\s+function\s+FollowedMangaPanel/);
   });
 
-  test('uses StudioLayout and useStudioLayout', () => {
+  test('uses StudioLayout and useStudioLayout without duplicate ResizeSplitter', () => {
     const content = fs.readFileSync(panelPath, 'utf8');
     expect(content).toContain('StudioLayout');
     expect(content).toContain('useStudioLayout');
-    expect(content).toContain('ResizeSplitter');
+    expect(content).toContain('handleLeftResizeStart');
+    expect(content).not.toContain('<ResizeSplitter');
   });
 
   test('uses shared EmptyState component without native title or underline', () => {
@@ -161,12 +162,15 @@ describe('FollowedMangaPanel structure and standards', () => {
     expect(content).toContain('followedManga.sort.recentlyAdded');
   });
 
-  test('left sidebar provides 2-column segmented pill grid for status filter', () => {
+  test('left sidebar provides clean 2-row vertical status filter list matching BulkScan Mẫu 2 standard', () => {
     const content = fs.readFileSync(panelPath, 'utf8');
-    expect(content).toContain('grid grid-cols-2 gap-1.5');
+    expect(content).toContain('rounded-xl border border-outline-variant/20 bg-surface-container-highest/60 p-1 space-y-0.5');
+    expect(content).toContain('aria-pressed={isActive}');
+    expect(content).toContain('statusFilter === opt.id');
     expect(content).toContain('followedManga.filter.status');
     expect(content).toContain('followedManga.filter.all');
     expect(content).toContain('followedManga.filter.hasNew');
+    expect(content).not.toContain('grid grid-cols-2 gap-1.5');
   });
 
   test('search input is standardized with clear button and no inner search icon', () => {

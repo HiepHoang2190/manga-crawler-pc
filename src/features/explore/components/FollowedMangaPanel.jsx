@@ -1,15 +1,14 @@
-import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect, useDeferredValue } from 'react';
 import { useI18n } from '../../../context/I18nContext';
 import {
   StudioLayout,
   useStudioLayout,
-  ResizeSplitter,
   EmptyState,
   ViewModeToggle,
   useAppLog,
   SearchableSelect,
 } from '../../../shared';
-import FollowedMangaCard from './FollowedMangaCard';
+import { MemoFollowedMangaCard } from './FollowedMangaCard';
 import ExploreSourceSelect from './ExploreSourceSelect';
 import { ChaptersDrawer } from '../../reader';
 import { dedupeChaptersByNumber } from '../../download';
@@ -80,6 +79,8 @@ export default function FollowedMangaPanel({
 
   // StudioLayout integration
   const {
+    showLeftSidebar,
+    toggleLeftSidebar,
     leftWidth,
     handleLeftResizeStart,
   } = useStudioLayout({
@@ -91,8 +92,17 @@ export default function FollowedMangaPanel({
 
   // Search & Filter State
   const [searchTerm, setSearchTerm] = useState('');
+  const deferredSearchTerm = useDeferredValue(searchTerm);
   const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'hasNew'
   const [siteFilter, setSiteFilter] = useState('');
+
+  const handleResetFilters = useCallback(() => {
+    setSearchTerm('');
+    setStatusFilter('all');
+    setSiteFilter('');
+    setPage(1);
+    setRawPageInput('1');
+  }, []);
 
   // Sort State with Persistent Storage
   const [sortBy, setSortBy] = useState(() => {
@@ -297,11 +307,11 @@ export default function FollowedMangaPanel({
     return filterFavorites({
       favorites,
       favoriteSyncById: activeSyncById,
-      query: searchTerm,
+      query: deferredSearchTerm,
       statusFilter,
       siteFilter,
     });
-  }, [favorites, activeSyncById, searchTerm, statusFilter, siteFilter]);
+  }, [favorites, activeSyncById, deferredSearchTerm, statusFilter, siteFilter]);
 
   // Sorted List
   const sortedFavorites = useMemo(() => {
@@ -885,6 +895,9 @@ export default function FollowedMangaPanel({
     <StudioLayout>
       {/* Top Toolbar */}
       <StudioLayout.Toolbar
+        showLeftSidebar={showLeftSidebar}
+        onToggleLeftSidebar={toggleLeftSidebar}
+        leftSidebarTooltip={showLeftSidebar ? t('sidebar.hidePanel') : t('sidebar.showPanel')}
         leftSlot={subtabsSlot}
         rightSlot={
           <div className="flex items-center gap-2">
@@ -892,7 +905,7 @@ export default function FollowedMangaPanel({
               <button
                 type="button"
                 onClick={() => onStopQueue?.()}
-                className="inline-flex items-center justify-center gap-1.5 h-7 px-3 rounded-lg text-xs font-semibold bg-amber-600 dark:bg-amber-500 text-white hover:opacity-95 shadow-2xs transition-all active:scale-95 cursor-pointer shrink-0"
+                className="inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold bg-amber-600 dark:bg-amber-500 text-white hover:opacity-95 shadow-2xs transition-all active:scale-95 cursor-pointer shrink-0"
                 data-tooltip={t('followedManga.actions.pauseDownload')}
                 aria-label={t('followedManga.actions.pauseQueue', { percent: overall.percent })}
               >
@@ -905,7 +918,7 @@ export default function FollowedMangaPanel({
               <button
                 type="button"
                 onClick={() => onStartQueue?.({ unpauseAll: true })}
-                className="inline-flex items-center justify-center gap-1.5 h-7 px-3 rounded-lg text-xs font-semibold bg-primary text-on-primary hover:opacity-95 shadow-2xs transition-all active:scale-95 cursor-pointer shrink-0"
+                className="inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold bg-primary text-on-primary hover:opacity-95 shadow-2xs transition-all active:scale-95 cursor-pointer shrink-0"
                 data-tooltip={t('followedManga.actions.resumeDownload')}
                 aria-label={t('followedManga.actions.resumeQueue', { count: unfinishedQueueCount })}
               >
@@ -919,7 +932,7 @@ export default function FollowedMangaPanel({
                 type="button"
                 disabled={isEnqueuingAll || isCheckingAll}
                 onClick={handleEnqueueAllNew}
-                className="inline-flex items-center justify-center gap-1.5 h-7 px-3 rounded-lg text-xs font-semibold bg-emerald-600 dark:bg-emerald-500 text-white hover:opacity-95 shadow-2xs transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none cursor-pointer shrink-0"
+                className="inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold bg-emerald-600 dark:bg-emerald-500 text-white hover:opacity-95 shadow-2xs transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none cursor-pointer shrink-0"
                 data-tooltip={t('followedManga.actions.enqueueAllTooltip', {
                   mangaCount: activeStats.hasNewCount,
                   chapterCount: activePendingChaptersCount,
@@ -950,7 +963,7 @@ export default function FollowedMangaPanel({
               <button
                 type="button"
                 onClick={handleStopCheck}
-                className="inline-flex items-center justify-center gap-1.5 h-7 px-3 rounded-lg text-xs font-semibold bg-error text-on-error hover:opacity-95 shadow-2xs transition-all active:scale-95 cursor-pointer"
+                className="inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold bg-error text-on-error hover:opacity-95 shadow-2xs transition-all active:scale-95 cursor-pointer"
                 aria-label={t('followedManga.actions.stop')}
               >
                 <span className="material-symbols-outlined text-[15px]">stop</span>
@@ -961,7 +974,7 @@ export default function FollowedMangaPanel({
                 type="button"
                 onClick={handleCheckAll}
                 disabled={favorites.length === 0 || isEnqueuingAll}
-                className="inline-flex items-center justify-center gap-1.5 h-7 px-3.5 rounded-lg text-xs font-semibold bg-primary text-on-primary hover:opacity-95 shadow-2xs transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
+                className="inline-flex items-center justify-center gap-1.5 h-8 px-3.5 rounded-lg text-xs font-semibold bg-primary text-on-primary hover:opacity-95 shadow-2xs transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
                 aria-label={t('followedManga.actions.checkAll')}
               >
                 <span className="material-symbols-outlined text-[15px]">sync</span>
@@ -1009,12 +1022,11 @@ export default function FollowedMangaPanel({
       <StudioLayout.Body>
         {/* Left Sidebar: Filters & Connectors */}
         <StudioLayout.LeftSidebar
-          open={true}
+          open={showLeftSidebar}
           width={leftWidth}
           onResizeStart={handleLeftResizeStart}
-          className="bg-surface-container-low/50 relative border-r border-outline-variant/20 flex flex-col overflow-visible"
         >
-          <div className="custom-scrollbar flex-1 overflow-y-auto p-3 space-y-3.5 mr-1.5 flex flex-col min-h-0">
+          <div className="p-3.5 space-y-4 flex flex-col flex-1 min-h-0">
             {/* 1. Nguồn (Source dropdown) */}
             <ExploreSourceSelect
               mode="filter"
@@ -1027,52 +1039,57 @@ export default function FollowedMangaPanel({
               }}
             />
 
-            {/* 2. Trạng thái (Segmented pill grid) */}
+            {/* 2. Trạng thái (Mẫu 2: Vertical 2-row list matching BulkScanPanel) */}
             <div>
               <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/60 mb-1.5 px-1">
                 {t('followedManga.filter.status')}
               </div>
-              <div className="grid grid-cols-2 gap-1.5 h-10 items-center bg-surface-container-highest/60 p-1 rounded-xl border border-outline-variant/20 text-xs">
-                {/* Tất cả */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStatusFilter('all');
-                    setPage(1);
-                    setRawPageInput('1');
-                  }}
-                  className={`flex items-center justify-center gap-1.5 h-8 px-2 rounded-lg font-semibold transition-all cursor-pointer ${
-                    statusFilter === 'all'
-                      ? 'bg-primary text-on-primary font-semibold shadow-2xs'
-                      : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
-                  }`}
-                  aria-label={`${t('followedManga.filter.all')} (${activeStats.total})`}
-                >
-                  <span className="truncate">{t('followedManga.filter.all')}</span>
-                  <span className="text-[10px] opacity-80 tabular-nums">({activeStats.total})</span>
-                </button>
-
-                {/* Có chương mới */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStatusFilter('hasNew');
-                    setPage(1);
-                    setRawPageInput('1');
-                  }}
-                  className={`flex items-center justify-center gap-1.5 h-8 px-2 rounded-lg font-semibold transition-all cursor-pointer ${
-                    statusFilter === 'hasNew'
-                      ? 'bg-emerald-600 dark:bg-emerald-500 text-white font-semibold shadow-2xs'
-                      : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
-                  }`}
-                  aria-label={`${t('followedManga.filter.hasNew')} (${activeStats.hasNewCount})`}
-                >
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-                  <span className="truncate">{t('followedManga.filter.hasNew')}</span>
-                  {activeStats.hasNewCount > 0 && (
-                    <span className="text-[10px] font-bold tabular-nums">({activeStats.hasNewCount})</span>
-                  )}
-                </button>
+              <div
+                role="group"
+                aria-label={t('followedManga.filter.status')}
+                className="rounded-xl border border-outline-variant/20 bg-surface-container-highest/60 p-1 space-y-0.5 text-xs"
+              >
+                {[
+                  {
+                    id: 'all',
+                    label: t('followedManga.filter.all'),
+                    count: activeStats.total,
+                    dotClass: 'bg-primary',
+                  },
+                  {
+                    id: 'hasNew',
+                    label: t('followedManga.filter.hasNew'),
+                    count: activeStats.hasNewCount,
+                    dotClass: activeStats.hasNewCount > 0 ? 'bg-emerald-500 animate-pulse' : 'bg-emerald-500/40',
+                  },
+                ].map((opt) => {
+                  const isActive = statusFilter === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      aria-pressed={isActive}
+                      aria-label={`${opt.label} (${opt.count})`}
+                      onClick={() => {
+                        setStatusFilter(opt.id);
+                        setPage(1);
+                        setRawPageInput('1');
+                        contentScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className={`w-full h-8 px-2.5 rounded-lg flex items-center justify-between gap-2 transition-colors cursor-pointer ${
+                        isActive
+                          ? 'bg-primary/15 text-primary font-semibold'
+                          : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high font-medium'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2 min-w-0">
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${opt.dotClass}`} />
+                        <span className="truncate">{opt.label}</span>
+                      </span>
+                      <span className="font-bold tabular-nums shrink-0">{opt.count}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -1143,7 +1160,9 @@ export default function FollowedMangaPanel({
                     {activePendingChaptersCount > 0 && (
                       <>
                         <span className="text-on-surface-variant">{t('followedManga.stats.pendingChapters')}</span>
-                        <span className="font-bold text-amber-600 dark:text-amber-400 text-right tabular-nums">{activePendingChaptersCount} ch.</span>
+                        <span className="font-bold text-amber-600 dark:text-amber-400 text-right tabular-nums">
+                          {t('followedManga.stats.pendingUnit', { count: activePendingChaptersCount })}
+                        </span>
                       </>
                     )}
                   </div>
@@ -1160,14 +1179,6 @@ export default function FollowedMangaPanel({
               </div>
             )}
           </div>
-
-          {/* Standard Resize Splitter */}
-          <ResizeSplitter
-            variant="overlay"
-            side="right"
-            onPointerDown={handleLeftResizeStart}
-            data-tooltip="Kéo để thay đổi độ rộng sidebar"
-          />
         </StudioLayout.LeftSidebar>
 
         {/* Central Content: Cards Grid & List with In-Memory Pagination */}
@@ -1184,6 +1195,16 @@ export default function FollowedMangaPanel({
                 icon="search_off"
                 title={t('followedManga.empty.noMatchTitle')}
                 description={t('followedManga.empty.noMatchDescription')}
+                action={
+                  <button
+                    type="button"
+                    onClick={handleResetFilters}
+                    className="inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold border border-outline-variant/25 bg-surface-container-high text-on-surface hover:bg-surface-bright transition-all active:scale-95 cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-[15px]">filter_alt_off</span>
+                    <span>{t('followedManga.resetFilters')}</span>
+                  </button>
+                }
               />
             ) : viewMode === 'list' ? (
               <ul className="flex flex-col gap-2">
@@ -1291,16 +1312,22 @@ export default function FollowedMangaPanel({
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
                                 <span>
                                   {pendingNewCount > 0
-                                    ? `+${pendingNewCount} chap mới`
+                                    ? t('followedManga.badge.newChaptersShort', { count: pendingNewCount })
                                     : t('followedManga.filter.hasNew')}
                                 </span>
                                 <span>•</span>
-                                <span className="tabular-nums">{remoteCount} chap</span>
+                                <span className="tabular-nums">
+                                  {t('followedManga.badge.chapterCount', { count: remoteCount })}
+                                </span>
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1 text-[11px] text-on-surface-variant/70">
                                 <span className="material-symbols-outlined text-[13px] text-emerald-500 leading-none">check</span>
-                                <span>{remoteCount > 0 ? `${remoteCount} chap` : t('followedManga.badge.upToDate')}</span>
+                                <span>
+                                  {remoteCount > 0
+                                    ? t('followedManga.badge.chapterCount', { count: remoteCount })
+                                    : t('followedManga.badge.upToDate')}
+                                </span>
                               </span>
                             )}
                           </div>
@@ -1387,7 +1414,7 @@ export default function FollowedMangaPanel({
           ) : (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
               {displayedFavorites.map((item) => (
-                <FollowedMangaCard
+                <MemoFollowedMangaCard
                   key={item.id}
                   item={item}
                   sync={activeSyncById[item.id]}

@@ -11,13 +11,19 @@ describe('BulkScanPanel Sidebar Workflow', () => {
     expect(content).toContain('bulkScan.shiftTip');
   });
 
-  test('sidebar provides 3-column segmented pill grid for status filter and unified search box', () => {
+  test('sidebar provides clean 3-row vertical status filter list (Sample 2) and unified search box', () => {
     const content = fs.readFileSync(panelPath, 'utf8');
-    expect(content).toContain('grid grid-cols-3 gap-1');
+    expect(content).toContain('rounded-xl border border-outline-variant/20 bg-surface-container-highest/60 p-1 space-y-0.5');
+    expect(content).toContain('bulkScan.statusFilter');
+    expect(content).toContain('aria-pressed={isActive}');
+    expect(content).toContain('listFilter === opt.id');
     expect(content).toContain('bulkScan.filterAll');
     expect(content).toContain('bulkScan.filterSelected');
     expect(content).toContain('bulkScan.filterUnselected');
     expect(content).toContain('bulkScan.filterPlaceholder');
+    expect(content).not.toContain('grid-cols-3 gap-1');
+    expect(content).not.toContain('col-span-2');
+    expect(content).not.toContain('BULK_SCAN_FILTERS');
   });
 
   test('toolbar uses clean leftSlot matching explore family and footer has direct page jump', () => {
