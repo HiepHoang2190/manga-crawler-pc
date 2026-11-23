@@ -162,7 +162,7 @@ export default function SettingsPanel({
       const saved = localStorage.getItem('settings_active_tab_v1');
       if (
         saved &&
-        ['all', 'account', 'appearance', 'downloads', 'cookies', 'favorites', 'backup', 'contact', 'update'].includes(saved)
+        ['all', 'account', 'appearance', 'downloads', 'cookies', 'favorites', 'backup', 'contact', 'update', 'extras'].includes(saved)
       ) {
         return saved;
       }
@@ -235,7 +235,7 @@ export default function SettingsPanel({
   };
 
   const allSectionIds = useMemo(
-    () => ['account', 'appearance', 'branding', 'downloads', 'cookies', 'favorites', 'backup', 'contact', 'update'],
+    () => ['account', 'appearance', 'branding', 'downloads', 'cookies', 'favorites', 'backup', 'contact', 'update', 'extras'],
     []
   );
 
@@ -483,11 +483,8 @@ export default function SettingsPanel({
   );
 
   const isCardVisible = (cardId, searchableText = '') => {
-    if (activeTab !== 'all' && activeTab !== cardId) {
-      return false;
-    }
     if (!searchTerm.trim()) {
-      return true;
+      return activeTab === 'all' || activeTab === cardId;
     }
     const term = searchTerm.trim().toLowerCase();
     return searchableText.toLowerCase().includes(term);
@@ -517,7 +514,7 @@ export default function SettingsPanel({
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder={t('settings.searchPlaceholder')}
-                className="w-full h-9 pl-9 pr-8 rounded-xl bg-surface-container-highest border border-outline-variant/25 text-xs text-on-surface placeholder:text-on-surface-variant/60 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
+                className="w-full h-10 pl-9 pr-8 rounded-xl bg-surface-container-highest border border-outline-variant/25 text-xs text-on-surface placeholder:text-on-surface-variant/60 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
               />
               <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-[18px] text-on-surface-variant/70 pointer-events-none">
                 search

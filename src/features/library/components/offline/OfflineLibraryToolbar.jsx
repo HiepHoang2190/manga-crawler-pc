@@ -33,13 +33,16 @@ export function OfflineLibraryToolbar({
           data-tooltip={t('offlineLibrary.sortHint', {
             mode: t(SORT_LABEL_KEYS[sortMode] || SORT_LABEL_KEYS.titleAsc),
           })}
+          aria-label={t('offlineLibrary.sortHint', {
+            mode: t(SORT_LABEL_KEYS[sortMode] || SORT_LABEL_KEYS.titleAsc),
+          })}
         >
           <span className="material-symbols-outlined text-[20px] leading-none">sort_by_alpha</span>
         </button>
       </div>
 
-      <div className="flex-1 flex h-11 items-center bg-surface-container-highest rounded-lg px-3 sm:px-4 max-w-xl border border-outline-variant/10 min-w-[200px]">
-        <span className="material-symbols-outlined text-outline mr-2 sm:mr-3 shrink-0 text-[20px] leading-none">
+      <div className="flex-1 flex h-11 items-center gap-2 bg-surface-container-highest rounded-lg px-3 sm:px-4 max-w-xl border border-outline-variant/10 min-w-[200px]">
+        <span className="material-symbols-outlined text-outline shrink-0 text-[20px] leading-none">
           filter_list
         </span>
         <input
@@ -47,8 +50,19 @@ export function OfflineLibraryToolbar({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t('offlineLibrary.searchPlaceholder')}
-          className="min-h-0 h-8 bg-transparent border-none text-sm leading-normal focus:ring-0 p-0 w-full text-on-surface outline-none placeholder:text-outline"
+          className="min-h-0 h-8 bg-transparent border-none text-sm leading-normal focus:ring-0 p-0 flex-1 min-w-0 text-on-surface outline-none placeholder:text-outline"
         />
+        {query ? (
+          <button
+            type="button"
+            onClick={() => setQuery('')}
+            data-tooltip={t('offlineLibrary.clearSearch')}
+            aria-label={t('offlineLibrary.clearSearch')}
+            className="cursor-pointer shrink-0 rounded-full p-1 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors"
+          >
+            <span className="material-symbols-outlined text-[16px] leading-none">close</span>
+          </button>
+        ) : null}
       </div>
 
       <div className="shrink-0">

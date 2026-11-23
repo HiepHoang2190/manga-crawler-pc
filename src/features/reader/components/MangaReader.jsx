@@ -21,6 +21,9 @@ import {
   READER_ZOOM_STEP,
   READER_ZOOM_MAX,
   READER_ZOOM_MIN,
+  AUTO_SCROLL_SPEEDS,
+  getNextAutoScrollLevel,
+  computeReadingProgressPercent,
 } from './reader';
 
 const EMPTY_SET = new Set();
@@ -91,6 +94,11 @@ export default function MangaReader({
 
   const [visiblePageIndex, setVisiblePageIndex] = useState(0);
   const [jumpPageDraft, setJumpPageDraft] = useState('');
+  const [autoScrollLevel, setAutoScrollLevel] = useState(0);
+
+  const cycleAutoScroll = useCallback(() => {
+    setAutoScrollLevel((lvl) => getNextAutoScrollLevel(lvl));
+  }, []);
 
   const recomputeTopVisiblePage = useCallback(() => {
     const scrollEl = readerScrollRef.current;
@@ -605,45 +613,156 @@ export default function MangaReader({
   useEffect(() => {
     if (!open) return undefined;
     const onKey = (e) => {
+      const target = e.target;
+      const tag = target?.tagName;
+      const isEditable =
+        tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || Boolean(target?.isContentEditable);
+
       if (e.key === 'Escape') {
+        if (isEditable) {
+          target.blur?.();
+          return;
+        }
         if (previewState) {
           closePreview();
+          return;
+        }
+        if (autoScrollLevel > 0) {
+          setAutoScrollLevel(0);
           return;
         }
         requestClose();
         return;
       }
-      if (previewState) return;
+      if (previewState || translateOverlayOpen || isEditable) return;
+
       const mod = e.ctrlKey || e.metaKey;
-      if (!mod) return;
-      const isPlus =
-        e.key === '+' ||
-        e.key === '=' ||
-        e.code === 'Equal' ||
-        e.code === 'NumpadAdd';
-      const isMinus =
-        e.key === '-' ||
-        e.code === 'Minus' ||
-        e.code === 'NumpadSubtract';
-      const isZero =
-        e.key === '0' ||
-        e.code === 'Digit0' ||
-        e.code === 'Numpad0';
-      if (isPlus || isMinus || isZero) {
+      if (mod) {
+        const isPlus =
+          e.key === '+' ||
+          e.key === '=' ||
+          e.code === 'Equal' ||
+          e.code === 'NumpadAdd';
+        const isMinus =
+          e.key === '-' ||
+          e.code === 'Minus' ||
+          e.code === 'NumpadSubtract';
+        const isZero =
+          e.key === '0' ||
+          e.code === 'Digit0' ||
+          e.code === 'Numpad0';
+        if (isPlus || isMinus || isZero) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (isPlus) {
+            setReaderZoom((z) => clampZoom(z + READER_ZOOM_STEP));
+          } else if (isMinus) {
+            setReaderZoom((z) => clampZoom(z - READER_ZOOM_STEP));
+          } else {
+            setReaderZoom(1);
+          }
+        }
+        return;
+      }
+
+      if (e.altKey) return;
+      const lower = typeof e.key === 'string' ? e.key.toLowerCase() : '';
+
+      if (e.key === 'ArrowLeft' || e.key === '[') {
+        if (!prevChapterDisabled) {
+          e.preventDefault();
+          goPrev();
+        }
+      } else if (e.key === 'ArrowRight' || e.key === ']') {
+        if (!nextChapterDisabled) {
+          e.preventDefault();
+          goNext();
+        }
+      } else if (lower === 'c') {
         e.preventDefault();
-        e.stopPropagation();
-        if (isPlus) {
-          setReaderZoom((z) => clampZoom(z + READER_ZOOM_STEP));
-        } else if (isMinus) {
-          setReaderZoom((z) => clampZoom(z - READER_ZOOM_STEP));
-        } else {
-          setReaderZoom(1);
+        toggleChapterPanel();
+      } else if (lower === 's') {
+        e.preventDefault();
+        toggleWebtoonSeamless();
+      } else if (lower === 'a') {
+        e.preventDefault();
+        cycleAutoScroll();
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        readerScrollRef.current?.scrollTo?.({ top: 0, behavior: 'smooth' });
+      } else if (e.key === 'End') {
+        const el = readerScrollRef.current;
+        if (el) {
+          e.preventDefault();
+          el.scrollTo?.({ top: el.scrollHeight, behavior: 'smooth' });
         }
       }
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [open, requestClose, previewState, closePreview]);
+  }, [
+    open,
+    requestClose,
+    previewState,
+    translateOverlayOpen,
+    closePreview,
+    autoScrollLevel,
+    prevChapterDisabled,
+    nextChapterDisabled,
+    goPrev,
+    goNext,
+    toggleChapterPanel,
+    toggleWebtoonSeamless,
+    cycleAutoScroll,
+  ]);
+
+  // Stop auto-scroll on close, chapter change, modal overlay, or end of page
+  useEffect(() => {
+    setAutoScrollLevel(0);
+  }, [open, chapterIndex]);
+
+  useEffect(() => {
+    if (!open || autoScrollLevel <= 0 || previewState || translateOverlayOpen || loading) {
+      return undefined;
+    }
+    const el = readerScrollRef.current;
+    if (!el) return undefined;
+
+    const speed = AUTO_SCROLL_SPEEDS[autoScrollLevel] || 0;
+    if (speed <= 0) return undefined;
+
+    let rafId = null;
+    let lastTs = null;
+    let carry = 0;
+
+    const stopByUser = () => setAutoScrollLevel(0);
+    el.addEventListener('wheel', stopByUser, { passive: true });
+    el.addEventListener('pointerdown', stopByUser, { passive: true });
+
+    const tick = (ts) => {
+      if (lastTs === null) lastTs = ts;
+      const dt = Math.min(0.1, Math.max(0, (ts - lastTs) / 1000));
+      lastTs = ts;
+      carry += speed * dt;
+      if (carry >= 1) {
+        const step = Math.floor(carry);
+        carry -= step;
+        el.scrollTop += step;
+      }
+      if (el.scrollTop + el.clientHeight >= el.scrollHeight - 2) {
+        setAutoScrollLevel(0);
+        return;
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+
+    rafId = requestAnimationFrame(tick);
+    return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      el.removeEventListener('wheel', stopByUser);
+      el.removeEventListener('pointerdown', stopByUser);
+    };
+  }, [open, autoScrollLevel, previewState, translateOverlayOpen, loading]);
 
   // Zoom on Ctrl/Cmd + wheel
   useEffect(() => {
@@ -776,6 +895,8 @@ export default function MangaReader({
 
   if (!open) return null;
 
+  const readingPercent = computeReadingProgressPercent(visiblePageIndex, files.length);
+
   const scrollAreaBody = (
     <>
       {loading ? (
@@ -856,24 +977,42 @@ export default function MangaReader({
         >
           {/* Header */}
           <header className="relative z-50 flex shrink-0 flex-col border-b border-outline-variant/15 bg-surface-container-low shadow-sm">
-            <div className="flex min-w-0 items-start gap-2 px-3 pb-2 pt-2.5 sm:px-4">
-              <span
-                className="material-symbols-outlined mt-0.5 shrink-0 text-[22px] leading-none text-primary"
-                aria-hidden
-              >
-                auto_stories
-              </span>
-              <div className="min-w-0 flex-1 overflow-hidden">
-                <h2 id={titleId} className="truncate text-sm font-bold text-on-surface">
-                  {heading || mangaTitle || t('reader.title')}
-                </h2>
-                {ch ? (
-                  <p className="mt-0.5 truncate text-[11px] leading-snug text-on-surface-variant">
-                    {chapterTitle}
-                  </p>
-                ) : null}
+            <div className="flex min-w-0 items-center justify-between gap-2 px-3 pb-2 pt-2.5 sm:px-4">
+              <div className="flex min-w-0 items-start gap-2 flex-1">
+                <span
+                  className="material-symbols-outlined mt-0.5 shrink-0 text-[22px] leading-none text-primary"
+                  aria-hidden
+                >
+                  auto_stories
+                </span>
+                <div className="min-w-0 flex-1 overflow-hidden">
+                  <h2 id={titleId} className="truncate text-sm font-bold text-on-surface">
+                    {heading || mangaTitle || t('reader.title')}
+                  </h2>
+                  {ch ? (
+                    <p className="mt-0.5 truncate text-[11px] leading-snug text-on-surface-variant">
+                      {chapterTitle}
+                    </p>
+                  ) : null}
+                </div>
               </div>
+              {!loading && !error && files.length > 0 ? (
+                <span
+                  data-tooltip={t('reader.pageProgressTooltip')}
+                  className="shrink-0 px-2.5 py-1 rounded-full border border-outline-variant/25 bg-surface-container-highest text-[11px] font-mono font-semibold text-on-surface tabular-nums"
+                >
+                  {visiblePageIndex + 1} / {files.length} • {readingPercent}%
+                </span>
+              ) : null}
             </div>
+            {!loading && !error && files.length > 0 ? (
+              <div className="h-0.5 w-full bg-surface-container-highest overflow-hidden">
+                <div
+                  className="h-full bg-primary transition-[width] duration-150"
+                  style={{ width: `${readingPercent}%` }}
+                />
+              </div>
+            ) : null}
           </header>
 
           {/* Reader Body with Chapters Sidebar & Main Page Viewer */}
@@ -967,6 +1106,8 @@ export default function MangaReader({
                 toggleNavInvert={toggleNavInvert}
                 webtoonSeamless={webtoonSeamless}
                 toggleWebtoonSeamless={toggleWebtoonSeamless}
+                autoScrollLevel={autoScrollLevel}
+                onCycleAutoScroll={cycleAutoScroll}
                 translateOverlayOpen={translateOverlayOpen}
                 onOpenTranslateOverlay={() => setTranslateOverlayOpen(true)}
                 readerZoom={readerZoom}

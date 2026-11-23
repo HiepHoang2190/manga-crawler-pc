@@ -127,7 +127,8 @@ export default function DashboardPanel({
           listLoadingLabel: t('dashboard.kpi.detail.listLoading'),
           listHint: t('dashboard.kpi.detail.listHiddenHint'),
         };
-      case 'storage':
+      case 'storage': {
+        const trimmedSavePath = String(savePath || '').trim();
         return {
           title: t('dashboard.kpi.storage'),
           value: kpi.storageBytes == null ? '—' : formatBytes(kpi.storageBytes),
@@ -139,9 +140,19 @@ export default function DashboardPanel({
             },
             {
               label: t('dashboard.kpi.detail.storage.path'),
-              value: String(savePath || '').trim() || t('dashboard.kpi.detail.storage.noPath'),
+              value: trimmedSavePath || t('dashboard.kpi.detail.storage.noPath'),
             },
           ],
+          actions: trimmedSavePath ? (
+            <button
+              type="button"
+              onClick={() => window.electronAPI?.openPath?.(trimmedSavePath)}
+              className="cursor-pointer rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-on-primary hover:bg-primary/90 transition-colors inline-flex items-center gap-1.5"
+            >
+              <span className="material-symbols-outlined text-[16px]">folder_open</span>
+              <span>{t('dashboard.kpi.detail.storage.openFolder')}</span>
+            </button>
+          ) : null,
           listTitle: t('dashboard.kpi.detail.listTitle.storage'),
           listItems: (mangaRankings.byStorage || []).map((x) => ({
             title: x.title,
@@ -152,6 +163,7 @@ export default function DashboardPanel({
           listLoadingLabel: t('dashboard.kpi.detail.listLoading'),
           listHint: t('dashboard.kpi.detail.listHiddenHint'),
         };
+      }
       case 'today': {
         const yesterday = downloads7.length >= 2 ? downloads7[downloads7.length - 2].count : 0;
         return {
@@ -202,7 +214,7 @@ export default function DashboardPanel({
                 await onClearCache();
                 setKpiDetailId(null);
               }}
-              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary hover:bg-primary/90 transition-colors disabled:opacity-50"
+              className="cursor-pointer rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary hover:bg-primary/90 transition-colors disabled:opacity-50"
             >
               {cacheClearing ? t('dashboard.cache.clearing') : t('dashboard.cache.clearConfirm')}
             </button>

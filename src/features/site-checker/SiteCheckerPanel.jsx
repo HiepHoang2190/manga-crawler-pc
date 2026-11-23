@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useI18n } from '../../context/I18nContext';
-import { StudioLayout, useStudioLayout } from '../../shared';
+import { StudioLayout, useStudioLayout, SearchableSelect } from '../../shared';
 import { buildCookieExtractFeedback } from '../../utils/cookieExtractFeedback';
+import { sortConnectorsForChecker, buildHealthReportMarkdown } from './siteCheckerUtils';
 
 const BTN_ROW =
   'inline-flex items-center justify-center gap-1.5 min-h-9 px-3.5 rounded-lg text-xs font-semibold transition-all active:scale-[0.98] disabled:opacity-45 disabled:pointer-events-none cursor-pointer select-none';
@@ -33,6 +34,8 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'working' | 'broken' | 'vpn' | 'cookie'
+  const [sortMode, setSortMode] = useState('default'); // 'default' | 'rttAsc' | 'rttDesc' | 'brokenFirst'
+  const [copiedReport, setCopiedReport] = useState(false);
   const [showErrorDetailId, setShowErrorDetailId] = useState(null);
   const [extractBusy, setExtractBusy] = useState({});
   const [messageDialog, setMessageDialog] = useState(null);
@@ -140,9 +143,8 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
     }
   }, [testResults]);
 
-  const startTestAll = async () => {
+  const runConnectorBatch = async (targets, { isFullRun = false } = {}) => {
     if (testRunning) return;
-    const targets = filteredConnectors;
     if (!targets || targets.length === 0) return;
 
     setTestRunning(true);
@@ -164,7 +166,7 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
       targets.forEach((c) => {
         const prevStatus = prev[c.id]?.status;
         next[c.id] = {
-          status: targets.length === connectors.length ? 'not-tested' : (prevStatus || 'not-tested'),
+          status: isFullRun ? 'not-tested' : (prevStatus || 'not-tested'),
           checking: false,
           queued: true,
           testedAt: null,
@@ -240,12 +242,24 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
       }
     };
 
-    const workers = Array.from({ length: concurrency }, () => runWorker());
-    await Promise.all(workers);
+    try {
+      const workers = Array.from({ length: concurrency }, () => runWorker());
+      await Promise.all(workers);
+    } finally {
+      setTestRunning(false);
+      setTestAbortRef(null);
+      setTestBatch(null);
+    }
+  };
 
-    setTestRunning(false);
-    setTestAbortRef(null);
-    setTestBatch(null);
+  const startTestAll = () =>
+    runConnectorBatch(filteredConnectors, {
+      isFullRun: filteredConnectors.length === connectors.length,
+    });
+
+  const startTestBrokenOnly = () => {
+    const brokenTargets = connectors.filter((c) => results[c.id]?.status === 'failed');
+    return runConnectorBatch(brokenTargets, { isFullRun: false });
   };
 
   const cancelTestAll = async () => {
@@ -487,7 +501,7 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
   );
 
   const filteredConnectors = useMemo(() => {
-    return connectors.filter((c) => {
+    const filtered = connectors.filter((c) => {
       const labelMatch = String(c.label || '').toLowerCase().includes(searchTerm.toLowerCase());
       const domainMatch = String(c.domain || '').toLowerCase().includes(searchTerm.toLowerCase());
       const matchesSearch = labelMatch || domainMatch;
@@ -503,7 +517,29 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
       if (statusFilter === 'cookie') return c.requiresCookie;
       return true;
     });
-  }, [connectors, results, searchTerm, statusFilter, batchTargetIdSet]);
+    return sortConnectorsForChecker(filtered, results, sortMode);
+  }, [connectors, results, searchTerm, statusFilter, batchTargetIdSet, sortMode]);
+
+  const sortOptions = useMemo(
+    () => [
+      { value: 'default', label: t('siteChecker.sortDefault'), materialIcon: 'sort' },
+      { value: 'rttAsc', label: t('siteChecker.sortRttAsc'), materialIcon: 'speed' },
+      { value: 'rttDesc', label: t('siteChecker.sortRttDesc'), materialIcon: 'hourglass_bottom' },
+      { value: 'brokenFirst', label: t('siteChecker.sortBrokenFirst'), materialIcon: 'error_outline' },
+    ],
+    [t]
+  );
+
+  const handleCopyHealthReport = useCallback(async () => {
+    try {
+      const report = buildHealthReportMarkdown(connectors, results, stats);
+      await navigator.clipboard?.writeText(report);
+      setCopiedReport(true);
+      setTimeout(() => setCopiedReport(false), 2000);
+    } catch (err) {
+      console.error('Copy health report failed:', err);
+    }
+  }, [connectors, results, stats]);
 
   const filterOptions = [
     { id: 'all', label: t('siteChecker.filter.all'), count: stats.total },
@@ -573,16 +609,18 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder={t('siteChecker.searchPlaceholder')}
-                className="w-full bg-surface-container-high border-none rounded-xl text-xs h-9 pl-8 pr-7 text-on-surface outline-none focus:ring-1 focus:ring-primary"
+                className="w-full bg-surface-container-high border-none rounded-xl text-xs h-10 pl-8 pr-8 text-on-surface outline-none focus:ring-1 focus:ring-primary"
               />
-              <span className="material-symbols-outlined text-[16px] text-on-surface-variant/60 absolute left-2.5 top-2.5">
+              <span className="material-symbols-outlined text-[16px] text-on-surface-variant/60 absolute left-2.5 top-3">
                 search
               </span>
               {searchTerm && (
                 <button
                   type="button"
                   onClick={() => setSearchTerm('')}
-                  className="absolute right-2 top-2 rounded-full p-0.5 text-on-surface-variant/60 hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer"
+                  data-tooltip={t('siteChecker.clearSearch')}
+                  aria-label={t('siteChecker.clearSearch')}
+                  className="absolute right-2 top-2.5 rounded-full p-0.5 text-on-surface-variant/60 hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-[14px]">close</span>
                 </button>
@@ -750,16 +788,16 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
           <div className="max-w-4xl mx-auto w-full space-y-4">
             {/* Header info */}
             <div className="flex items-center justify-between pb-1 flex-wrap gap-2">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2.5 flex-wrap">
                 <div className="flex items-center gap-2">
                   <span className="material-symbols-outlined text-[20px] text-primary">network_check</span>
                   <h2 className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">
-                    Danh sách Connectors ({filteredConnectors.length})
+                    {t('siteChecker.connectorsListTitle', { count: filteredConnectors.length })}
                   </h2>
                 </div>
 
                 {!running ? (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <button
                       type="button"
                       onClick={startTestAll}
@@ -781,6 +819,31 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
                           : t('siteChecker.testAll')}
                       </span>
                     </button>
+                    {stats.broken > 0 && (
+                      <button
+                        type="button"
+                        onClick={startTestBrokenOnly}
+                        className={BTN_SURFACE}
+                        data-tooltip={t('siteChecker.retestBrokenTooltip')}
+                        aria-label={t('siteChecker.retestBroken')}
+                      >
+                        <span className="material-symbols-outlined text-[16px] text-error">refresh</span>
+                        <span>{t('siteChecker.retestBroken', { count: stats.broken })}</span>
+                      </button>
+                    )}
+                    {stats.tested > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleCopyHealthReport}
+                        className={BTN_SURFACE}
+                        aria-label={t('siteChecker.copyReport')}
+                      >
+                        <span className="material-symbols-outlined text-[16px] text-primary">
+                          {copiedReport ? 'check' : 'content_copy'}
+                        </span>
+                        <span>{copiedReport ? t('siteChecker.copiedReport') : t('siteChecker.copyReport')}</span>
+                      </button>
+                    )}
                     {stats.tested > 0 && (
                       <button
                         type="button"
@@ -805,6 +868,14 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
                   </button>
                 )}
               </div>
+
+              <SearchableSelect
+                size="sm"
+                value={sortMode}
+                onChange={setSortMode}
+                options={sortOptions}
+                className="w-44 shrink-0"
+              />
             </div>
 
             {/* Cards Grid */}

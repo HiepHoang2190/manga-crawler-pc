@@ -336,6 +336,48 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
     }
   }
 
+  const reloadablePlugins = useMemo(
+    () => plugins.filter((p) => Boolean(p?.sourceUrl || p?.metadata?.sourceUrl)),
+    [plugins]
+  );
+
+  async function handleReloadAllUrlPlugins() {
+    if (reloadablePlugins.length === 0 || loading) return;
+    setLoading(true);
+    setMessage(null);
+    let okCount = 0;
+    let failCount = 0;
+
+    try {
+      for (const p of reloadablePlugins) {
+        const srcUrl = p.sourceUrl || p.metadata?.sourceUrl;
+        const pluginId = p.metadata?.id || p.id;
+        try {
+          const result = await window.electronAPI.importPluginFromUrl(srcUrl);
+          if (result?.requiresConfirmation) {
+            const confirmResult = await window.electronAPI.confirmPluginReplacement(pluginId);
+            if (confirmResult?.success) okCount += 1;
+            else failCount += 1;
+          } else if (result?.success) {
+            okCount += 1;
+          } else {
+            failCount += 1;
+          }
+        } catch {
+          failCount += 1;
+        }
+      }
+      await loadPlugins();
+      notifyConnectorListChanged();
+      setMessage({
+        type: failCount > 0 && okCount === 0 ? 'error' : 'success',
+        text: t('plugins.msg.reloadAllResult', { ok: okCount, fail: failCount }),
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
+
   // ── Auto-Generator handlers ──
   function handleStartAutoGen() {
     setActiveSubtab('generator');
@@ -557,6 +599,18 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
           <div className="flex items-center gap-1.5">
             {activeSubtab === 'installed' && plugins.length > 0 && (
               <>
+                {reloadablePlugins.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleReloadAllUrlPlugins}
+                    disabled={loading}
+                    className={BTN_SURFACE}
+                    data-tooltip={t('plugins.reloadAllTooltip')}
+                  >
+                    <span className={`material-symbols-outlined text-[16px] ${loading ? 'animate-spin' : ''}`}>sync</span>
+                    <span>{t('plugins.reloadAll', { count: reloadablePlugins.length })}</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={handleEnableAll}
@@ -599,16 +653,18 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder={t('plugins.searchPlaceholder')}
-                className="w-full bg-surface-container-high border-none rounded-xl text-xs h-9 pl-8 pr-7 text-on-surface outline-none focus:ring-1 focus:ring-primary"
+                className="w-full bg-surface-container-high border-none rounded-xl text-xs h-10 pl-8 pr-8 text-on-surface outline-none focus:ring-1 focus:ring-primary"
               />
-              <span className="material-symbols-outlined text-[16px] text-on-surface-variant/60 absolute left-2.5 top-2.5">
+              <span className="material-symbols-outlined text-[16px] text-on-surface-variant/60 absolute left-2.5 top-3">
                 search
               </span>
               {searchTerm && (
                 <button
                   type="button"
                   onClick={() => setSearchTerm('')}
-                  className="absolute right-2 top-2 rounded-full p-0.5 text-on-surface-variant/60 hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer"
+                  data-tooltip={t('plugins.clearSearch')}
+                  aria-label={t('plugins.clearSearch')}
+                  className="absolute right-2 top-2.5 rounded-full p-0.5 text-on-surface-variant/60 hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-[14px]">close</span>
                 </button>

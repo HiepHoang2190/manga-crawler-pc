@@ -10,6 +10,11 @@ import {
   filterChaptersByGroup,
   dedupeChaptersByNumber,
 } from '../utils/chapterGroupUtils.js';
+import {
+  parseChapterRangeSelection,
+  filterChaptersByQuery,
+  selectUndownloadedChapterUrls,
+} from '../utils/chapterSelectionUtils.js';
 
 function StatusBadge({ variant, label }) {
   const styles = {
@@ -82,9 +87,15 @@ export default function ChapterList({
   }, [chapters, t]);
 
   const [selectedGroup, setSelectedGroup] = useState('all');
+  const [chapterQuery, setChapterQuery] = useState('');
+  const [rangeOpen, setRangeOpen] = useState(false);
+  const [rangeDraft, setRangeDraft] = useState('');
 
   useEffect(() => {
     setSelectedGroup('all');
+    setChapterQuery('');
+    setRangeOpen(false);
+    setRangeDraft('');
   }, [currentMangaUrl]);
 
   const groupSelectOptions = useMemo(() => {
@@ -99,7 +110,7 @@ export default function ChapterList({
 
   /** Bỏ trùng URL (lỗi API); lọc theo nhóm dịch nếu có chọn.
    * Không dedup nếu các chapter có cùng URL nhưng title khác nhau (multi-source như dtvebook). */
-  const chaptersForList = useMemo(() => {
+  const baseChaptersForList = useMemo(() => {
     if (!Array.isArray(chapters)) return chapters;
     const filtered = filterChaptersByGroup(chapters, selectedGroup);
     // Nếu có entries trùng URL nhưng title khác → giữ tất cả (multi-source)
@@ -116,10 +127,9 @@ export default function ChapterList({
     return dedupeChaptersByUrl(filtered);
   }, [chapters, selectedGroup]);
 
-  /** Chỉ theo URL — đổi tiêu đề không reset sort; đổi truyện / fetch lại thì reset. */
-  const chapterIdentityKey = useMemo(
-    () => chaptersForList.map((c) => String(c.url ?? '')).join('\n'),
-    [chaptersForList]
+  const chaptersForList = useMemo(
+    () => filterChaptersByQuery(baseChaptersForList, chapterQuery),
+    [baseChaptersForList, chapterQuery]
   );
 
   const sortedChapters = useMemo(() => {
@@ -150,26 +160,51 @@ export default function ChapterList({
     return map;
   }, [queue, currentMangaUrl]);
 
-  const rowStatusKey = (ch) => {
-    if (chapterStatusKeyOverride) return chapterStatusKeyOverride;
-    const url_string = String(ch?.url ?? '').trim();
-    const has_local_file =
-      readChapterAllowedUrls instanceof Set &&
-      (readChapterAllowedUrls.has(url_string) || (ch?.url && readChapterAllowedUrls.has(ch.url)));
-    const st = statusByChapterUrl.get(url_string) || (ch?.url && statusByChapterUrl.get(ch.url));
-    if (st === 'downloading') return 'inProgress';
-    if (has_local_file || st === 'done') return 'completed';
-    if (st === 'waiting') return 'queued';
-    return 'pending';
+  const rowStatusKey = useCallback(
+    (ch) => {
+      if (chapterStatusKeyOverride) return chapterStatusKeyOverride;
+      const url_string = String(ch?.url ?? '').trim();
+      const has_local_file =
+        readChapterAllowedUrls instanceof Set &&
+        (readChapterAllowedUrls.has(url_string) || (ch?.url && readChapterAllowedUrls.has(ch.url)));
+      const st = statusByChapterUrl.get(url_string) || (ch?.url && statusByChapterUrl.get(ch.url));
+      if (st === 'downloading') return 'inProgress';
+      if (has_local_file || st === 'done') return 'completed';
+      if (st === 'waiting') return 'queued';
+      return 'pending';
+    },
+    [chapterStatusKeyOverride, readChapterAllowedUrls, statusByChapterUrl]
+  );
+
+  const undownloadedUrls = useMemo(
+    () => (isPick ? [] : selectUndownloadedChapterUrls(sortedChapters, rowStatusKey)),
+    [isPick, sortedChapters, rowStatusKey]
+  );
+
+  const rangeMatchedUrls = useMemo(
+    () => (rangeOpen ? parseChapterRangeSelection(rangeDraft, chaptersForList) : []),
+    [rangeOpen, rangeDraft, chaptersForList]
+  );
+
+  const handleSelectUndownloaded = () => {
+    if (typeof setSelectedUrls !== 'function' || undownloadedUrls.length === 0) return;
+    setSelectedUrls(new Set(undownloadedUrls));
+  };
+
+  const handleApplyRangeSelection = () => {
+    if (typeof setSelectedUrls !== 'function' || rangeMatchedUrls.length === 0) return;
+    setSelectedUrls((prev) => {
+      const next = new Set(prev instanceof Set ? prev : []);
+      for (const u of rangeMatchedUrls) next.add(u);
+      return next;
+    });
+    setRangeOpen(false);
+    setRangeDraft('');
   };
 
   useEffect(() => {
     lastClickedIndexRef.current = null;
   }, [chaptersForList]);
-
-  useEffect(() => {
-    setTitleSort(null);
-  }, [chapterIdentityKey]);
 
   useEffect(() => {
     const onUp = () => {
@@ -711,6 +746,12 @@ export default function ChapterList({
     );
   };
 
+  const showSmartControls = Array.isArray(baseChaptersForList) && baseChaptersForList.length > 0;
+  const resolvedEmptyMessage = chapterQuery.trim()
+    ? t('chapterList.noSearchResults')
+    : (emptyListMessage ?? t('chapterList.fetchEmpty'));
+  const selectedChapterCount = selectedUrls instanceof Set ? selectedUrls.size : 0;
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
       {showChapterListHeader || hasVolumes || hasGroupFilter ? (
@@ -813,13 +854,101 @@ export default function ChapterList({
         </div>
       ) : null}
 
+      {showSmartControls || chapterQuery.trim() ? (
+        <div className="mb-2.5 space-y-2 shrink-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="relative flex-1 min-w-[140px]">
+              <span className="material-symbols-outlined text-[15px] text-on-surface-variant/70 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
+                search
+              </span>
+              <input
+                type="text"
+                value={chapterQuery}
+                onChange={(e) => setChapterQuery(e.target.value)}
+                placeholder={t('chapterList.searchPlaceholder')}
+                className="w-full h-8 pl-8 pr-7 rounded-lg bg-surface-container-highest border border-outline-variant/25 text-xs text-on-surface placeholder:text-on-surface-variant/55 focus:outline-none focus:border-primary/60 transition-colors"
+              />
+              {chapterQuery ? (
+                <button
+                  type="button"
+                  onClick={() => setChapterQuery('')}
+                  data-tooltip={t('chapterList.clearSearch')}
+                  aria-label={t('chapterList.clearSearch')}
+                  className="cursor-pointer absolute right-1.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[13px]">close</span>
+                </button>
+              ) : null}
+            </div>
+
+            {!isPick && typeof setSelectedUrls === 'function' ? (
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleSelectUndownloaded}
+                  disabled={undownloadedUrls.length === 0}
+                  data-tooltip={t('chapterList.selectUndownloadedTooltip')}
+                  className="cursor-pointer h-8 px-2.5 rounded-lg border border-outline-variant/25 bg-surface-container-high/80 hover:border-primary/40 hover:text-primary text-xs font-medium text-on-surface flex items-center gap-1 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <span className="material-symbols-outlined text-[15px] text-primary">download_for_offline</span>
+                  <span>{t('chapterList.selectUndownloaded')}</span>
+                  {undownloadedUrls.length > 0 ? (
+                    <span className="text-[10px] font-mono opacity-80">({undownloadedUrls.length})</span>
+                  ) : null}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setRangeOpen((v) => !v)}
+                  className={`cursor-pointer h-8 px-2.5 rounded-lg border text-xs font-medium flex items-center gap-1 transition-colors ${
+                    rangeOpen
+                      ? 'border-primary bg-primary/15 text-primary font-semibold'
+                      : 'border-outline-variant/25 bg-surface-container-high/80 hover:border-primary/40 hover:text-primary text-on-surface'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[15px]">linear_scale</span>
+                  <span>{t('chapterList.rangeBtn')}</span>
+                </button>
+              </div>
+            ) : null}
+          </div>
+
+          {!isPick && rangeOpen ? (
+            <div className="flex items-center gap-2 p-2 rounded-lg border border-primary/25 bg-primary/5">
+              <input
+                type="text"
+                value={rangeDraft}
+                onChange={(e) => setRangeDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleApplyRangeSelection();
+                  if (e.key === 'Escape') setRangeOpen(false);
+                }}
+                placeholder={t('chapterList.rangePlaceholder')}
+                className="flex-1 min-w-0 h-8 px-2.5 rounded-lg bg-surface-container-lowest border border-outline-variant/30 text-xs font-mono text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:border-primary"
+              />
+              <span className="text-[11px] font-mono text-on-surface-variant shrink-0">
+                {t('chapterList.rangeMatchCount', { count: rangeMatchedUrls.length })}
+              </span>
+              <button
+                type="button"
+                onClick={handleApplyRangeSelection}
+                disabled={rangeMatchedUrls.length === 0}
+                className="cursor-pointer h-8 px-3 rounded-lg bg-primary text-on-primary text-xs font-semibold hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed transition-all shrink-0"
+              >
+                {t('chapterList.rangeApply')}
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       {hasVolumes ? (
         <div
           className={`min-h-0 flex-1 overflow-auto rounded-lg border border-outline-variant/10 bg-surface-container-low p-2.5 space-y-3 custom-scrollbar ${isPick ? 'min-h-[8rem]' : 'min-h-[12rem]'}`}
         >
           {volumeGroups.length === 0 ? (
             <div className="p-4 text-center text-xs text-on-surface-variant">
-              {emptyListMessage ?? t('chapterList.fetchEmpty')}
+              {resolvedEmptyMessage}
             </div>
           ) : (
             volumeGroups.map((group) => {
@@ -975,7 +1104,7 @@ export default function ChapterList({
                     colSpan={isPick ? colSpanPick : colSpanDefault}
                     className="p-4 text-center text-xs text-on-surface-variant"
                   >
-                    {emptyListMessage ?? t('chapterList.fetchEmpty')}
+                    {resolvedEmptyMessage}
                   </td>
                 </tr>
               ) : (
@@ -998,9 +1127,9 @@ export default function ChapterList({
             <button
               type="button"
               data-testid="add-selected-to-queue-btn"
-              disabled={!chaptersForList.length || !hasChapterSelection}
+              disabled={!baseChaptersForList?.length || !hasChapterSelection}
               data-tooltip={
-                !chaptersForList.length
+                !baseChaptersForList?.length
                   ? undefined
                   : !hasChapterSelection
                     ? t('chapterList.addToQueueNeedSelection')
@@ -1010,7 +1139,9 @@ export default function ChapterList({
               className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-md bg-primary-container py-3 text-sm font-bold text-on-primary-container transition-all hover:shadow-lg hover:shadow-primary/20 active:scale-[0.98] disabled:opacity-50"
             >
               <span className="material-symbols-outlined">playlist_add</span>
-              {t('chapterList.addToQueue')}
+              {selectedChapterCount > 0
+                ? t('chapterList.addToQueueCount', { count: selectedChapterCount })
+                : t('chapterList.addToQueue')}
             </button>
           </div>
         </>

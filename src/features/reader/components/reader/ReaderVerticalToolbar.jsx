@@ -12,6 +12,8 @@ export function ReaderVerticalToolbar({
   toggleNavInvert,
   webtoonSeamless,
   toggleWebtoonSeamless,
+  autoScrollLevel = 0,
+  onCycleAutoScroll,
   translateOverlayOpen,
   onOpenTranslateOverlay,
   readerZoom,
@@ -92,11 +94,35 @@ export function ReaderVerticalToolbar({
           <span className="material-symbols-outlined text-[22px] leading-none">view_week</span>
         </button>
 
+        {onCycleAutoScroll ? (
+          <button
+            type="button"
+            onClick={onCycleAutoScroll}
+            data-tooltip={t('reader.autoScrollHint')}
+            aria-label={t('reader.autoScrollHint')}
+            aria-pressed={autoScrollLevel > 0}
+            className={`relative shrink-0 cursor-pointer rounded-lg p-2 transition-colors hover:bg-surface-container-high ${
+              autoScrollLevel > 0
+                ? 'bg-primary/15 text-primary'
+                : 'text-on-surface/70 hover:text-on-surface'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[22px] leading-none">
+              {autoScrollLevel > 0 ? 'pause_circle' : 'slow_motion_video'}
+            </span>
+            {autoScrollLevel > 0 ? (
+              <span className="absolute -bottom-0.5 right-0.5 rounded bg-primary px-1 text-[8px] font-bold leading-tight text-on-primary">
+                {autoScrollLevel}x
+              </span>
+            ) : null}
+          </button>
+        ) : null}
+
         <button
           type="button"
           onClick={onOpenTranslateOverlay}
-          data-tooltip="Dịch trang"
-          aria-label="Dịch trang"
+          data-tooltip={t('reader.translatePage')}
+          aria-label={t('reader.translatePage')}
           className={`shrink-0 cursor-pointer rounded-lg p-2 transition-colors hover:bg-surface-container-high ${
             translateOverlayOpen
               ? 'bg-primary/15 text-primary'

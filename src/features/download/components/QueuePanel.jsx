@@ -716,6 +716,33 @@ export default function QueuePanel({
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
+  const failedGroups = useMemo(
+    () => queue.filter((g) => groupProgress(g).err > 0),
+    [queue]
+  );
+  const totalFailedChapters = useMemo(
+    () => failedGroups.reduce((sum, g) => sum + groupProgress(g).err, 0),
+    [failedGroups]
+  );
+
+  const queueStats = useMemo(() => {
+    let totalCh = 0;
+    let doneCh = 0;
+    let errCh = 0;
+    for (const g of queue) {
+      const p = groupProgress(g);
+      totalCh += p.total;
+      doneCh += p.done;
+      errCh += p.err;
+    }
+    return { mangas: queue.length, totalCh, doneCh, errCh };
+  }, [queue]);
+
+  const handleRetryAllFailed = () => {
+    if (typeof onRetryFailedChapters !== 'function' || failedGroups.length === 0) return;
+    failedGroups.forEach((g) => onRetryFailedChapters(g.id));
+  };
+
   const filteredQueue = useMemo(() => {
     let list = queue;
     const q = query.trim().toLowerCase();
@@ -738,6 +765,21 @@ export default function QueuePanel({
     }
     return list;
   }, [queue, query, statusFilter]);
+
+  const filteredAllSelected =
+    filteredQueue.length > 0 && filteredQueue.every((g) => selectedIds.has(g.id));
+
+  const toggleSelectFiltered = () => {
+    setQueueSelectedIds((prev) => {
+      const next = new Set(prev instanceof Set ? prev : []);
+      if (filteredAllSelected) {
+        filteredQueue.forEach((g) => next.delete(g.id));
+      } else {
+        filteredQueue.forEach((g) => next.add(g.id));
+      }
+      return next;
+    });
+  };
 
   const queueStatusFilterOptions = useMemo(
     () => [
@@ -789,10 +831,21 @@ export default function QueuePanel({
             >
               <span className="material-symbols-outlined text-[20px] leading-none">delete_sweep</span>
             </button>
+            {failedGroups.length > 0 && typeof onRetryFailedChapters === 'function' ? (
+              <button
+                type="button"
+                onClick={handleRetryAllFailed}
+                data-tooltip={t('queue.retryAllFailedTooltip')}
+                className="flex items-center justify-center gap-1.5 h-11 px-3.5 rounded-xl border border-amber-500/35 bg-amber-500/12 text-amber-600 dark:text-amber-400 text-xs font-semibold hover:bg-amber-500/20 transition-colors cursor-pointer shrink-0 whitespace-nowrap"
+              >
+                <span className="material-symbols-outlined !text-[18px]">refresh</span>
+                <span>{t('queue.retryAllFailed', { count: totalFailedChapters })}</span>
+              </button>
+            ) : null}
           </div>
 
-          <div className="flex-1 flex h-11 items-center bg-surface-container-highest rounded-lg px-3 sm:px-4 max-w-xl border border-outline-variant/10 min-w-[200px]">
-            <span className="material-symbols-outlined text-outline mr-2 sm:mr-3 shrink-0 text-[20px] leading-none">
+          <div className="flex-1 flex h-11 items-center gap-2 bg-surface-container-highest rounded-lg px-3 sm:px-4 max-w-xl border border-outline-variant/10 min-w-[200px]">
+            <span className="material-symbols-outlined text-outline shrink-0 text-[20px] leading-none">
               filter_list
             </span>
             <input
@@ -800,8 +853,19 @@ export default function QueuePanel({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t('queue.searchPlaceholder')}
-              className="min-h-0 h-8 bg-transparent border-none text-sm leading-normal focus:ring-0 p-0 w-full text-on-surface outline-none placeholder:text-outline"
+              className="min-h-0 h-8 bg-transparent border-none text-sm leading-normal focus:ring-0 p-0 flex-1 min-w-0 text-on-surface outline-none placeholder:text-outline"
             />
+            {query ? (
+              <button
+                type="button"
+                onClick={() => setQuery('')}
+                data-tooltip={t('queue.clearSearch')}
+                aria-label={t('queue.clearSearch')}
+                className="cursor-pointer shrink-0 rounded-full p-1 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors"
+              >
+                <span className="material-symbols-outlined text-[16px] leading-none">close</span>
+              </button>
+            ) : null}
           </div>
           <div className="shrink-0">
             <SearchableSelect
@@ -823,6 +887,32 @@ export default function QueuePanel({
           </div>
         </div>
 
+        {queue.length > 0 ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 rounded-xl bg-surface-container-low/70 border border-outline-variant/15 text-xs text-on-surface-variant shrink-0">
+            <span className="font-medium tabular-nums">
+              {t('queue.summaryStats', {
+                mangas: queueStats.mangas,
+                done: queueStats.doneCh,
+                total: queueStats.totalCh,
+              })}
+            </span>
+            {queueStats.errCh > 0 ? (
+              <button
+                type="button"
+                onClick={() => setStatusFilter((prev) => (prev === 'error' ? 'all' : 'error'))}
+                className={`cursor-pointer inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold transition-colors ${
+                  statusFilter === 'error'
+                    ? 'bg-error text-on-error'
+                    : 'bg-error/12 text-error hover:bg-error/20'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[14px] leading-none">error</span>
+                <span>{t('queue.summaryFailedPill', { count: queueStats.errCh })}</span>
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
         <StudioTable
           columns={[
             {
@@ -841,8 +931,8 @@ export default function QueuePanel({
                 <input
                   type="checkbox"
                   aria-label={t('queue.checkboxTitle')}
-                  checked={allSelected}
-                  onChange={() => toggleSelectAll()}
+                  checked={filteredAllSelected}
+                  onChange={() => toggleSelectFiltered()}
                   className="rounded border-outline-variant/30 bg-surface-container-highest cursor-pointer"
                 />
               ),
