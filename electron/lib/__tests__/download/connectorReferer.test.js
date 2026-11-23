@@ -1,4 +1,9 @@
-const { getImageRefererForUrl, isMangadexCdnHost, isXbatoImageCdnHost } = require('../../download/connector/connectorReferer');
+const {
+  getImageRefererForUrl,
+  isMangadexCdnHost,
+  isXbatoImageCdnHost,
+  isWebtoonsImageCdnHost,
+} = require('../../download/connector/connectorReferer');
 const { connectorDomainManager } = require('../../platform/connectors/domain/ConnectorDomainManager');
 
 describe('connectorReferer dynamic resolution', () => {
@@ -36,5 +41,31 @@ describe('connectorReferer dynamic resolution', () => {
 
     const referer = getImageRefererForUrl('https://cdnb.snapvip.xyz/eleceed/423/0.webp');
     expect(referer).toBe('https://xbato.co.uk/');
+  });
+
+  test('should identify Webtoons pstatic/site CDN hosts and avoid MinoTruyen pstatic hosts', () => {
+    const webtoonsUrls = [
+      'https://swebtoon-phinf.pstatic.net/20240101_123/1700000000_JPEG/thumb.jpg',
+      'https://webtoon-phinf.pstatic.net/20240101_123/1700000000_JPEG/cover.jpg',
+      'https://gwebtoon-phinf.pstatic.net/thumb.jpg',
+      'https://webtoons-static.pstatic.net/image/pc/home/bg.png',
+      'https://www.webtoons.com/static/cover.jpg',
+    ];
+    for (const url of webtoonsUrls) {
+      expect(isWebtoonsImageCdnHost(new URL(url).hostname)).toBe(true);
+      expect(getImageRefererForUrl(url)).toBe('https://www.webtoons.com/');
+    }
+
+    // MinoTruyen chapter hosts on pstatic.net and spoof hosts must NOT collide with Webtoons
+    for (const nonWebtoonUrl of [
+      'https://phinf.pstatic.net/memo/page1.jpeg',
+      'https://kin-phinf.pstatic.net/page1_alt',
+      'https://webtoons.com.evil.com/a.jpg',
+      'https://notwebtoons.com/a.jpg',
+      'https://webtoon.evil.net/a.jpg',
+    ]) {
+      expect(isWebtoonsImageCdnHost(new URL(nonWebtoonUrl).hostname)).toBe(false);
+      expect(getImageRefererForUrl(nonWebtoonUrl)).toBeNull();
+    }
   });
 });

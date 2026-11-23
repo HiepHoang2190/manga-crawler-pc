@@ -377,7 +377,7 @@ class TruyenTranhPhapBiService extends HtmlConnectorService {
 const service = new TruyenTranhPhapBiService();
 
 const PHAPBI_MAX_RESULTS = 24;
-const PHAPBI_MAX_PAGES = 20;
+const PHAPBI_MAX_PAGES = 500;
 
 function upgradePhapBiThumbnail(rawUrl, baseUrl) {
   const s = String(rawUrl || '').trim();

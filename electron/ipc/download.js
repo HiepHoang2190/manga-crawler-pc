@@ -215,17 +215,29 @@ function registerDownloadIpc(ipc_context) {
     }
     const controller = new AbortController();
     activeBulkScanControllers.set(siteId, controller);
+    let latestPartial = {
+      pagesFetched: 0,
+      totalPagesDetected: 1,
+      items: [],
+    };
+    const buildAbortedSnapshot = () => ({
+      ok: false,
+      aborted: true,
+      siteId,
+      pagesFetched: latestPartial.pagesFetched || 0,
+      totalPagesDetected: latestPartial.totalPagesDetected || 1,
+      items: Array.isArray(latestPartial.items) ? latestPartial.items : [],
+    });
     let onAbort;
+    let abortGraceTimer = null;
     const abortPromise = new Promise((resolve) => {
-      onAbort = () =>
-        resolve({
-          ok: false,
-          aborted: true,
-          siteId,
-          pagesFetched: 0,
-          totalPagesDetected: 1,
-          items: [],
-        });
+      onAbort = () => {
+        // Allow active connector loop a brief moment to return cleanly; fall back to last completed page snapshot.
+        abortGraceTimer = setTimeout(() => {
+          resolve(buildAbortedSnapshot());
+        }, 350);
+        if (typeof abortGraceTimer.unref === 'function') abortGraceTimer.unref();
+      };
       controller.signal.addEventListener('abort', onAbort, { once: true });
     });
     const connector = connectors.get(siteId);
@@ -241,6 +253,15 @@ function registerDownloadIpc(ipc_context) {
           ? { minotruyenListingCategory: payload.minotruyenListingCategory }
           : {}),
         signal: controller.signal,
+        onPartialUpdate: (snapshot) => {
+          if (snapshot && Array.isArray(snapshot.items)) {
+            latestPartial = {
+              pagesFetched: Number(snapshot.pagesFetched) || 0,
+              totalPagesDetected: Number(snapshot.totalPagesDetected) || 1,
+              items: snapshot.items,
+            };
+          }
+        },
         onProgress: (p) => {
           if (controller.signal.aborted) return;
           try {
@@ -254,14 +275,7 @@ function registerDownloadIpc(ipc_context) {
       return await Promise.race([scanPromise, abortPromise]);
     } catch (e) {
       if (controller.signal.aborted || e?.name === 'AbortError') {
-        return {
-          ok: false,
-          aborted: true,
-          siteId,
-          pagesFetched: 0,
-          totalPagesDetected: 1,
-          items: [],
-        };
+        return buildAbortedSnapshot();
       }
       return {
         ok: false,
@@ -272,6 +286,7 @@ function registerDownloadIpc(ipc_context) {
         error: String(e?.message || e),
       };
     } finally {
+      if (abortGraceTimer) clearTimeout(abortGraceTimer);
       controller.signal.removeEventListener('abort', onAbort);
       if (activeBulkScanControllers.get(siteId) === controller) {
         activeBulkScanControllers.delete(siteId);

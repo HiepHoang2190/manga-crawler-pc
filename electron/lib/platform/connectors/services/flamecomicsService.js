@@ -121,6 +121,10 @@ function stripHtml(raw) {
  * Tab Mới cập nhật / Tìm kiếm truyện Flame Comics.
  */
 async function fetchLatestUpdates(options = {}) {
+  const signal = options.signal || null;
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, items: [], page: 1, totalPages: 1 };
+  }
   const rawSearch = options.latestUpdatesSearch ?? options.searchQuery;
   const search_query = String(rawSearch || '').trim();
   const page = Math.max(1, Math.floor(Number(options.page) || 1));
@@ -187,9 +191,16 @@ async function fetchLatestUpdates(options = {}) {
     fetched = await fetchHtml(activeDomain, {
       referer: activeDomain,
       userAgent: options.userAgent || USER_AGENT,
+      ...(signal ? { signal } : {}),
     });
   } catch (err) {
+    if (signal?.aborted || err?.name === 'AbortError') {
+      return { ok: false, aborted: true, items: [], page: 1, totalPages: 1 };
+    }
     return { ok: false, error: String(err?.message || err) };
+  }
+  if (signal?.aborted || fetched?.aborted) {
+    return { ok: false, aborted: true, items: [], page: 1, totalPages: 1 };
   }
 
   if (!fetched.ok) {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useI18n } from '../../../context/I18nContext';
 import DualSourcePicker from './DualSourcePicker';
-import { ResizeSplitter, useToolsSidebarResize, SearchableSelect, EmptyState, SaveDirErrorModal } from '../../../shared';
+import { ResizeSplitter, useToolsSidebarResize, SearchableSelect, EmptyState, SaveDirErrorModal, SectionTitle } from '../../../shared';
 import CbzConfigForm from './forms/CbzConfigForm';
 import PdfConfigForm from './forms/PdfConfigForm';
 import EpubConfigForm from './forms/EpubConfigForm';
@@ -462,9 +462,9 @@ export default function MangaPackagingSubTab({
 
             {/* 2. Định dạng đích */}
             <div className="space-y-2">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/50">
+              <SectionTitle as="p">
                 {t('ebookStudio.packaging.formatTitle', 'Định dạng')}
-              </p>
+              </SectionTitle>
               <div className="grid grid-cols-2 gap-2">
                 {FORMATS.map((fmt) => {
                   const isSelected = targetFormat === fmt.id;
@@ -495,9 +495,9 @@ export default function MangaPackagingSubTab({
 
             {/* 3. Cấu hình định dạng tương ứng */}
             <div className="space-y-2">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/50">
+              <SectionTitle as="p">
                 {t('ebookStudio.packaging.configTitle', 'Cấu hình')}
-              </p>
+              </SectionTitle>
               {targetFormat === 'cbz' && (
                 <CbzConfigForm options={cbzOptions} onChange={setCbzOptions} disabled={processing} />
               )}
@@ -515,9 +515,9 @@ export default function MangaPackagingSubTab({
             {/* 3.5. Công cụ biên dịch MOBI */}
             {targetFormat === 'mobi' && (
               <div className="space-y-2">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/50">
+                <SectionTitle as="p">
                   {t('ebookStudio.converter.compilerSectionTitle', 'Công cụ biên dịch')}
-                </p>
+                </SectionTitle>
                 <KindleGenCompilerCard disabled={processing} />
               </div>
             )}
@@ -529,9 +529,9 @@ export default function MangaPackagingSubTab({
                 : 'border-outline-variant/20 bg-surface-container-low/50'
             }`}>
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-on-surface">
+                <SectionTitle as="span">
                   {t('ebookStudio.packaging.outputDest')}
-                </span>
+                </SectionTitle>
                 {outputWarning && (
                   <span className="flex items-center gap-1 text-[11px] font-medium text-amber-600 dark:text-amber-400">
                     <span className="material-symbols-outlined text-[14px]">warning</span>
@@ -751,9 +751,9 @@ export default function MangaPackagingSubTab({
                 </p>
               </div>
               <div className="pt-3 border-t border-amber-500/15 w-full text-left">
-                <p className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider mb-1.5">
+                <SectionTitle as="p" className="mb-1.5">
                   {t('ebookStudio.packaging.supportedStructuresTitle')}
-                </p>
+                </SectionTitle>
                 <ul className="text-xs text-on-surface-variant/80 space-y-1 list-disc list-inside">
                   <li>{t('ebookStudio.packaging.structure1')}</li>
                   <li>{t('ebookStudio.packaging.structure2')}</li>

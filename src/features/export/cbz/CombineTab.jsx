@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../../context/I18nContext';
+import { SectionTitle } from '../../../shared';
 
 export default function CombineTab({ savePath = '' }) {
   const { t } = useI18n();
@@ -152,13 +153,13 @@ export default function CombineTab({ savePath = '' }) {
 
         {/* Output file name */}
         <div className="shrink-0 space-y-1.5">
-          <label className="text-xs font-bold text-on-surface-variant tracking-widest uppercase">{t('combineTab.outputFileName')}</label>
+          <SectionTitle as="label" className="block">{t('combineTab.outputFileName')}</SectionTitle>
           <input type="text" value={outputFileName} onChange={(e) => setOutputFileName(e.target.value)} placeholder={t('combineTab.outputFileNamePlaceholder')} disabled={running} className="w-full bg-surface-container-highest border-none rounded-md text-sm h-10 px-3 focus:ring-1 focus:ring-primary outline-none disabled:opacity-50" />
         </div>
 
         {/* Output dir */}
         <div className="shrink-0 space-y-1.5">
-          <label className="text-xs font-bold text-on-surface-variant tracking-widest uppercase">{t('sidebar.saveTo')}</label>
+          <SectionTitle as="label" className="block">{t('sidebar.saveTo')}</SectionTitle>
           <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 items-center">
             <input type="text" value={outputDir} onChange={(e) => setOutputDir(e.target.value)} placeholder={savePath || t('sidebar.placeholder.savePath')} disabled={running} className="min-w-0 bg-surface-container-highest border-none rounded-md text-sm h-10 px-3 focus:ring-1 focus:ring-primary outline-none disabled:opacity-50" />
             <button type="button" onClick={handleBrowseOutputDir} disabled={running} className="inline-flex items-center gap-1.5 h-10 px-3 rounded-md bg-surface-container-high text-on-surface text-sm font-medium hover:bg-surface-bright transition-all active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">

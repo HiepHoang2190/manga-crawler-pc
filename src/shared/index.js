@@ -25,5 +25,6 @@ export { default as SaveDirErrorModal } from './ui/SaveDirErrorModal.jsx';
 export { default as ViewModeToggle } from './ui/ViewModeToggle.jsx';
 export { default as MultiSelectDropdown } from './ui/MultiSelectDropdown.jsx';
 export { default as ConfirmModal } from './ui/ConfirmModal.jsx';
+export { default as SectionTitle, SECTION_TITLE_CLASS } from './ui/SectionTitle.jsx';
 export { default as TabErrorBoundary } from './ui/TabErrorBoundary.jsx';
 

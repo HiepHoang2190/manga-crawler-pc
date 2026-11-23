@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useI18n } from '../../../context/I18nContext';
+import { SectionTitle } from '../../../shared';
 import { ACTION_TYPES, ACTION_TYPE_ORDER } from './actionTypes';
 import { countEnabled } from './actionStack';
 import ActionParamsForm from './ActionParamsForm';
@@ -126,9 +127,9 @@ export default function ActionStackPanel({ actions, selectedId, onEvent, disable
             className="z-[9999] w-72 rounded-2xl border border-outline-variant/20 bg-surface-container-high/95 p-1.5 shadow-2xl backdrop-blur-md animate-in fade-in-0 zoom-in-95 duration-100 flex flex-col space-y-1"
           >
             <div className="px-2.5 pt-1.5 pb-1 flex items-center justify-between border-b border-outline-variant/15">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/70">
+              <SectionTitle as="span">
                 {t('imagePipeline.actions.selectAction')}
-              </span>
+              </SectionTitle>
               <span className="text-[10px] text-on-surface-variant/50 font-mono">
                 {ACTION_TYPE_ORDER.length}
               </span>

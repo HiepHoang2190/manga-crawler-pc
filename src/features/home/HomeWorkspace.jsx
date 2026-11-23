@@ -515,41 +515,49 @@ export default function HomeWorkspace({
         onToggleLeftSidebar={toggleLeftSidebar}
         leftSidebarTooltip={showLeftSidebar ? t('sidebar.hidePanel') : t('sidebar.showPanel')}
         leftSlot={
-          <div className="flex items-center gap-1.5 rounded-xl bg-surface-container-lowest p-1 border border-outline-variant/20 overflow-x-auto no-scrollbar">
-            {primaryTabs.map((tab) => {
-              const isActive = tab.id === activeTab;
-              const isBusy = isHomePrimaryTabBusy(tab.id, {
-                fetchAllFavoritesBusy,
-                tabBusyMap,
-              });
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  data-testid={`queue-tab-${tab.id}`}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`group/qtab relative flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition-all cursor-pointer select-none active:scale-95 shrink-0 ${
-                    isActive
-                      ? 'bg-primary text-on-primary shadow-xs'
-                      : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
-                  }`}
-                >
-                  {isBusy ? (
-                    <span className="relative flex items-center justify-center shrink-0">
-                      <span className="material-symbols-outlined text-[15px] leading-none text-cyan-400 animate-spin shrink-0">
-                        progress_activity
+          <div className="flex items-center gap-2 min-w-0 overflow-x-auto no-scrollbar">
+            <div
+              role="tablist"
+              aria-label={t('menu.home')}
+              className="inline-flex items-center gap-0.5 p-0.5 rounded-xl bg-surface-container-high/70 border border-outline-variant/25 overflow-x-auto no-scrollbar shrink-0"
+            >
+              {primaryTabs.map((tab) => {
+                const isActive = tab.id === activeTab;
+                const isBusy = isHomePrimaryTabBusy(tab.id, {
+                  fetchAllFavoritesBusy,
+                  tabBusyMap,
+                });
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    data-testid={`queue-tab-${tab.id}`}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`group/qtab relative inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium transition-all cursor-pointer select-none whitespace-nowrap shrink-0 ${
+                      isActive
+                        ? 'bg-primary text-on-primary font-semibold shadow-xs'
+                        : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/60'
+                    }`}
+                  >
+                    {isBusy ? (
+                      <span className="relative flex items-center justify-center shrink-0">
+                        <span className="material-symbols-outlined text-[15px] leading-none text-cyan-400 animate-spin shrink-0">
+                          progress_activity
+                        </span>
                       </span>
-                    </span>
-                  ) : (
-                    <span className="material-symbols-outlined text-[15px] leading-none shrink-0">{tab.icon}</span>
-                  )}
-                  <span className="whitespace-nowrap">{t(`queue.tab.${tab.id}`)}</span>
-                  {isBusy && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping ml-0.5" />
-                  )}
-                </button>
-              );
-            })}
+                    ) : (
+                      <span className="material-symbols-outlined text-[16px] leading-none shrink-0">{tab.icon}</span>
+                    )}
+                    <span className="whitespace-nowrap">{t(`queue.tab.${tab.id}`)}</span>
+                    {isBusy && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping ml-0.5" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
 
             {toolsTabs.length > 0 && (
               <HomeToolsDropdown

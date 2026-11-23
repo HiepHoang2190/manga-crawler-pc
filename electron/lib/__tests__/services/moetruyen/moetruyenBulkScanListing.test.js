@@ -104,8 +104,8 @@ describe('fetchBulkScanListing', () => {
       'https://moetruyen.net/manga/2-two',
       'https://moetruyen.net/manga/3-three',
     ]);
-    expect(progress[0]).toEqual({ page: 1, totalPages: 2 });
-    expect(progress[1]).toEqual({ page: 2, totalPages: 2 });
+    expect(progress[0]).toEqual({ page: 1, totalPages: 2, itemsCount: 2 });
+    expect(progress[1]).toEqual({ page: 2, totalPages: 2, itemsCount: 3 });
   });
 
   test('page 1 failure returns ok:false', async () => {
@@ -154,6 +154,30 @@ describe('fetchBulkScanListing', () => {
       },
     });
     expect(maxRequested).toBe(MANGA_BULK_SCAN_MAX_PAGES_CAP);
+  });
+
+  test('stops early on duplicate/empty page and treats non-positive maxPages as cap', async () => {
+    let calls = 0;
+    const res = await fetchBulkScanListing({
+      maxPages: -3,
+      fetchHtmlImpl: async (url) => {
+        calls += 1;
+        const m = url.match(/[?&]page=(\d+)/);
+        const p = m ? parseInt(m[1], 10) : 1;
+        return {
+          ok: true,
+          html: pageHtml({
+            page: p,
+            maxPage: 5,
+            items: [{ href: '/manga/1-one', title: 'One' }],
+          }),
+        };
+      },
+    });
+    expect(calls).toBe(2);
+    expect(res.ok).toBe(true);
+    expect(res.pagesFetched).toBe(1);
+    expect(res.items).toHaveLength(1);
   });
 
   test('cancelling via AbortController after page 1 stops remaining pages and returns aborted:true', async () => {

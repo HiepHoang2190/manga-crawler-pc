@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useI18n } from '../../../context/I18nContext';
-import { ResizeSplitter, useToolsSidebarResize, EmptyState, SaveDirErrorModal } from '../../../shared';
+import { ResizeSplitter, useToolsSidebarResize, EmptyState, SaveDirErrorModal, SectionTitle } from '../../../shared';
 import { EbookStudioActionSlot, EbookStudioCenterSlot } from '../EbookStudioActionSlot';
 
 export default function EbookToolsSubTab({
@@ -441,9 +441,9 @@ export default function EbookToolsSubTab({
           <div className="flex-1 overflow-y-auto custom-scrollbar px-4 py-5 space-y-5 mr-1.5">
             {/* 1. Chọn chế độ tiện ích */}
             <div className="space-y-2">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/50">
+              <SectionTitle as="p">
                 {t('ebookStudio.tools.toolTitle', 'Chế độ tiện ích')}
-              </p>
+              </SectionTitle>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
@@ -505,9 +505,9 @@ export default function EbookToolsSubTab({
 
             {/* 2. Nguồn file */}
             <div className="space-y-2">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/50">
+              <SectionTitle as="p">
                 {t('ebookStudio.converter.col1Title', 'Nguồn tệp')}
-              </p>
+              </SectionTitle>
               {activeTool === 'combine' ? (
                 <div className="space-y-2 rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-3.5">
                   <div className="flex items-center justify-between">
@@ -575,16 +575,16 @@ export default function EbookToolsSubTab({
 
             {/* 3. Cấu hình */}
             <div className="space-y-2">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/50">
+              <SectionTitle as="p">
                 {t('ebookStudio.converter.configTitle', 'Cấu hình')}
-              </p>
+              </SectionTitle>
               <div className="space-y-3 rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-4">
                 {activeTool === 'combine' ? (
                   <>
                     <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-on-surface">
+                      <SectionTitle as="label" className="block">
                         {t('ebookStudio.tools.outputFileName', 'Tên file sau khi gộp')}
-                      </label>
+                      </SectionTitle>
                       <input
                         type="text"
                         value={combineOutputName}
@@ -603,9 +603,9 @@ export default function EbookToolsSubTab({
                   <>
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between">
-                        <label className="text-xs font-semibold text-on-surface">
+                        <SectionTitle as="label">
                           {t('ebookStudio.tools.outputBaseName', 'Tiền tố tên file cắt')}
-                        </label>
+                        </SectionTitle>
                         {splitBaseName.trim() && !running && (
                           <button
                             type="button"
@@ -646,9 +646,9 @@ export default function EbookToolsSubTab({
                       </div>
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-on-surface">
+                      <SectionTitle as="label" className="block">
                         {t('ebookStudio.tools.maxMb', 'Dung lượng tối đa mỗi tập (MB)')}
-                      </label>
+                      </SectionTitle>
                       <div className="flex items-center gap-2">
                         <input
                           type="number"
@@ -680,9 +680,9 @@ export default function EbookToolsSubTab({
                 : 'border-outline-variant/20 bg-surface-container-low/50'
             }`}>
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-on-surface">
+                <SectionTitle as="span">
                   {t('ebookStudio.packaging.outputDest', 'Đích lưu tệp')}
-                </span>
+                </SectionTitle>
                 {outputWarning && (
                   <span className="flex items-center gap-1 text-[11px] font-medium text-amber-600 dark:text-amber-400">
                     <span className="material-symbols-outlined text-[14px]">warning</span>
@@ -795,11 +795,11 @@ export default function EbookToolsSubTab({
         {/* Toolbar chính */}
         <div className="mb-3 flex items-center justify-between gap-2 shrink-0">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-on-surface uppercase tracking-wider">
+            <SectionTitle as="span">
               {activeTool === 'combine'
                 ? t('ebookStudio.tools.fileListTitle', { count: combineFiles.length }, `Danh sách tệp gộp (${combineFiles.length})`)
                 : t('ebookStudio.tools.splitFileTitle', 'Thông tin tệp cần cắt')}
-            </span>
+            </SectionTitle>
           </div>
 
           {activeTool === 'combine' && combineFiles.length > 0 && (
@@ -910,9 +910,9 @@ export default function EbookToolsSubTab({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="material-symbols-outlined text-[18px] text-primary">format_list_numbered</span>
-                    <h4 className="text-xs font-bold text-on-surface uppercase tracking-wider">
+                    <SectionTitle as="h4">
                       {t('ebookStudio.tools.splitPartsListTitle', { count: estimatedSplitParts }, `Danh sách tệp dự kiến sau khi cắt (~${estimatedSplitParts} phần)`)}
-                    </h4>
+                    </SectionTitle>
                   </div>
                   <span className="text-[11px] text-primary font-mono font-semibold truncate max-w-[180px]">
                     {splitBaseName.trim() ? `"${splitBaseName.trim()}"` : `"${defaultBaseName}"`}

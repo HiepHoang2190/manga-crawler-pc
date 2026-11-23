@@ -7,6 +7,7 @@ import {
   ViewModeToggle,
   useAppLog,
   SearchableSelect,
+  SectionTitle,
 } from '../../../shared';
 import { MemoFollowedMangaCard } from './FollowedMangaCard';
 import ExploreSourceSelect, { extractConnectorHost } from './ExploreSourceSelect';
@@ -1000,93 +1001,103 @@ export default function FollowedMangaPanel({
         showLeftSidebar={showLeftSidebar}
         onToggleLeftSidebar={toggleLeftSidebar}
         leftSidebarTooltip={showLeftSidebar ? t('sidebar.hidePanel') : t('sidebar.showPanel')}
-        leftSlot={subtabsSlot}
+        leftSlot={
+          <div className="flex items-center gap-2 min-w-0 overflow-x-auto no-scrollbar">
+            {subtabsSlot}
+            <div
+              data-testid="explore-primary-action-slot"
+              className={`flex items-center gap-2 shrink-0 empty:hidden ${
+                subtabsSlot ? 'pl-2.5 border-l border-outline-variant/25 ml-1' : ''
+              }`}
+            >
+              {isCheckingAll ? (
+                <button
+                  type="button"
+                  onClick={handleStopCheck}
+                  disabled={isStoppingCheck}
+                  className="inline-flex items-center justify-center gap-1.5 h-8 px-3.5 rounded-lg text-xs font-semibold bg-error/15 text-error hover:bg-error/25 border border-error/30 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shrink-0"
+                  data-tooltip={isStoppingCheck ? t('followedManga.actions.stopping') : t('followedManga.actions.stopCheck')}
+                  aria-label={isStoppingCheck ? t('followedManga.actions.stopping') : t('followedManga.actions.stopCheck')}
+                >
+                  <span className="material-symbols-outlined text-[15px] leading-none">stop_circle</span>
+                  <span>{isStoppingCheck ? t('followedManga.actions.stopping') : t('followedManga.actions.stopCheck')}</span>
+                </button>
+              ) : !queueProcessing && unfinishedQueueCount === 0 ? (
+                <button
+                  type="button"
+                  onClick={handleCheckAll}
+                  disabled={favorites.length === 0 || isEnqueuingAll}
+                  className="inline-flex items-center justify-center gap-1.5 h-8 px-3.5 rounded-lg text-xs font-semibold bg-primary text-on-primary hover:opacity-95 shadow-2xs transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none cursor-pointer shrink-0"
+                  data-tooltip={t('followedManga.actions.checkAll')}
+                  aria-label={t('followedManga.actions.checkAll')}
+                >
+                  <span className="material-symbols-outlined text-[15px] leading-none">sync</span>
+                  <span>{t('followedManga.actions.checkAll')}</span>
+                </button>
+              ) : null}
+
+              {queueProcessing ? (
+                <button
+                  type="button"
+                  onClick={() => onStopQueue?.()}
+                  className="inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold bg-amber-600 dark:bg-amber-500 text-white hover:opacity-95 shadow-2xs transition-all active:scale-95 cursor-pointer shrink-0"
+                  data-tooltip={t('followedManga.actions.pauseDownload')}
+                  aria-label={t('followedManga.actions.pauseQueue', { percent: overall.percent })}
+                >
+                  <span className="material-symbols-outlined text-[15px] leading-none">
+                    pause
+                  </span>
+                  <span>{t('followedManga.actions.pauseQueue', { percent: overall.percent })}</span>
+                </button>
+              ) : unfinishedQueueCount > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => onStartQueue?.({ unpauseAll: true })}
+                  className="inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold bg-primary text-on-primary hover:opacity-95 shadow-2xs transition-all active:scale-95 cursor-pointer shrink-0"
+                  data-tooltip={t('followedManga.actions.resumeDownload')}
+                  aria-label={t('followedManga.actions.resumeQueue', { count: unfinishedQueueCount })}
+                >
+                  <span className="material-symbols-outlined text-[15px] leading-none">
+                    play_arrow
+                  </span>
+                  <span>{t('followedManga.actions.resumeQueue', { count: unfinishedQueueCount })}</span>
+                </button>
+              ) : activeStats.hasNewCount > 0 ? (
+                <button
+                  type="button"
+                  disabled={isEnqueuingAll || isCheckingAll}
+                  onClick={handleEnqueueAllNew}
+                  className="inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold bg-emerald-600 dark:bg-emerald-500 text-white hover:opacity-95 shadow-2xs transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none cursor-pointer shrink-0"
+                  data-tooltip={t('followedManga.actions.enqueueAllTooltip', {
+                    mangaCount: activeStats.hasNewCount,
+                    chapterCount: activePendingChaptersCount,
+                  })}
+                  aria-label={t('followedManga.actions.enqueueAllTooltip', {
+                    mangaCount: activeStats.hasNewCount,
+                    chapterCount: activePendingChaptersCount,
+                  })}
+                >
+                  <span
+                    className={`material-symbols-outlined text-[15px] leading-none ${
+                      isEnqueuingAll ? 'animate-spin' : ''
+                    }`}
+                  >
+                    {isEnqueuingAll ? 'progress_activity' : 'playlist_add'}
+                  </span>
+                  <span>
+                    {isEnqueuingAll
+                      ? t('followedManga.actions.enqueuingAll')
+                      : t('followedManga.actions.enqueueAll', {
+                          count: activeStats.hasNewCount,
+                        })}
+                  </span>
+                </button>
+              ) : null}
+            </div>
+          </div>
+        }
         rightSlot={
           <div className="flex items-center gap-2">
-            {queueProcessing ? (
-              <button
-                type="button"
-                onClick={() => onStopQueue?.()}
-                className="inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold bg-amber-600 dark:bg-amber-500 text-white hover:opacity-95 shadow-2xs transition-all active:scale-95 cursor-pointer shrink-0"
-                data-tooltip={t('followedManga.actions.pauseDownload')}
-                aria-label={t('followedManga.actions.pauseQueue', { percent: overall.percent })}
-              >
-                <span className="material-symbols-outlined text-[15px] leading-none">
-                  pause
-                </span>
-                <span>{t('followedManga.actions.pauseQueue', { percent: overall.percent })}</span>
-              </button>
-            ) : unfinishedQueueCount > 0 ? (
-              <button
-                type="button"
-                onClick={() => onStartQueue?.({ unpauseAll: true })}
-                className="inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold bg-primary text-on-primary hover:opacity-95 shadow-2xs transition-all active:scale-95 cursor-pointer shrink-0"
-                data-tooltip={t('followedManga.actions.resumeDownload')}
-                aria-label={t('followedManga.actions.resumeQueue', { count: unfinishedQueueCount })}
-              >
-                <span className="material-symbols-outlined text-[15px] leading-none">
-                  play_arrow
-                </span>
-                <span>{t('followedManga.actions.resumeQueue', { count: unfinishedQueueCount })}</span>
-              </button>
-            ) : activeStats.hasNewCount > 0 ? (
-              <button
-                type="button"
-                disabled={isEnqueuingAll || isCheckingAll}
-                onClick={handleEnqueueAllNew}
-                className="inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold bg-emerald-600 dark:bg-emerald-500 text-white hover:opacity-95 shadow-2xs transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none cursor-pointer shrink-0"
-                data-tooltip={t('followedManga.actions.enqueueAllTooltip', {
-                  mangaCount: activeStats.hasNewCount,
-                  chapterCount: activePendingChaptersCount,
-                })}
-                aria-label={t('followedManga.actions.enqueueAllTooltip', {
-                  mangaCount: activeStats.hasNewCount,
-                  chapterCount: activePendingChaptersCount,
-                })}
-              >
-                <span
-                  className={`material-symbols-outlined text-[15px] leading-none ${
-                    isEnqueuingAll ? 'animate-spin' : ''
-                  }`}
-                >
-                  {isEnqueuingAll ? 'progress_activity' : 'playlist_add'}
-                </span>
-                <span>
-                  {isEnqueuingAll
-                    ? t('followedManga.actions.enqueuingAll')
-                    : t('followedManga.actions.enqueueAll', {
-                        count: activeStats.hasNewCount,
-                      })}
-                </span>
-              </button>
-            ) : null}
-
-            {isCheckingAll ? (
-              <button
-                type="button"
-                onClick={handleStopCheck}
-                disabled={isStoppingCheck}
-                className="inline-flex items-center justify-center gap-1.5 h-8 px-3.5 rounded-lg text-xs font-semibold bg-error/15 text-error hover:bg-error/25 border border-error/30 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shrink-0"
-                data-tooltip={isStoppingCheck ? t('followedManga.actions.stopping') : t('followedManga.actions.stopCheck')}
-                aria-label={isStoppingCheck ? t('followedManga.actions.stopping') : t('followedManga.actions.stopCheck')}
-              >
-                <span className="material-symbols-outlined text-[15px] leading-none">stop_circle</span>
-                <span>{isStoppingCheck ? t('followedManga.actions.stopping') : t('followedManga.actions.stopCheck')}</span>
-              </button>
-            ) : !queueProcessing && unfinishedQueueCount === 0 ? (
-              <button
-                type="button"
-                onClick={handleCheckAll}
-                disabled={favorites.length === 0 || isEnqueuingAll}
-                className="inline-flex items-center justify-center gap-1.5 h-8 px-3.5 rounded-lg text-xs font-semibold bg-primary text-on-primary hover:opacity-95 shadow-2xs transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none cursor-pointer shrink-0"
-                data-tooltip={t('followedManga.actions.checkAll')}
-                aria-label={t('followedManga.actions.checkAll')}
-              >
-                <span className="material-symbols-outlined text-[15px] leading-none">sync</span>
-                <span>{t('followedManga.actions.checkAll')}</span>
-              </button>
-            ) : null}
-
             <ViewModeToggle
               viewMode={viewMode}
               onChange={handleViewModeChange}
@@ -1119,9 +1130,9 @@ export default function FollowedMangaPanel({
 
             {/* 2. Trạng thái (Mẫu 2: Vertical 2-row list matching BulkScanPanel) */}
             <div>
-              <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/60 mb-1.5 px-1">
+              <SectionTitle className="mb-1.5 px-0.5">
                 {t('followedManga.filter.status')}
-              </div>
+              </SectionTitle>
               <div
                 role="group"
                 aria-label={t('followedManga.filter.status')}
@@ -1173,9 +1184,9 @@ export default function FollowedMangaPanel({
 
             {/* 3. Sắp xếp (Sorting dropdown) */}
             <div>
-              <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/60 mb-1.5 px-1">
+              <SectionTitle className="mb-1.5 px-0.5">
                 {t('followedManga.sort.title')}
-              </div>
+              </SectionTitle>
               <SearchableSelect
                 value={sortBy}
                 onChange={handleSortChange}
@@ -1187,9 +1198,9 @@ export default function FollowedMangaPanel({
 
             {/* 4. Tìm kiếm (Search Box with Clear button) */}
             <div>
-              <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/60 mb-1.5 px-1">
+              <SectionTitle className="mb-1.5 px-0.5">
                 {t('followedManga.searchTitle')}
-              </div>
+              </SectionTitle>
               <div className="relative flex items-center">
                 <input
                   type="text"

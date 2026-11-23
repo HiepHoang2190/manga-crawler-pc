@@ -91,8 +91,12 @@ export default function ToolsStudio({ savePath = '', onRunningChange }) {
         onToggleLeftSidebar={toggleLeftSidebar}
         leftSidebarTooltip={showLeftSidebar ? t('sidebar.hidePanel') : t('sidebar.showPanel')}
         leftSlot={
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="flex items-center gap-1.5 rounded-xl bg-surface-container-lowest p-1 border border-outline-variant/20 overflow-x-auto no-scrollbar shrink-0">
+          <div className="flex items-center gap-2 min-w-0 overflow-x-auto no-scrollbar">
+            <div
+              role="tablist"
+              aria-label={t('menu.toolsStudio')}
+              className="inline-flex items-center gap-0.5 p-0.5 rounded-xl bg-surface-container-high/70 border border-outline-variant/25 overflow-x-auto no-scrollbar shrink-0"
+            >
               {TOOLS_TABS.map((tab) => {
                 const isActive = activeTab === tab.id;
                 const isBusy = Boolean(tabBusyMap[tab.id]);
@@ -100,12 +104,14 @@ export default function ToolsStudio({ savePath = '', onRunningChange }) {
                   <button
                     key={tab.id}
                     type="button"
+                    role="tab"
+                    aria-selected={isActive}
                     data-testid={`subtab-${tab.id}`}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`group/ttab relative flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer select-none active:scale-95 shrink-0 ${
+                    className={`group/ttab relative inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium transition-all cursor-pointer select-none whitespace-nowrap shrink-0 ${
                       isActive
-                        ? 'bg-primary text-on-primary shadow-xs'
-                        : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
+                        ? 'bg-primary text-on-primary font-semibold shadow-xs'
+                        : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/60'
                     }`}
                   >
                     {isBusy ? (

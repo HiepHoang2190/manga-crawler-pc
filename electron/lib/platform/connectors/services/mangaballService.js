@@ -1685,7 +1685,7 @@ async function downloadChapter(
 }
 
 const MANGABALL_PAGE_SIZE = 48;
-const MANGABALL_MAX_PAGES = 20;
+const MANGABALL_MAX_PAGES = 500;
 
 function parseMangaballHomeHtml(html, pageUrl) {
   const $ = cheerio.load(String(html || ''));

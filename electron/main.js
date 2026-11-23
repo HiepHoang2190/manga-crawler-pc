@@ -98,6 +98,11 @@ function registerConnectorImageRefererHeaders() {
         ...details.requestHeaders,
       };
       if (ref) {
+        for (const k of Object.keys(nextHeaders)) {
+          if (k.toLowerCase() === 'referer') {
+            delete nextHeaders[k];
+          }
+        }
         nextHeaders.Referer = ref;
       }
       if (isMangaDex) {

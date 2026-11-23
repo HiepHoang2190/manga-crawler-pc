@@ -1,4 +1,5 @@
 import { useI18n } from '../../../context/I18nContext';
+import { SectionTitle } from '../../../shared';
 import { overallQueueProgress } from '../../../utils/queueProgress';
 
 /**
@@ -34,7 +35,7 @@ export default function ProgressPanel({
 
   return (
     <div className="p-4 bg-surface-container-high rounded-xl border border-outline-variant/20 shadow-sm shrink-0">
-      <h4 className="text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-3">{t('progress.title')}</h4>
+      <SectionTitle as="h4" className="mb-3">{t('progress.title')}</SectionTitle>
 
       <div className="flex items-center gap-3 mb-2">
         <div className="h-2 flex-1 min-w-0 bg-surface-container-lowest rounded-full overflow-hidden border border-outline-variant/10">

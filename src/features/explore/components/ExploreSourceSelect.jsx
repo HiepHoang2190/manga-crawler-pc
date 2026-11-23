@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { useI18n } from '../../../context/I18nContext';
-import { SearchableSelect } from '../../../shared';
+import { SearchableSelect, SectionTitle } from '../../../shared';
 import { countSourceOptions } from './exploreSourceUtils.mjs';
 
 export { countSourceOptions };
@@ -97,9 +97,9 @@ export default function ExploreSourceSelect({
   return (
     <div className="space-y-1.5" data-testid="explore-source-select">
       {displayLabel ? (
-        <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/70 mb-1.5 px-0.5 select-none">
+        <SectionTitle className="mb-1.5 px-0.5">
           {showCount ? `${displayLabel} (${sourceCount})` : displayLabel}
-        </div>
+        </SectionTitle>
       ) : null}
       <SearchableSelect
         value={value}

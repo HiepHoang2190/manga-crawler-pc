@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useI18n } from '../../context/I18nContext';
 import { useTheme } from '../../context/ThemeContext';
-import { StudioLayout, useStudioLayout, SearchableSelect, AdminContactLinks } from '../../shared';
+import { StudioLayout, useStudioLayout, SearchableSelect, AdminContactLinks, SectionTitle } from '../../shared';
 import ChapterFolderControls from './ChapterFolderControls.jsx';
 import UserDataBackupSection from './UserDataBackupSection.jsx';
 import UpdateChecker from './UpdateChecker.jsx';
@@ -563,9 +563,9 @@ export default function SettingsPanel({
             <div className="mt-auto pt-3 border-t border-outline-variant/15 shrink-0">
               <div className="rounded-xl p-3 bg-surface-container-high/60 border border-outline-variant/15 space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider">
+                  <SectionTitle as="span">
                     {t('settings.account.type')}
-                  </span>
+                  </SectionTitle>
                   <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-primary/15 text-primary">
                     {app_package_name}
                   </span>
@@ -602,9 +602,9 @@ export default function SettingsPanel({
               {/* Category Bar with Collapse / Expand All */}
               {hasVisibleCards && (
                 <div className="flex items-center justify-between pb-1 select-none">
-                  <span className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">
+                  <SectionTitle as="span">
                     {activeTab === 'all' ? t('settings.tab.all') : categories.find((c) => c.id === activeTab)?.label}
-                  </span>
+                  </SectionTitle>
                   <button
                     type="button"
                     onClick={handleToggleAll}
@@ -726,9 +726,9 @@ export default function SettingsPanel({
                 >
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2 p-3.5 rounded-xl bg-surface-container-highest/40 border border-outline-variant/10">
-                      <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block">
+                      <SectionTitle as="label" className="block">
                         {t('settings.section.appearance')}
-                      </label>
+                      </SectionTitle>
                       <SearchableSelect
                         value={themePreference}
                         onChange={(v) => {
@@ -748,9 +748,9 @@ export default function SettingsPanel({
                       data-testid="language-setting-card"
                       className="space-y-2 p-3.5 rounded-xl bg-surface-container-highest/40 border border-outline-variant/10"
                     >
-                      <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block">
+                      <SectionTitle as="label" className="block">
                         {t('settings.section.language')}
-                      </label>
+                      </SectionTitle>
                       <SearchableSelect
                         value={locale}
                         onChange={(v) => setLocale(v === 'vi' ? 'vi' : 'en')}
@@ -790,9 +790,9 @@ export default function SettingsPanel({
                   <div className="space-y-4">
                     {/* Save Path */}
                     <div className="space-y-2 p-3.5 rounded-xl bg-surface-container-highest/40 border border-outline-variant/10">
-                      <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block">
+                      <SectionTitle as="label" className="block">
                         {t('sidebar.saveTo')}
-                      </label>
+                      </SectionTitle>
                       <div className="flex items-center gap-2">
                         <div className="relative flex-1 flex items-center min-w-0">
                           <input
@@ -839,9 +839,9 @@ export default function SettingsPanel({
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-2 p-3.5 rounded-xl bg-surface-container-highest/40 border border-outline-variant/10 flex flex-col justify-between">
                         <div className="space-y-2">
-                          <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block">
+                          <SectionTitle as="label" className="block">
                             {t('sidebar.threads')}
-                          </label>
+                          </SectionTitle>
                           <div className="flex h-10 w-full rounded-xl bg-surface-container-highest border border-outline-variant/25 box-border ring-1 ring-transparent focus-within:border-primary focus-within:ring-primary overflow-hidden">
                             <input
                               type="number"
@@ -883,9 +883,9 @@ export default function SettingsPanel({
 
                       <div className="space-y-2 p-3.5 rounded-xl bg-surface-container-highest/40 border border-outline-variant/10 flex flex-col justify-between">
                         <div className="space-y-2">
-                          <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block">
+                          <SectionTitle as="label" className="block">
                             {t('settings.autoRetry.label')}
-                          </label>
+                          </SectionTitle>
                           <div className="flex h-10 w-full rounded-xl bg-surface-container-highest border border-outline-variant/25 box-border ring-1 ring-transparent focus-within:border-primary focus-within:ring-primary overflow-hidden">
                             <input
                               type="number"
@@ -972,9 +972,9 @@ export default function SettingsPanel({
                     {favoriteAutoCheckEnabled ? (
                       <div className="p-3.5 rounded-xl bg-surface-container-highest/40 border border-outline-variant/10 space-y-2 max-w-md">
                         <div className="flex justify-between items-center">
-                          <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider shrink-0">
+                          <SectionTitle as="label" className="shrink-0">
                             {t('settings.favoritesAutoCheckInterval')}
-                          </label>
+                          </SectionTitle>
                           <span className="text-xs font-semibold text-primary tabular-nums px-2 py-0.5 rounded-md bg-primary/10">
                             {favoriteAutoCheckIntervalMin < 60
                               ? t('settings.time.minutes', { m: favoriteAutoCheckIntervalMin })
@@ -1034,9 +1034,9 @@ export default function SettingsPanel({
                     {favoriteAutoCheckEnabled && favoriteAutoDownloadEnabled ? (
                       <div className="p-3.5 rounded-xl bg-surface-container-highest/40 border border-outline-variant/10 space-y-3 max-w-lg">
                         <div className="space-y-1.5">
-                          <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block">
+                          <SectionTitle as="label" className="block">
                             {t('settings.favoritesAutoDownloadMode')}
-                          </label>
+                          </SectionTitle>
                           <div className="flex flex-col gap-2">
                             <button
                               type="button"
@@ -1075,9 +1075,9 @@ export default function SettingsPanel({
 
                         {favoriteAutoDownloadMode === 'workflow' ? (
                           <div className="space-y-1.5 pt-1">
-                            <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block">
+                            <SectionTitle as="label" className="block">
                               {t('settings.favoritesAutoDownloadSelectWorkflow')}
-                            </label>
+                            </SectionTitle>
                             {savedWorkflows.length > 0 ? (
                               <SearchableSelect
                                 value={favoriteAutoDownloadWorkflowId}
@@ -1133,17 +1133,17 @@ export default function SettingsPanel({
                   <div className="space-y-6">
                     {/* Official Channels */}
                     <div className="space-y-3">
-                      <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block">
+                      <SectionTitle as="span" className="block">
                         {t('settings.contact.channels')}
-                      </span>
+                      </SectionTitle>
                       <AdminContactLinks />
                     </div>
 
                     {/* QR Code Donation / Support Card */}
                     <div className="space-y-3 pt-3 border-t border-outline-variant/10">
-                      <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block">
+                      <SectionTitle as="span" className="block">
                         {t('donate.scanHint')}
-                      </span>
+                      </SectionTitle>
                       <div className="rounded-2xl border border-outline-variant/20 bg-surface-bright/50 p-5 max-w-md mx-auto space-y-3 text-center">
                         {!contactQrFailed ? (
                           <div className="rounded-xl bg-surface-container-low overflow-hidden max-w-[280px] mx-auto shadow-xs border border-outline-variant/15">

@@ -433,6 +433,106 @@ describe('Webtoons fetchLatestUpdates', () => {
     const res = await webtoonService.fetchLatestUpdates({ signal: ac.signal });
     expect(res).toMatchObject({ ok: false, aborted: true });
   });
+
+  test('skips bg_transparency placeholders, reads data-original/srcset, and backfills cover on duplicate title_no anchors', async () => {
+    const html = `
+      <ul class="webtoon_list">
+        <li>
+          <a href="https://www.webtoons.com/en/fantasy/c/list?title_no=300">
+            <img src="https://webtoons-static.pstatic.net/image/bg_transparency.png" data-url="https://swebtoon-phinf.pstatic.net/c_real.jpg" alt="Series C">
+            <strong class="title">Series C</strong>
+          </a>
+        </li>
+        <li>
+          <a href="https://www.webtoons.com/en/drama/d/list?title_no=400">
+            <img src="https://webtoons-static.pstatic.net/image/bg_transparency.png" alt="">
+            <img data-original="https://webtoon-phinf.pstatic.net/d_orig.jpg" alt="Series D">
+            <strong class="title">Series D</strong>
+          </a>
+        </li>
+        <li>
+          <a href="https://www.webtoons.com/en/action/e/list?title_no=500">
+            <img src="javascript:void(0)" srcset="data:image/gif;base64,AAA 1x, https://gwebtoon-phinf.pstatic.net/e_1x.jpg 2x" alt="Series E">
+            <strong class="title">Series E</strong>
+          </a>
+        </li>
+        <li>
+          <a href="https://www.webtoons.com/en/romance/f/list?title_no=600">
+            <strong class="title">Series F</strong>
+          </a>
+        </li>
+        <li>
+          <a href="https://www.webtoons.com/en/romance/f/list?title_no=600">
+            <img src="//swebtoon-phinf.pstatic.net/f_dup.jpg" alt="Series F">
+            <span class="badge_up2">UP</span>
+          </a>
+        </li>
+        <li>
+          <a href="https://www.webtoons.com/en/comedy/g/list?title_no=700">
+            <img src="https://webtoon-phinf.pstatic.net/g_thumb.jpg" alt="">
+            <span class="badge_up2">UP</span>
+          </a>
+          <a href="https://www.webtoons.com/en/comedy/g/list?title_no=700">
+            <strong class="title">Series G</strong>
+          </a>
+        </li>
+        <li>
+          <img src="https://webtoon-phinf.pstatic.net/shared_wrong.jpg" alt="">
+          <a href="https://www.webtoons.com/en/slice/h/list?title_no=800"><strong class="title">Series H</strong></a>
+          <a href="https://www.webtoons.com/en/slice/i/list?title_no=900"><strong class="title">Series I</strong></a>
+        </li>
+      </ul>
+    `;
+    const res = await webtoonService.fetchLatestUpdates({
+      page: 1,
+      fetchHtmlImpl: async () => ({ ok: true, html }),
+    });
+    expect(res.ok).toBe(true);
+    expect(res.items).toEqual([
+      {
+        title: 'Series F',
+        mangaUrl: 'https://www.webtoons.com/en/romance/f/list?title_no=600',
+        coverUrl: 'https://swebtoon-phinf.pstatic.net/f_dup.jpg',
+        latestChapterLabel: 'UP',
+      },
+      {
+        title: 'Series G',
+        mangaUrl: 'https://www.webtoons.com/en/comedy/g/list?title_no=700',
+        coverUrl: 'https://webtoon-phinf.pstatic.net/g_thumb.jpg',
+        latestChapterLabel: 'UP',
+      },
+      {
+        title: 'Series C',
+        mangaUrl: 'https://www.webtoons.com/en/fantasy/c/list?title_no=300',
+        coverUrl: 'https://swebtoon-phinf.pstatic.net/c_real.jpg',
+        latestChapterLabel: '',
+      },
+      {
+        title: 'Series D',
+        mangaUrl: 'https://www.webtoons.com/en/drama/d/list?title_no=400',
+        coverUrl: 'https://webtoon-phinf.pstatic.net/d_orig.jpg',
+        latestChapterLabel: '',
+      },
+      {
+        title: 'Series E',
+        mangaUrl: 'https://www.webtoons.com/en/action/e/list?title_no=500',
+        coverUrl: 'https://gwebtoon-phinf.pstatic.net/e_1x.jpg',
+        latestChapterLabel: '',
+      },
+      {
+        title: 'Series H',
+        mangaUrl: 'https://www.webtoons.com/en/slice/h/list?title_no=800',
+        coverUrl: '',
+        latestChapterLabel: '',
+      },
+      {
+        title: 'Series I',
+        mangaUrl: 'https://www.webtoons.com/en/slice/i/list?title_no=900',
+        coverUrl: '',
+        latestChapterLabel: '',
+      },
+    ]);
+  });
 });
 
 describe('RawKuma fetchLatestUpdates', () => {

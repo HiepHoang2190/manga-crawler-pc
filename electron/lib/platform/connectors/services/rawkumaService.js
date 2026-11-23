@@ -10,7 +10,7 @@ const { fetchHtml, resolveUrl, getImageSrcFromEl, USER_AGENT_JSOUP } = require('
 const DOMAIN = 'https://rawkuma.net/';
 const LABEL = 'RawKuma';
 const SITE_ID = 'rawkuma';
-const RAWKUMA_MAX_PAGES = 20;
+const RAWKUMA_MAX_PAGES = 500;
 
 function findRawkumaCardRoot($, $imgLink) {
   let $curr = $imgLink.parent();

@@ -912,6 +912,10 @@ export const en = {
   'latestUpdates.stats.page': 'Page',
   'latestUpdates.stats.sources': 'Sources',
   'latestUpdates.stats.lastUpdated': 'Updated at {time}',
+  'latestUpdates.stats.cachedBadge': 'Cached',
+  'latestUpdates.stats.cachedTooltip':
+    'Cached for 5 minutes for instant source switching. Click Load list to fetch fresh data.',
+  'latestUpdates.stats.revalidating': 'Refreshing in background…',
   'latestUpdates.stats.tip': 'Click a manga to open chapters',
 
   'bulkScan.pickSource': 'Source',
@@ -928,6 +932,7 @@ export const en = {
   'bulkScan.cookieHintGeneric':
     '{site} requires a browser/Cloudflare cookie for reliable catalog scanning.',
   'bulkScan.maxPagesLabel': 'Scan depth',
+  'bulkScan.maxPagesAll': 'All pages (full catalog)',
   'bulkScan.maxPagesOption': '{count} pages',
   'bulkScan.fetchFailed': 'Could not load the scan list.',
   'bulkScan.unsupportedSite': 'This source does not support Scan All yet.',
@@ -937,6 +942,7 @@ export const en = {
   'bulkScan.shiftTip': 'Hold Shift to select a range',
   'bulkScan.loading': 'Loading…',
   'bulkScan.loadingPage': 'Loading page {page}/{total}…',
+  'bulkScan.loadingPageWithCount': 'Loading page {page}/{total} · {count} titles…',
   'bulkScan.empty': 'No titles returned.',
   'bulkScan.needElectron': 'Run the desktop (Electron) app to load this list.',
   'bulkScan.checkAll': 'Check all',

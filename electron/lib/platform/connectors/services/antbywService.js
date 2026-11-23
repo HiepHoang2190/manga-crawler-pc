@@ -207,7 +207,7 @@ function downloadChapter(payload, connector) {
   return service.downloadChapter(payload, connector || LABEL);
 }
 
-const ANTBYW_MAX_PAGES = 20;
+const ANTBYW_MAX_PAGES = 500;
 
 function parseAntbywListingHtml(html, pageUrl) {
   const $ = cheerio.load(String(html || ''));

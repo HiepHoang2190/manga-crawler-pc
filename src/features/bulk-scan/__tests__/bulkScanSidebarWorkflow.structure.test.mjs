@@ -26,9 +26,20 @@ describe('BulkScanPanel Sidebar Workflow', () => {
     expect(content).not.toContain('BULK_SCAN_FILTERS');
   });
 
-  test('toolbar uses clean leftSlot matching explore family and footer has direct page jump', () => {
+  test('toolbar places primary scan/enqueue actions next to subtabsSlot in leftSlot and keeps footer direct page jump', () => {
     const content = fs.readFileSync(panelPath, 'utf8');
-    expect(content).toContain('leftSlot={subtabsSlot}');
+    const leftSlotMatch = content.match(/leftSlot=\{([\s\S]*?)\}\s*\n\s*rightSlot=/);
+    expect(leftSlotMatch).not.toBeNull();
+    const leftSlotCode = leftSlotMatch[1];
+    const subtabsIdx = leftSlotCode.indexOf('{subtabsSlot}');
+    const slotIdx = leftSlotCode.indexOf('data-testid="explore-primary-action-slot"');
+    const scanIdx = leftSlotCode.indexOf('runLoad');
+    const enqueueIdx = leftSlotCode.indexOf('runEnqueue');
+    expect(subtabsIdx).toBeGreaterThan(-1);
+    expect(slotIdx).toBeGreaterThan(subtabsIdx);
+    expect(scanIdx).toBeGreaterThan(slotIdx);
+    expect(enqueueIdx).toBeGreaterThan(scanIdx);
+    expect(leftSlotCode).toContain('stopScan');
     expect(content).toContain('handleDirectPageSubmit');
     expect(content).toContain('rawPageInput');
   });

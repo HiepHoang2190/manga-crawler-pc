@@ -1,6 +1,6 @@
 import React from 'react';
 import { useI18n } from '../../../../context/I18nContext';
-import { SearchableSelect } from '../../../../shared';
+import { SearchableSelect, SectionTitle } from '../../../../shared';
 import TranslateSettingsPanel from '../../TranslateSettingsPanel';
 import {
   QUICK_COLORS,
@@ -74,10 +74,10 @@ export function MangaStudioRightSidebar({
 
             {/* Row 1: FONT & COLOR */}
             <div>
-              <div className="flex items-center justify-between text-[10px] font-bold tracking-wider text-on-surface-variant mb-1 select-none">
+              <SectionTitle className="flex items-center justify-between mb-1">
                 <span>FONT</span>
                 <span>COLOR</span>
-              </div>
+              </SectionTitle>
               <div className="flex items-center gap-2">
                 {/* Font Select */}
                 <SearchableSelect
@@ -135,7 +135,7 @@ export function MangaStudioRightSidebar({
             {/* Row 2: SIZE, WEIGHT, STYLE (Equal 3 columns) */}
             <div className="grid grid-cols-3 gap-2">
               <div>
-                <label className="text-[10px] font-bold tracking-wider text-on-surface-variant block mb-1 select-none">SIZE</label>
+                <SectionTitle as="label" className="block mb-1">SIZE</SectionTitle>
                 <SearchableSelect
                   value={String(selectedLayer?.fontSize || 'auto')}
                   disabled={!selectedLayer}
@@ -146,7 +146,7 @@ export function MangaStudioRightSidebar({
                 />
               </div>
               <div>
-                <label className="text-[10px] font-bold tracking-wider text-on-surface-variant block mb-1 select-none">WEIGHT</label>
+                <SectionTitle as="label" className="block mb-1">WEIGHT</SectionTitle>
                 <SearchableSelect
                   value={String(selectedLayer?.fontWeight || '400')}
                   disabled={!selectedLayer}
@@ -157,7 +157,7 @@ export function MangaStudioRightSidebar({
                 />
               </div>
               <div>
-                <label className="text-[10px] font-bold tracking-wider text-on-surface-variant block mb-1 select-none">STYLE</label>
+                <SectionTitle as="label" className="block mb-1">STYLE</SectionTitle>
                 <SearchableSelect
                   value={selectedLayer?.fontStyle || 'normal'}
                   disabled={!selectedLayer}
@@ -172,7 +172,7 @@ export function MangaStudioRightSidebar({
             {/* Row 3: ALIGNMENT & DIRECTION (Equal 2 columns 50/50) */}
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-[10px] font-bold tracking-wider text-on-surface-variant block mb-1 select-none">ALIGNMENT</label>
+                <SectionTitle as="label" className="block mb-1">ALIGNMENT</SectionTitle>
                 <div className="h-8 flex items-center rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-0.5">
                   {[
                     { id: 'left', icon: 'format_align_left' },
@@ -198,7 +198,7 @@ export function MangaStudioRightSidebar({
                 </div>
               </div>
               <div>
-                <label className="text-[10px] font-bold tracking-wider text-on-surface-variant block mb-1 select-none">DIRECTION</label>
+                <SectionTitle as="label" className="block mb-1">DIRECTION</SectionTitle>
                 <SearchableSelect
                   value={selectedLayer?.direction || 'auto'}
                   disabled={!selectedLayer}
@@ -213,7 +213,7 @@ export function MangaStudioRightSidebar({
             {/* Row 4: BORDER & WIDTH (Equal 2 columns 50/50 matching Row 3) */}
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-[10px] font-bold tracking-wider text-on-surface-variant block mb-1 select-none">BORDER</label>
+                <SectionTitle as="label" className="block mb-1">BORDER</SectionTitle>
                 <div className="h-8 flex items-center justify-between rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-2 transition-colors">
                   <button
                     type="button"
@@ -278,7 +278,7 @@ export function MangaStudioRightSidebar({
               </div>
 
               <div>
-                <label className="text-[10px] font-bold tracking-wider text-on-surface-variant block mb-1 select-none">WIDTH</label>
+                <SectionTitle as="label" className="block mb-1">WIDTH</SectionTitle>
                 <div className="h-8 flex items-center rounded-lg border border-outline-variant/30 bg-surface-container-lowest overflow-hidden">
                   <button
                     type="button"
@@ -320,9 +320,9 @@ export function MangaStudioRightSidebar({
 
             {/* Row 5: Batch Apply Style */}
             <div className="pt-1">
-              <label className="text-[10px] font-bold tracking-wider text-on-surface-variant uppercase block mb-1 select-none">
+              <SectionTitle as="label" className="block mb-1">
                 {t('translate.studio.applyStyleLabel')}
-              </label>
+              </SectionTitle>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
@@ -491,9 +491,9 @@ export function MangaStudioRightSidebar({
 
                           {/* OPACITY Slider & Delete Button */}
                           <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-bold tracking-wider text-on-surface-variant uppercase select-none">
+                            <SectionTitle as="span">
                               {t('translate.type.opacity')}
-                            </span>
+                            </SectionTitle>
                             <input
                               type="range"
                               min="0"
@@ -525,9 +525,9 @@ export function MangaStudioRightSidebar({
                           {/* PLACEMENT Row */}
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                              <span className="text-[10px] font-bold tracking-wider text-on-surface-variant uppercase select-none">
+                              <SectionTitle as="span">
                                 {t('translate.type.placement')}
-                              </span>
+                              </SectionTitle>
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -553,9 +553,9 @@ export function MangaStudioRightSidebar({
 
                           {/* SOURCE TEXT */}
                           <div>
-                            <span className="text-[10px] font-bold tracking-wider text-on-surface-variant uppercase block mb-1 select-none">
+                            <SectionTitle as="span" className="block mb-1">
                               {t('translate.type.sourceText')}
-                            </span>
+                            </SectionTitle>
                             <textarea
                               rows={2}
                               value={l.sourceText || l.originalText || l.rawText || ''}
@@ -568,9 +568,9 @@ export function MangaStudioRightSidebar({
                           {/* TRANSLATION */}
                           <div>
                             <div className="flex items-center justify-between mb-1">
-                              <span className="text-[10px] font-bold tracking-wider text-on-surface-variant uppercase select-none">
+                              <SectionTitle as="span">
                                 {t('translate.type.translatedText')}
-                              </span>
+                              </SectionTitle>
                               <button
                                 type="button"
                                 disabled={retryingSingleLayerId === l.id}

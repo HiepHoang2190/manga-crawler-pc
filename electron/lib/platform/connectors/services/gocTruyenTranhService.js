@@ -672,7 +672,7 @@ function getImageFetchHeadersForRemoteUi() {
 }
 
 const GTT_PAGE_SIZE = 48;
-const GTT_MAX_PAGES = 20;
+const GTT_MAX_PAGES = 500;
 
 function pickGttCover($img, pageUrl) {
   if (!$img || !$img.length) return '';

@@ -634,14 +634,14 @@ function parseMangaVnForumHtml(html, pageUrl) {
       if (Number.isFinite(p) && p > totalPages) totalPages = p;
     }
     const numText = parseInt(String($(el).text() || '').trim(), 10);
-    if (Number.isFinite(numText) && numText > totalPages && numText < 500) {
+    if (Number.isFinite(numText) && numText > totalPages && numText <= 500) {
       totalPages = numText;
     }
   });
 
   return {
     items,
-    totalPages: Math.min(20, Math.max(1, totalPages)),
+    totalPages: Math.min(500, Math.max(1, totalPages)),
   };
 }
 
@@ -650,7 +650,7 @@ async function fetchLatestUpdates(options = {}) {
   if (signal?.aborted) {
     return { ok: false, aborted: true, siteId: 'mangavn', page: 1, totalPages: 1, items: [] };
   }
-  const page = Math.min(20, Math.max(1, Math.floor(Number(options.page) || 1)));
+  const page = Math.min(500, Math.max(1, Math.floor(Number(options.page) || 1)));
   const listingUrl = page > 1 ? `${DOMAIN}f3p${(page - 1) * 50}-` : `${DOMAIN}f3-`;
   const fetchImpl = typeof options.fetchHtmlImpl === 'function' ? options.fetchHtmlImpl : fetchHtml;
 

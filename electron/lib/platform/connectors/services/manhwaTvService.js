@@ -516,7 +516,7 @@ class ManhwaTvService extends HtmlConnectorService {
 // Create service instance
 const service = new ManhwaTvService();
 
-const MANHWATV_MAX_PAGES = 20;
+const MANHWATV_MAX_PAGES = 500;
 
 function parseManhwaTvListingHtml(html, pageUrl) {
   const $ = cheerio.load(String(html || ''));

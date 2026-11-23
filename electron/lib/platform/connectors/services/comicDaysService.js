@@ -116,7 +116,7 @@ function load(url, options = {}) {
 }
 
 const COMIC_DAYS_PAGE_SIZE = 48;
-const COMIC_DAYS_MAX_PAGES = 20;
+const COMIC_DAYS_MAX_PAGES = 500;
 
 function parseComicDaysHomeHtml(html) {
   const match = String(html || '').match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);

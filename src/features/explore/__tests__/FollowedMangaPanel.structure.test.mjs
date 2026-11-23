@@ -33,9 +33,10 @@ describe('FollowedMangaPanel structure and standards', () => {
     expect(content).toContain('runFavoriteCheckQueue');
   });
 
-  test('uses balanced responsive grid columns matching LatestUpdatesPanel and clean leftSlot without text clutter', () => {
+  test('uses balanced responsive grid columns matching LatestUpdatesPanel and clean leftSlot with primary action slot', () => {
     const content = fs.readFileSync(panelPath, 'utf8');
-    expect(content).toContain('leftSlot={subtabsSlot}');
+    expect(content).toContain('{subtabsSlot}');
+    expect(content).toContain('data-testid="explore-primary-action-slot"');
     expect(content).toContain('grid-cols-2');
     expect(content).toContain('sm:grid-cols-3');
     expect(content).toContain('xl:grid-cols-5');
@@ -60,16 +61,23 @@ describe('FollowedMangaPanel structure and standards', () => {
     expect(content).not.toMatch(/viewChapters[\s\S]{0,100}play_arrow/);
   });
 
-  test('toolbar places main action button first and ViewModeToggle at the end of rightSlot', () => {
+  test('toolbar places main action button right after subtabsSlot in leftSlot and keeps ViewModeToggle in rightSlot', () => {
     const content = fs.readFileSync(panelPath, 'utf8');
+    const leftSlotMatch = content.match(/leftSlot=\{([\s\S]*?)\}\s*\n\s*rightSlot=/);
     const rightSlotMatch = content.match(/rightSlot=\{([\s\S]*?)\n\s*\}\s*\/>/);
+    expect(leftSlotMatch).not.toBeNull();
     expect(rightSlotMatch).not.toBeNull();
+    const leftSlotCode = leftSlotMatch[1];
     const rightSlotCode = rightSlotMatch[1];
-    const checkAllIndex = rightSlotCode.indexOf('handleCheckAll');
+    const subtabsIndex = leftSlotCode.indexOf('{subtabsSlot}');
+    const checkAllIndex = leftSlotCode.indexOf('handleCheckAll');
+    const enqueueAllIndex = leftSlotCode.indexOf('handleEnqueueAllNew');
     const viewModeIndex = rightSlotCode.indexOf('<ViewModeToggle');
-    expect(checkAllIndex).toBeGreaterThan(-1);
+    expect(subtabsIndex).toBeGreaterThan(-1);
+    expect(checkAllIndex).toBeGreaterThan(subtabsIndex);
+    expect(enqueueAllIndex).toBeGreaterThan(checkAllIndex);
+    expect(rightSlotCode).not.toContain('handleCheckAll');
     expect(viewModeIndex).toBeGreaterThan(-1);
-    expect(viewModeIndex).toBeGreaterThan(checkAllIndex);
   });
 
   test('mounts ChaptersDrawer and integrates reading and queue actions', () => {

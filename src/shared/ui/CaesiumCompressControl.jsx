@@ -1,5 +1,6 @@
 import React from 'react';
 import { useI18n } from '../../context/I18nContext';
+import SectionTitle from './SectionTitle.jsx';
 
 export const COMPRESS_QUALITY_PRESETS = [
   { value: 85, label: '85', subLabelKey: 'caesium.quality85Sub', defaultSub: 'Cân bằng', descKey: 'caesium.quality85Desc' },
@@ -64,9 +65,9 @@ export default function CaesiumCompressControl({
         <div className="space-y-3 pt-1">
           {showRatio && (
             <div className="space-y-1.5">
-              <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/70">
-                <span>{t('caesium.ratioLabel') || t('upscale.compress.ratioLabel') || 'Kích thước xuất (Resize)'}</span>
-                <span className="text-primary font-bold">{Math.round(ratio * 100)}%</span>
+              <div className="flex items-center justify-between">
+                <SectionTitle as="span">{t('caesium.ratioLabel') || t('upscale.compress.ratioLabel') || 'Kích thước xuất (Resize)'}</SectionTitle>
+                <span className="text-[11px] text-primary font-bold">{Math.round(ratio * 100)}%</span>
               </div>
               <div className="grid grid-cols-3 gap-1.5">
                 {ratioPresets.map((opt) => {
@@ -101,9 +102,9 @@ export default function CaesiumCompressControl({
             </div>
           ) : (
             <div className="space-y-1.5">
-              <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/70">
-                <span>{t('caesium.qualityLabel') || t('imagePipeline.caesium.qualityLabel') || 'Chất lượng nén ảnh'}</span>
-                <span className="text-primary font-bold">{quality}</span>
+              <div className="flex items-center justify-between">
+                <SectionTitle as="span">{t('caesium.qualityLabel') || t('imagePipeline.caesium.qualityLabel') || 'Chất lượng nén ảnh'}</SectionTitle>
+                <span className="text-[11px] text-primary font-bold">{quality}</span>
               </div>
               <div className="grid grid-cols-3 gap-1.5">
                 {presets.map((opt) => {

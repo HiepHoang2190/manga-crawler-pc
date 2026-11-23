@@ -1,4 +1,5 @@
 import { useI18n } from '../../context/I18nContext';
+import SectionTitle from './SectionTitle.jsx';
 
 /**
  * Unified Source Picker Component for Manga/Image files and folders across the project.
@@ -56,9 +57,9 @@ export default function SourcePicker({
   return (
     <div className={`space-y-1.5 ${className}`}>
       {resolvedHeading && (
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/50">
+        <SectionTitle as="p">
           {resolvedHeading}
-        </p>
+        </SectionTitle>
       )}
 
       {hasFolders ? (

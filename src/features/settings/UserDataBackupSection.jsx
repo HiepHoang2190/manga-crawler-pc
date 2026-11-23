@@ -11,7 +11,7 @@ import {
   BACKUP_FORMAT_ENCRYPTED,
 } from '../../utils/userDataBackup';
 import { clearAutoBackupScheduleMeta } from '../../utils/autoBackup';
-import { ConfirmModal } from '../../shared';
+import { ConfirmModal, SectionTitle } from '../../shared';
 
 function SectionCheckbox({ id, label, checked, onChange, disabled }) {
   return (
@@ -210,9 +210,9 @@ export default function UserDataBackupSection() {
       ) : null}
 
       <div className="space-y-2 max-w-xl">
-        <p className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">
+        <SectionTitle as="p">
           {t('settings.backup.include')}
-        </p>
+        </SectionTitle>
         <div className="space-y-0.5">
           <SectionCheckbox
             id="favorites"

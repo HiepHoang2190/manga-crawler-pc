@@ -4,6 +4,7 @@ import {
   FetchErrorState,
   MultiSelectDropdown,
   SearchableSelect,
+  SectionTitle,
   StudioLayout,
   useStudioLayout,
   ViewModeToggle,
@@ -13,6 +14,11 @@ import { dedupeChaptersByNumber } from '../download';
 import ExploreSourceSelect from '../explore/components/ExploreSourceSelect.jsx';
 import { useI18n } from '../../context/I18nContext';
 import { latestListingItemChapterActionsEnabled } from './latestListingChapterActions.js';
+import {
+  buildLatestListTriggerKey,
+  makeListingPageCacheKey,
+  latestUpdatesPageCache,
+} from './latestUpdatesCache.mjs';
 
 const GRID_SKELETON_ITEMS = Array.from({ length: 12 }, (_, idx) => idx);
 const LIST_SKELETON_ITEMS = Array.from({ length: 8 }, (_, idx) => idx);
@@ -337,6 +343,7 @@ export const latestUpdatesListingCache = {
   rows: [],
   listingTotalPages: 1,
   fetchError: '',
+  fetchedAt: 0,
 };
 
 /**
@@ -347,6 +354,7 @@ export const latestUpdatesMultiSearchCache = {
   searchTerm: '',
   rows: [],
   fetchError: '',
+  fetchedAt: 0,
 };
 
 /**
@@ -460,11 +468,23 @@ export default function LatestUpdatesPanel({
     [supported],
   );
 
-  const handleSiteChange = useCallback((nextId) => {
-    const id = String(nextId || '').trim();
-    setSelectedSiteId(id);
-    persistSiteId(id);
-  }, []);
+  const handleSiteChange = useCallback(
+    (nextId) => {
+      const id = String(nextId || '').trim();
+      if (id !== selectedSiteId) {
+        setPage(1);
+        setRawPageInput('1');
+        setSearchDraft('');
+        setAppliedSearch('');
+        setIsSearchLoading(false);
+        setPluginConsoleLines([]);
+        setPluginConsoleOpen(false);
+      }
+      setSelectedSiteId(id);
+      persistSiteId(id);
+    },
+    [selectedSiteId],
+  );
 
   const [page, setPage] = useState(() => latestUpdatesListingCache.page || 1);
   const [raw_page_input, setRawPageInput] = useState(() => String(latestUpdatesListingCache.page || 1));
@@ -478,14 +498,20 @@ export default function LatestUpdatesPanel({
   const [busyList, setBusyList] = useState(false);
   const [isSearchLoading, setIsSearchLoading] = useState(false);
   const [isStoppingList, setIsStoppingList] = useState(false);
+  const [isFromCache, setIsFromCache] = useState(() =>
+    Boolean(latestUpdatesListingCache.rows?.length && latestUpdatesListingCache.fetchedAt),
+  );
+  const [isBackgroundRefreshing, setIsBackgroundRefreshing] = useState(false);
   const fetchSeqRef = useRef(0);
   const busyListRef = useRef(false);
   const isSearchLoadingRef = useRef(false);
+  const backgroundRefreshingRef = useRef(false);
   busyListRef.current = busyList;
   isSearchLoadingRef.current = isSearchLoading;
+  backgroundRefreshingRef.current = isBackgroundRefreshing;
 
   useEffect(() => () => {
-    if (busyListRef.current || isSearchLoadingRef.current) {
+    if (busyListRef.current || isSearchLoadingRef.current || backgroundRefreshingRef.current) {
       fetchSeqRef.current += 1;
       try {
         window.electronAPI?.cancelLatestUpdates?.();
@@ -789,7 +815,7 @@ export default function LatestUpdatesPanel({
     return rows.filter((r) => isMangaFavorite(r, r.siteId)).length;
   }, [rows, favorites, isMangaFavorite]);
 
-  const [lastFetchedAt, setLastFetchedAt] = useState(() => Date.now());
+  const [lastFetchedAt, setLastFetchedAt] = useState(() => latestUpdatesListingCache.fetchedAt || null);
 
   const displayedRows = useMemo(() => {
     if (!isMultiSourceSearch) return rows.slice(0, pageSize);
@@ -882,6 +908,8 @@ export default function LatestUpdatesPanel({
           setListingTotalPages(1);
           setPage(1);
           setFetchError(latestUpdatesMultiSearchCache.fetchError || '');
+          setLastFetchedAt(latestUpdatesMultiSearchCache.fetchedAt || null);
+          setIsFromCache(Boolean(latestUpdatesMultiSearchCache.fetchedAt));
           setAppliedSearch(latestUpdatesMultiSearchCache.searchTerm);
           setSearchDraft(latestUpdatesMultiSearchCache.searchTerm);
         } else {
@@ -902,6 +930,8 @@ export default function LatestUpdatesPanel({
           setListingTotalPages(cached.listingTotalPages || 1);
           setPage(cached.page || 1);
           setFetchError(cached.fetchError || '');
+          setLastFetchedAt(cached.fetchedAt || null);
+          setIsFromCache(Boolean(cached.fetchedAt));
           setAppliedSearch(cached.appliedSearch || '');
           setSearchDraft(cached.appliedSearch || '');
         } else if (
@@ -912,6 +942,8 @@ export default function LatestUpdatesPanel({
           setListingTotalPages(latestUpdatesListingCache.listingTotalPages || 1);
           setPage(latestUpdatesListingCache.page || 1);
           setFetchError(latestUpdatesListingCache.fetchError || '');
+          setLastFetchedAt(latestUpdatesListingCache.fetchedAt || null);
+          setIsFromCache(Boolean(latestUpdatesListingCache.fetchedAt));
           setAppliedSearch('');
         }
       }
@@ -944,6 +976,7 @@ export default function LatestUpdatesPanel({
     listingTotalPages: 1,
     fetchError: '',
     appliedSearch: '',
+    fetchedAt: 0,
   });
 
   const mangadexPanelLangOptions = useMemo(
@@ -975,35 +1008,43 @@ export default function LatestUpdatesPanel({
     persistPanelMinotruyenCategory(normalized);
   }, []);
 
-  const latestListFetchTriggerKey = useMemo(() => {
-    const scope = isMultiSourceSearch
-      ? `all:${selectedMultiSearchSiteIds.slice().sort().join(',')}`
-      : 'one';
-    if (selectedSiteId === 'mangadex') {
-      return `${selectedSiteId}|${appliedSearch}|${scope}|${panelMangadexLanguage}`;
-    }
-    if (selectedSiteId === 'minotruyen') {
-      return `${selectedSiteId}|${appliedSearch}|${scope}|${panelMinotruyenCategory}`;
-    }
-    return `${selectedSiteId}|${appliedSearch}|${scope}`;
-  }, [
-    selectedSiteId,
-    appliedSearch,
-    isMultiSourceSearch,
-    selectedMultiSearchSiteIds,
-    panelMangadexLanguage,
-    panelMinotruyenCategory,
-  ]);
+  const latestListFetchTriggerKey = useMemo(
+    () =>
+      buildLatestListTriggerKey({
+        selectedSiteId,
+        appliedSearch,
+        isMultiSourceSearch,
+        selectedMultiSearchSiteIds,
+        panelMangadexLanguage,
+        panelMinotruyenCategory,
+      }),
+    [
+      selectedSiteId,
+      appliedSearch,
+      isMultiSourceSearch,
+      selectedMultiSearchSiteIds,
+      panelMangadexLanguage,
+      panelMinotruyenCategory,
+    ],
+  );
 
   useEffect(() => {
+    if (busyListRef.current || isSearchLoadingRef.current || backgroundRefreshingRef.current) {
+      fetchSeqRef.current += 1;
+      try {
+        window.electronAPI?.cancelLatestUpdates?.();
+      } catch {
+        /* ignore */
+      }
+    }
+    setBusyList(false);
+    setIsSearchLoading(false);
+    setIsBackgroundRefreshing(false);
+    setIsStoppingList(false);
     setPage(1);
     setRawPageInput('1');
-    setListingTotalPages(1);
-    setRows([]);
-    setFetchError('');
     setSearchDraft('');
     setAppliedSearch('');
-    setIsSearchLoading(false);
     setPluginConsoleLines([]);
     setPluginConsoleOpen(false);
   }, [selectedSourcesKey]);
@@ -1030,48 +1071,105 @@ export default function LatestUpdatesPanel({
     setRawPageInput(String(page));
   }, [page]);
 
-  const handleStopFetch = useCallback(() => {
-    if (!busyListRef.current && !isSearchLoadingRef.current) return;
-    fetchSeqRef.current += 1;
-    setIsStoppingList(true);
-    try {
-      void window.electronAPI?.cancelLatestUpdates?.();
-    } catch {
-      /* ignore */
+  const cancelInFlightFetch = useCallback(() => {
+    if (busyListRef.current || isSearchLoadingRef.current || backgroundRefreshingRef.current) {
+      fetchSeqRef.current += 1;
+      try {
+        void window.electronAPI?.cancelLatestUpdates?.();
+      } catch {
+        /* ignore */
+      }
     }
-    setBusyList(false);
-    setIsSearchLoading(false);
-    setIsStoppingList(false);
   }, []);
 
-  /** `pageNum` tường minh để Prev/Next không dùng state `page` bị stale. */
+  const handleStopFetch = useCallback(() => {
+    if (!busyListRef.current && !isSearchLoadingRef.current && !backgroundRefreshingRef.current) return;
+    setIsStoppingList(true);
+    cancelInFlightFetch();
+    setBusyList(false);
+    setIsSearchLoading(false);
+    setIsBackgroundRefreshing(false);
+    setIsStoppingList(false);
+  }, [cancelInFlightFetch]);
+
+  /** `pageNum` tường minh để Prev/Next không dùng state `page` bị stale. Hỗ trợ cache TTL 5 phút + SWR 30 phút. */
   const runFetchForPage = useCallback(
-    async (pageNum, overrideSearch) => {
+    async (pageNum, overrideSearch, { force = false, background = false, searchLimitOverride } = {}) => {
       const api = window.electronAPI;
       const p = clampLatestListingPage(pageNum);
       if (!api?.fetchLatestUpdates) {
         setIsSearchLoading(false);
-        setFetchError(t('latestUpdates.needElectron'));
+        setIsBackgroundRefreshing(false);
+        if (!background) setFetchError(t('latestUpdates.needElectron'));
         return;
       }
       if (!activeFetchSiteIds.length) {
         setIsSearchLoading(false);
-        setFetchError(t('latestUpdates.pickSource'));
+        setIsBackgroundRefreshing(false);
+        if (!background) setFetchError(t('latestUpdates.pickSource'));
         return;
       }
+
+      const searchTerm =
+        typeof overrideSearch === 'string' ? overrideSearch : appliedSearch;
+      const searchEffective = Boolean(String(searchTerm || '').trim());
+      const multiEffective = searchEffective && searchAllSources;
+      const effectiveTriggerKey = buildLatestListTriggerKey({
+        selectedSiteId,
+        appliedSearch: searchTerm,
+        isMultiSourceSearch: multiEffective,
+        selectedMultiSearchSiteIds,
+        panelMangadexLanguage,
+        panelMinotruyenCategory,
+      });
+      const pageCacheKey = makeListingPageCacheKey(effectiveTriggerKey, p);
+
+      if (!force && !background) {
+        const cached = latestUpdatesPageCache.get(pageCacheKey);
+        if (cached.status === 'fresh' || cached.status === 'stale') {
+          const entry = cached.entry;
+          cancelInFlightFetch();
+          fetchSeqRef.current += 1;
+          setListingTotalPages(entry.listingTotalPages || 1);
+          setPage(p);
+          setRows(entry.rows);
+          setLastFetchedAt(entry.fetchedAt || Date.now());
+          setFetchError(entry.fetchError || '');
+          setIsFromCache(true);
+          setBusyList(false);
+          setIsSearchLoading(false);
+          setIsStoppingList(false);
+          latestUpdatesListingCache.key = effectiveTriggerKey;
+          latestUpdatesListingCache.page = p;
+          latestUpdatesListingCache.rows = entry.rows;
+          latestUpdatesListingCache.listingTotalPages = entry.listingTotalPages || 1;
+          latestUpdatesListingCache.fetchError = entry.fetchError || '';
+          latestUpdatesListingCache.fetchedAt = entry.fetchedAt || Date.now();
+          if (cached.status === 'stale') {
+            void runFetchForPage(p, overrideSearch, { background: true, searchLimitOverride });
+          } else {
+            setIsBackgroundRefreshing(false);
+          }
+          return;
+        }
+      }
+
       const seq = ++fetchSeqRef.current;
-      setIsStoppingList(false);
-      setBusyList(true);
-      setFetchError('');
+      if (background) {
+        setIsBackgroundRefreshing(true);
+      } else {
+        setIsStoppingList(false);
+        setBusyList(true);
+        setIsFromCache(false);
+        setIsBackgroundRefreshing(false);
+        setFetchError('');
+      }
+
       try {
-        const searchTerm =
-          typeof overrideSearch === 'string' ? overrideSearch : appliedSearch;
-        const searchEffective = Boolean(String(searchTerm || '').trim());
-        const multiEffective = searchEffective && searchAllSources;
         const res = await api.fetchLatestUpdates({
           siteIds: activeFetchSiteIds,
           page: p,
-          searchLimit: pageSize,
+          searchLimit: searchLimitOverride ?? pageSize,
           ...effectiveMangaLoadOpts,
           latestUpdatesSearch:
             searchEffective && (multiEffective || selectedSupportsSearch) ? searchTerm : '',
@@ -1080,9 +1178,11 @@ export default function LatestUpdatesPanel({
           return;
         }
         if (!res?.ok || !Array.isArray(res.results)) {
-          setRows([]);
-          setListingTotalPages(1);
-          setFetchError(res?.error || t('latestUpdates.fetchFailed'));
+          if (!background) {
+            setRows([]);
+            setListingTotalPages(1);
+            setFetchError(res?.error || t('latestUpdates.fetchFailed'));
+          }
           return;
         }
         const merged = [];
@@ -1103,11 +1203,16 @@ export default function LatestUpdatesPanel({
             });
           }
         }
-        const calculatedTotalPages = isMultiSourceSearch ? 1 : clampLatestListingTotalPages(maxPg);
+        if (background && merged.length === 0) {
+          return;
+        }
+        const fetchedAt = Date.now();
+        const calculatedTotalPages = multiEffective ? 1 : clampLatestListingTotalPages(maxPg);
         setListingTotalPages(calculatedTotalPages);
         setPage(p);
         setRows(merged);
-        setLastFetchedAt(Date.now());
+        setLastFetchedAt(fetchedAt);
+        setIsFromCache(false);
         let warn = '';
         const activeIdSet = new Set(activeFetchSiteIds);
         const anyErr = res.results.some(
@@ -1128,43 +1233,78 @@ export default function LatestUpdatesPanel({
           if (errs.length) warn = errs.join(' · ');
         }
         setFetchError(warn);
-        if (isMultiSourceSearch) {
-          latestUpdatesMultiSearchCache.key = latestListFetchTriggerKey;
+        if (merged.length > 0) {
+          latestUpdatesPageCache.set(
+            pageCacheKey,
+            {
+              rows: merged,
+              listingTotalPages: calculatedTotalPages,
+              fetchError: warn,
+              page: p,
+              siteId: selectedSiteId,
+              appliedSearch: searchTerm,
+              fetchedAt,
+            },
+            fetchedAt,
+          );
+        }
+        if (multiEffective) {
+          latestUpdatesMultiSearchCache.key = effectiveTriggerKey;
           latestUpdatesMultiSearchCache.searchTerm = searchTerm;
           latestUpdatesMultiSearchCache.rows = merged;
           latestUpdatesMultiSearchCache.fetchError = warn;
+          latestUpdatesMultiSearchCache.fetchedAt = fetchedAt;
         } else {
           singleSourceCacheRef.current = {
             siteId: selectedSiteId,
-            key: latestListFetchTriggerKey,
+            key: effectiveTriggerKey,
             page: p,
             rows: merged,
             listingTotalPages: calculatedTotalPages,
             fetchError: warn,
             appliedSearch: searchTerm,
+            fetchedAt,
           };
         }
-        latestUpdatesListingCache.key = latestListFetchTriggerKey;
+        latestUpdatesListingCache.key = effectiveTriggerKey;
         latestUpdatesListingCache.page = p;
         latestUpdatesListingCache.rows = merged;
         latestUpdatesListingCache.listingTotalPages = calculatedTotalPages;
         latestUpdatesListingCache.fetchError = warn;
+        latestUpdatesListingCache.fetchedAt = fetchedAt;
       } catch (e) {
         if (seq !== fetchSeqRef.current || e?.name === 'AbortError') {
           return;
         }
-        setFetchError(String(e?.message || e || t('latestUpdates.fetchFailed')));
-        setRows([]);
-        setListingTotalPages(1);
+        if (!background) {
+          setFetchError(String(e?.message || e || t('latestUpdates.fetchFailed')));
+          setRows([]);
+          setListingTotalPages(1);
+        }
       } finally {
         if (seq === fetchSeqRef.current) {
           setBusyList(false);
           setIsSearchLoading(false);
+          setIsBackgroundRefreshing(false);
           setIsStoppingList(false);
         }
       }
     },
-    [activeFetchSiteIds, supported, effectiveMangaLoadOpts, t, appliedSearch, selectedSupportsSearch, searchAllSources, pageSize],
+    [
+      activeFetchSiteIds,
+      supported,
+      effectiveMangaLoadOpts,
+      t,
+      appliedSearch,
+      selectedSupportsSearch,
+      searchAllSources,
+      pageSize,
+      selectedSiteId,
+      selectedMultiSearchSiteIds,
+      panelMangadexLanguage,
+      panelMinotruyenCategory,
+      cancelInFlightFetch,
+    ],
   );
 
   const pagination_search_locked =
@@ -1203,12 +1343,22 @@ export default function LatestUpdatesPanel({
   }, [raw_page_input, listingTotalPages, page, runFetchForPage]);
 
   const handleManualRefresh = useCallback(() => {
+    latestUpdatesPageCache.invalidateByTriggerKey(latestListFetchTriggerKey);
     latestUpdatesListingCache.key = '';
     latestUpdatesListingCache.rows = [];
+    latestUpdatesListingCache.fetchedAt = 0;
+    if (isMultiSourceSearch) {
+      latestUpdatesMultiSearchCache.key = '';
+      latestUpdatesMultiSearchCache.rows = [];
+      latestUpdatesMultiSearchCache.fetchedAt = 0;
+      setMultiSearchPage(1);
+      setRawMultiPageInput('1');
+    }
     setPage(1);
     setRawPageInput('1');
-    void runFetchForPage(1);
-  }, [runFetchForPage]);
+    setIsFromCache(false);
+    void runFetchForPage(1, undefined, { force: true });
+  }, [latestListFetchTriggerKey, isMultiSourceSearch, runFetchForPage]);
 
   const handlePageSizeChange = useCallback((val) => {
     const next = Number(val);
@@ -1224,37 +1374,76 @@ export default function LatestUpdatesPanel({
         setMultiSearchPage(1);
         setRawMultiPageInput('1');
       } else {
+        const prevPage = page;
         setPage(1);
         setRawPageInput('1');
-        void runFetchForPage(1);
+        const p1Cache = latestUpdatesPageCache.get(makeListingPageCacheKey(latestListFetchTriggerKey, 1));
+        if (isSearchActive || prevPage !== 1 || p1Cache.status !== 'fresh') {
+          void runFetchForPage(1, undefined, {
+            force: isSearchActive,
+            ...(isSearchActive ? { searchLimitOverride: next } : {}),
+          });
+        }
       }
     }
-  }, [isMultiSourceSearch, runFetchForPage]);
+  }, [isMultiSourceSearch, isSearchActive, page, latestListFetchTriggerKey, runFetchForPage]);
 
-  /** Đổi nguồn, từ khóa tìm, hoặc ngôn ngữ MangaDex (ô trong tab) → tải trang 1. */
+  /** Đổi nguồn, từ khóa tìm, hoặc ngôn ngữ MangaDex (ô trong tab) → dùng cache 5p / SWR 30p hoặc tải trang 1. */
   useEffect(() => {
     if (!selectedSiteId) return;
-    if (
-      (latestUpdatesListingCache.key === latestListFetchTriggerKey &&
-        latestUpdatesListingCache.rows?.length > 0 &&
-        latestUpdatesListingCache.page === 1) ||
-      (isMultiSourceSearch &&
-        latestUpdatesMultiSearchCache.key === latestListFetchTriggerKey &&
-        latestUpdatesMultiSearchCache.rows?.length > 0)
-    ) {
-      if (isMultiSourceSearch && latestUpdatesMultiSearchCache.key === latestListFetchTriggerKey) {
-        setRows(latestUpdatesMultiSearchCache.rows);
-        setListingTotalPages(1);
-        setFetchError(latestUpdatesMultiSearchCache.fetchError || '');
-      } else {
-        setRows(latestUpdatesListingCache.rows);
-        setListingTotalPages(latestUpdatesListingCache.listingTotalPages || 1);
-        setFetchError(latestUpdatesListingCache.fetchError || '');
-      }
+    const page1Key = makeListingPageCacheKey(latestListFetchTriggerKey, 1);
+    const cached = latestUpdatesPageCache.get(page1Key);
+    if (cached.status === 'fresh' || cached.status === 'stale') {
+      const entry = cached.entry;
+      cancelInFlightFetch();
+      fetchSeqRef.current += 1;
+      setRows(entry.rows);
+      setListingTotalPages(entry.listingTotalPages || 1);
+      setPage(1);
+      setRawPageInput('1');
+      setFetchError(entry.fetchError || '');
+      setLastFetchedAt(entry.fetchedAt || Date.now());
+      setIsFromCache(true);
+      setBusyList(false);
       setIsSearchLoading(false);
+      setIsStoppingList(false);
+      latestUpdatesListingCache.key = latestListFetchTriggerKey;
+      latestUpdatesListingCache.page = 1;
+      latestUpdatesListingCache.rows = entry.rows;
+      latestUpdatesListingCache.listingTotalPages = entry.listingTotalPages || 1;
+      latestUpdatesListingCache.fetchError = entry.fetchError || '';
+      latestUpdatesListingCache.fetchedAt = entry.fetchedAt || Date.now();
+      if (cached.status === 'stale') {
+        void runFetchForPage(1, undefined, { background: true });
+      } else {
+        setIsBackgroundRefreshing(false);
+      }
       return;
     }
-    void runFetchForPage(1);
+    if (
+      isMultiSourceSearch &&
+      latestUpdatesMultiSearchCache.key === latestListFetchTriggerKey &&
+      latestUpdatesMultiSearchCache.rows?.length > 0
+    ) {
+      cancelInFlightFetch();
+      fetchSeqRef.current += 1;
+      setRows(latestUpdatesMultiSearchCache.rows);
+      setListingTotalPages(1);
+      setFetchError(latestUpdatesMultiSearchCache.fetchError || '');
+      setLastFetchedAt(latestUpdatesMultiSearchCache.fetchedAt || null);
+      setIsFromCache(true);
+      setBusyList(false);
+      setIsSearchLoading(false);
+      setIsBackgroundRefreshing(false);
+      setIsStoppingList(false);
+      return;
+    }
+    setRows([]);
+    setListingTotalPages(1);
+    setFetchError('');
+    setIsFromCache(false);
+    setLastFetchedAt(null);
+    void runFetchForPage(1, undefined, { force: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- latestListFetchTriggerKey
   }, [latestListFetchTriggerKey]);
 
@@ -1267,13 +1456,17 @@ export default function LatestUpdatesPanel({
     setRawPageInput('1');
     setMultiSearchPage(1);
     setRawMultiPageInput('1');
-    if (trimmed === appliedSearch && page === 1) {
+    if (trimmed === appliedSearch) {
       void runFetchForPage(1, trimmed);
     }
-  }, [searchDraft, appliedSearch, page, runFetchForPage]);
+  }, [searchDraft, appliedSearch, runFetchForPage]);
 
   const handleClearLatestSearch = useCallback(() => {
     setSearchDraft('');
+    if (!appliedSearch) {
+      setIsSearchLoading(false);
+      return;
+    }
     setAppliedSearch('');
     setIsSearchLoading(false);
     setPage(1);
@@ -1285,6 +1478,7 @@ export default function LatestUpdatesPanel({
       latestUpdatesMultiSearchCache.searchTerm = '';
       latestUpdatesMultiSearchCache.rows = [];
       latestUpdatesMultiSearchCache.fetchError = '';
+      latestUpdatesMultiSearchCache.fetchedAt = 0;
     } else if (singleSourceCacheRef.current) {
       singleSourceCacheRef.current.appliedSearch = '';
     }
@@ -1297,8 +1491,10 @@ export default function LatestUpdatesPanel({
       setRows(cached.rows);
       setListingTotalPages(cached.listingTotalPages || 1);
       setFetchError(cached.fetchError || '');
+      setLastFetchedAt(cached.fetchedAt || null);
+      setIsFromCache(Boolean(cached.fetchedAt));
     }
-  }, [searchAllSources, selectedSiteId]);
+  }, [appliedSearch, searchAllSources, selectedSiteId]);
 
   const handlePluginConsoleCopy = useCallback(async () => {
     const text = pluginConsoleLines.join('\n');
@@ -1536,9 +1732,9 @@ export default function LatestUpdatesPanel({
         role="group"
         aria-label={t('latestUpdates.searchScopeLabel')}
       >
-        <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant shrink-0">
+        <SectionTitle as="span" className="shrink-0">
           {t('latestUpdates.searchScopeLabel')}
-        </span>
+        </SectionTitle>
         <div className="grid grid-cols-2 w-full min-w-0 h-10 rounded-xl border border-outline-variant/30 p-1 bg-surface-container-high/40 gap-1 items-center">
           <button
             type="button"
@@ -1602,36 +1798,51 @@ export default function LatestUpdatesPanel({
         showLeftSidebar={showLeftSidebar}
         onToggleLeftSidebar={toggleLeftSidebar}
         leftSidebarTooltip={showLeftSidebar ? t('sidebar.hidePanel') : t('sidebar.showPanel')}
-        leftSlot={subtabsSlot}
+        leftSlot={
+          <div className="flex items-center gap-2 min-w-0 overflow-x-auto no-scrollbar">
+            {subtabsSlot}
+            <div
+              data-testid="explore-primary-action-slot"
+              className={`flex items-center gap-2 shrink-0 empty:hidden ${
+                subtabsSlot ? 'pl-2.5 border-l border-outline-variant/25 ml-1' : ''
+              }`}
+            >
+              {(busyList || isSearchLoading) ? (
+                <button
+                  type="button"
+                  onClick={handleStopFetch}
+                  disabled={isStoppingList}
+                  data-tooltip={isStoppingList ? t('latestUpdates.stopping') : t('latestUpdates.stopFetch')}
+                  aria-label={isStoppingList ? t('latestUpdates.stopping') : t('latestUpdates.stopFetch')}
+                  className="h-8 px-3.5 shrink-0 rounded-lg bg-error/15 text-error hover:bg-error/25 border border-error/30 text-xs font-semibold transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[15px] leading-none">stop_circle</span>
+                  <span>{isStoppingList ? t('latestUpdates.stopping') : t('latestUpdates.stopFetch')}</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={!selectedSiteId}
+                  onClick={handleManualRefresh}
+                  data-tooltip={t('latestUpdates.refresh')}
+                  aria-label={t('latestUpdates.refresh')}
+                  className="h-8 px-3.5 shrink-0 rounded-lg bg-primary text-xs font-semibold text-on-primary transition-all hover:opacity-95 active:scale-95 disabled:pointer-events-none disabled:opacity-50 inline-flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                >
+                  <span
+                    className={`material-symbols-outlined text-[15px] leading-none ${
+                      isBackgroundRefreshing ? 'animate-spin' : ''
+                    }`}
+                  >
+                    refresh
+                  </span>
+                  <span>{t('latestUpdates.refresh')}</span>
+                </button>
+              )}
+            </div>
+          </div>
+        }
         rightSlot={
           <div className="flex items-center gap-2">
-            {(busyList || isSearchLoading) ? (
-              <button
-                type="button"
-                onClick={handleStopFetch}
-                disabled={isStoppingList}
-                data-tooltip={isStoppingList ? t('latestUpdates.stopping') : t('latestUpdates.stopFetch')}
-                aria-label={isStoppingList ? t('latestUpdates.stopping') : t('latestUpdates.stopFetch')}
-                className="h-8 px-3.5 shrink-0 rounded-lg bg-error/15 text-error hover:bg-error/25 border border-error/30 text-xs font-semibold transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-[15px] leading-none">stop_circle</span>
-                <span>{isStoppingList ? t('latestUpdates.stopping') : t('latestUpdates.stopFetch')}</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                disabled={!selectedSiteId}
-                onClick={handleManualRefresh}
-                data-tooltip={t('latestUpdates.refresh')}
-                className="h-8 px-3.5 shrink-0 rounded-lg bg-primary text-xs font-semibold text-on-primary transition-all hover:opacity-95 active:scale-95 disabled:pointer-events-none disabled:opacity-50 inline-flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
-              >
-                <span className="material-symbols-outlined text-[15px] leading-none">
-                  refresh
-                </span>
-                <span>{t('latestUpdates.refresh')}</span>
-              </button>
-            )}
-
             {is_plugin_source ? (
               <button
                 type="button"
@@ -1690,9 +1901,9 @@ export default function LatestUpdatesPanel({
 
             {!searchAllSources && selectedSiteId === 'mangadex' && (
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant shrink-0">
+                <SectionTitle as="label" className="block shrink-0">
                   {t('sidebar.mangadexTranslationLang')}
-                </label>
+                </SectionTitle>
                 <SearchableSelect
                   value={panelMangadexLanguage}
                   onChange={handlePanelMangadexLanguageChange}
@@ -1705,9 +1916,9 @@ export default function LatestUpdatesPanel({
 
             {!searchAllSources && selectedSiteId === 'minotruyen' && (
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant shrink-0">
+                <SectionTitle as="label" className="block shrink-0">
                   {t('latestUpdates.minotruyenCategoryLabel')}
-                </label>
+                </SectionTitle>
                 <SearchableSelect
                   value={panelMinotruyenCategory}
                   onChange={handlePanelMinotruyenCategoryChange}
@@ -1731,9 +1942,9 @@ export default function LatestUpdatesPanel({
                 aria-label={t('latestUpdates.searchTitle')}
               >
                 <div className="flex items-center justify-between gap-1">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant shrink-0">
+                  <SectionTitle as="label" className="shrink-0">
                     {t('latestUpdates.searchTitle')}
-                  </label>
+                  </SectionTitle>
                   {searchAllSources && (
                     <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-surface-container-highest text-on-surface-variant font-medium truncate max-w-[130px]">
                       {t('latestUpdates.searchScopeActiveBadgeAll')}
@@ -1832,10 +2043,32 @@ export default function LatestUpdatesPanel({
                         <span className="w-4 h-4 flex items-center justify-center shrink-0 text-primary/70">
                           <span className="material-symbols-outlined text-[13px] leading-none">schedule</span>
                         </span>
-                        <span className="flex-1 min-w-0 leading-snug pt-0.5">
-                          {t('latestUpdates.stats.lastUpdated', {
-                            time: new Date(lastFetchedAt).toLocaleTimeString(),
-                          })}
+                        <span className="flex-1 min-w-0 leading-snug pt-0.5 flex flex-wrap items-center gap-1.5">
+                          <span>
+                            {t('latestUpdates.stats.lastUpdated', {
+                              time: new Date(lastFetchedAt).toLocaleTimeString(),
+                            })}
+                          </span>
+                          {isFromCache && !isBackgroundRefreshing ? (
+                            <span
+                              data-tooltip={t('latestUpdates.stats.cachedTooltip')}
+                              className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-primary/10 text-primary font-semibold text-[9px] leading-none"
+                            >
+                              {t('latestUpdates.stats.cachedBadge')}
+                            </span>
+                          ) : null}
+                        </span>
+                      </div>
+                    ) : null}
+                    {isBackgroundRefreshing ? (
+                      <div className="flex items-start gap-1.5 text-primary">
+                        <span className="w-4 h-4 flex items-center justify-center shrink-0">
+                          <span className="material-symbols-outlined text-[13px] leading-none animate-spin">
+                            sync
+                          </span>
+                        </span>
+                        <span className="flex-1 min-w-0 leading-snug pt-0.5 font-medium">
+                          {t('latestUpdates.stats.revalidating')}
                         </span>
                       </div>
                     ) : null}
@@ -1940,9 +2173,9 @@ export default function LatestUpdatesPanel({
           {pluginConsoleOpen && is_plugin_source ? (
             <div className="mb-4 flex max-h-72 min-h-0 flex-col overflow-hidden rounded-lg border border-outline-variant/30 bg-surface-container-highest/90">
               <div className="flex shrink-0 items-center justify-between gap-2 border-b border-outline-variant/20 px-3 py-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+                <SectionTitle as="span">
                   {t('latestUpdates.pluginConsoleTitle')}
-                </span>
+                </SectionTitle>
                 <div className="flex items-center gap-1.5">
                   {pluginConsoleCopyNotice ? (
                     <span className="text-[10px] text-primary">{t('latestUpdates.pluginConsoleCopied')}</span>

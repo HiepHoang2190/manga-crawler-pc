@@ -1,6 +1,7 @@
 import React from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { useI18n } from '../../context/I18nContext';
+import { SectionTitle } from '../../shared';
 
 export default function ThemeCardPicker() {
   const { presetTheme, setPresetTheme, availableThemes = [], darkMode } = useTheme();
@@ -9,9 +10,9 @@ export default function ThemeCardPicker() {
   return (
     <div className="space-y-3 pt-2">
       <div className="flex flex-col gap-0.5">
-        <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block">
+        <SectionTitle as="label" className="block">
           {t('settings.theme.preset')}
-        </label>
+        </SectionTitle>
         <p className="text-xs text-on-surface-variant/80">
           {t('settings.theme.preset.hint')}
         </p>
@@ -67,13 +68,13 @@ export default function ThemeCardPicker() {
                   className={`text-sm font-semibold tracking-tight truncate w-full ${
                     isSelected ? 'text-primary' : 'text-on-surface'
                   }`}
-                  title={t(theme.nameKey) || theme.id}
+                  data-tooltip={t(theme.nameKey) || theme.id}
                 >
                   {t(theme.nameKey) || theme.id}
                 </div>
                 <div
                   className="text-[11px] text-on-surface-variant/75 line-clamp-2 leading-relaxed mt-0.5 break-words w-full"
-                  title={t(theme.descKey) || ''}
+                  data-tooltip={t(theme.descKey) || undefined}
                 >
                   {t(theme.descKey) || ''}
                 </div>

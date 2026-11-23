@@ -368,7 +368,7 @@ class NetTruyenVietService extends HtmlConnectorService {
 // Create singleton instance
 const service = new NetTruyenVietService();
 
-const NETTRUYENVIET_MAX_PAGES = 20;
+const NETTRUYENVIET_MAX_PAGES = 500;
 
 function pickNetTruyenVietCover($img, pageUrl) {
   if (!$img || !$img.length) return '';

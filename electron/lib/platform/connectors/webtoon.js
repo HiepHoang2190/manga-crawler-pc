@@ -3,6 +3,7 @@
  */
 const service = require('./services/webtoonService');
 const { getIconPath } = require('./iconPath');
+const { WEBTOONS_IMAGE_REFERER } = require('../../download/connector/connectorReferer');
 
 const LABEL = 'Webtoons';
 
@@ -12,7 +13,7 @@ module.exports = {
   domain: 'https://www.webtoons.com/',
   hostIncludes: ['webtoons.com'],
   icon: getIconPath('webtoons'),
-  imageReferer: 'https://www.webtoons.com/',
+  imageReferer: WEBTOONS_IMAGE_REFERER,
   suggestsVpn: true,
   supportsApiFetch: false,
   supportsLatestUpdates: true,

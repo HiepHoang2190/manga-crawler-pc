@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useI18n } from '../../context/I18nContext';
-import { StudioLayout, useStudioLayout, EmptyState } from '../../shared';
+import { StudioLayout, useStudioLayout, EmptyState, SectionTitle } from '../../shared';
 
 const BTN_ROW =
   'inline-flex items-center justify-center gap-2 min-h-9 px-3.5 rounded-lg text-xs font-semibold transition-all active:scale-[0.98] disabled:opacity-45 disabled:pointer-events-none cursor-pointer select-none';
 const BTN_SURFACE = `${BTN_ROW} bg-surface-container-high text-on-surface hover:bg-surface-bright border border-outline-variant/20`;
 const BTN_PRIMARY = `${BTN_ROW} bg-primary text-on-primary border border-primary hover:opacity-95 shadow-2xs`;
 const BTN_TOOLBAR =
-  'inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold transition-all active:scale-[0.98] disabled:opacity-45 disabled:pointer-events-none cursor-pointer select-none bg-surface-container-high text-on-surface hover:bg-surface-bright border border-outline-variant/20';
+  'inline-flex items-center justify-center gap-1.5 h-8 px-3.5 rounded-lg text-xs font-semibold transition-all active:scale-95 disabled:opacity-45 disabled:pointer-events-none cursor-pointer select-none whitespace-nowrap shrink-0 bg-surface-container-high text-on-surface hover:bg-surface-bright border border-outline-variant/20';
 
 const PANEL_CARD =
   'rounded-xl border border-outline-variant/15 bg-surface-container-low/50 shadow-sm dark:bg-surface-container-low/25';
@@ -584,45 +584,52 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
       {/* Top Header Bar */}
       <StudioLayout.Toolbar
         leftSlot={
-          <div className="flex items-center gap-1.5 rounded-xl bg-surface-container-lowest p-1 border border-outline-variant/20">
-            {subtabs.map((tab) => {
-              const isActive = activeSubtab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => {
-                    setActiveSubtab(tab.id);
-                    if (tab.id === 'generator' && autoGenPhase === 'idle') {
-                      setAutoGenPhase('input');
-                    }
-                  }}
-                  className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer select-none active:scale-95 ${
-                    isActive
-                      ? 'bg-primary text-on-primary shadow-xs'
-                      : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-[16px]">{tab.icon}</span>
-                  <span>{tab.label}</span>
-                  {tab.badge !== undefined && (
-                    <span
-                      className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full tabular-nums ${
-                        isActive ? 'bg-on-primary/20 text-on-primary' : 'bg-surface-container-high text-on-surface-variant'
-                      }`}
-                    >
-                      {tab.badge}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        }
-        rightSlot={
-          <div className="flex items-center gap-1.5">
-            {activeSubtab === 'installed' && plugins.length > 0 && (
-              <>
+          <div className="flex items-center gap-2 min-w-0 overflow-x-auto no-scrollbar">
+            <div
+              role="tablist"
+              aria-label={t('menu.plugins')}
+              className="inline-flex items-center gap-0.5 p-0.5 rounded-xl bg-surface-container-high/70 border border-outline-variant/25 overflow-x-auto no-scrollbar shrink-0"
+            >
+              {subtabs.map((tab) => {
+                const isActive = activeSubtab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    onClick={() => {
+                      setActiveSubtab(tab.id);
+                      if (tab.id === 'generator' && autoGenPhase === 'idle') {
+                        setAutoGenPhase('input');
+                      }
+                    }}
+                    className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium transition-all cursor-pointer select-none whitespace-nowrap shrink-0 ${
+                      isActive
+                        ? 'bg-primary text-on-primary font-semibold shadow-xs'
+                        : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/60'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[16px] leading-none">{tab.icon}</span>
+                    <span>{tab.label}</span>
+                    {tab.badge !== undefined && (
+                      <span
+                        className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full tabular-nums ${
+                          isActive ? 'bg-on-primary/20 text-on-primary' : 'bg-surface-container-highest text-on-surface-variant'
+                        }`}
+                      >
+                        {tab.badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            {activeSubtab === 'installed' && plugins.length > 0 ? (
+              <div
+                data-testid="plugins-primary-action-slot"
+                className="flex items-center gap-2 shrink-0 empty:hidden pl-2.5 border-l border-outline-variant/25 ml-1"
+              >
                 {reloadablePlugins.length > 0 && (
                   <button
                     type="button"
@@ -631,7 +638,7 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
                     className={BTN_TOOLBAR}
                     data-tooltip={t('plugins.reloadAllTooltip')}
                   >
-                    <span className={`material-symbols-outlined text-[16px] ${loading ? 'animate-spin' : ''}`}>sync</span>
+                    <span className={`material-symbols-outlined text-[15px] leading-none ${loading ? 'animate-spin' : ''}`}>sync</span>
                     <span>{t('plugins.reloadAll', { count: reloadablePlugins.length })}</span>
                   </button>
                 )}
@@ -640,9 +647,9 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
                   onClick={handleEnableAll}
                   disabled={loading || !plugins.some((p) => !p.isEnabled)}
                   className={BTN_TOOLBAR}
-                  data-tooltip={t('plugins.enableAll')}
+                  aria-label={t('plugins.enableAll')}
                 >
-                  <span className="material-symbols-outlined text-[16px]">done_all</span>
+                  <span className="material-symbols-outlined text-[15px] leading-none">done_all</span>
                   <span>{t('plugins.enableAll')}</span>
                 </button>
                 <button
@@ -650,13 +657,13 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
                   onClick={handleDisableAll}
                   disabled={loading || !plugins.some((p) => p.isEnabled)}
                   className={BTN_TOOLBAR}
-                  data-tooltip={t('plugins.disableAll')}
+                  aria-label={t('plugins.disableAll')}
                 >
-                  <span className="material-symbols-outlined text-[16px]">block</span>
+                  <span className="material-symbols-outlined text-[15px] leading-none">block</span>
                   <span>{t('plugins.disableAll')}</span>
                 </button>
-              </>
-            )}
+              </div>
+            ) : null}
           </div>
         }
       />
@@ -703,9 +710,9 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
 
             {/* KPI Cards Grid (matching Site Checker standard) */}
             <div className="space-y-1.5">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant/70">
+              <SectionTitle as="span" className="block">
                 {t('plugins.statsTitle')}
-              </span>
+              </SectionTitle>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
@@ -787,10 +794,10 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
 
             {/* Quick Gist Guide Links */}
             <div className="space-y-2 pt-2 border-t border-outline-variant/15">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant/70 flex items-center gap-1">
+              <SectionTitle as="span" className="flex items-center gap-1">
                 <span className="material-symbols-outlined text-[15px] text-primary">menu_book</span>
                 <span>{t('plugins.quickGuides')}</span>
-              </span>
+              </SectionTitle>
               <div className="space-y-1.5 text-xs">
                 <button
                   type="button"
@@ -865,9 +872,9 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <span className="material-symbols-outlined text-[20px] text-primary">extension</span>
-                    <h2 className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">
+                    <SectionTitle as="h2">
                       {t('plugins.sectionInstalled')} ({filteredPlugins.length}/{plugins.length})
-                    </h2>
+                    </SectionTitle>
                   </div>
                   {hasActiveFilters && plugins.length > 0 && (
                     <button
@@ -945,9 +952,9 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
               <section className="space-y-5">
                 <div className="flex items-center gap-2">
                   <span className="material-symbols-outlined text-[20px] text-primary">download</span>
-                  <h2 className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">
+                  <SectionTitle as="h2">
                     {t('plugins.sectionImport')}
-                  </h2>
+                  </SectionTitle>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1489,9 +1496,9 @@ function PluginCard({ plugin, onToggle, onDelete, onReload, onEditSource, disabl
 
             {allowedDomains.length > 0 ? (
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant mb-1.5">
+                <SectionTitle as="p" className="mb-1.5">
                   {t('plugins.allowedDomains')}
-                </p>
+                </SectionTitle>
                 <div className="flex flex-wrap gap-1.5">
                   {allowedDomains.map((domain) => (
                     <span
@@ -1567,9 +1574,9 @@ function AutoGeneratorWizard({
           <span className="material-symbols-outlined text-[22px] text-primary" aria-hidden>
             auto_fix_high
           </span>
-          <h2 className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">
+          <SectionTitle as="h2">
             {t('plugins.autoGen.title')}
-          </h2>
+          </SectionTitle>
         </div>
         <button
           type="button"
@@ -1680,16 +1687,16 @@ function AutoGeneratorWizard({
         {/* Phase: Review results */}
         {phase === 'review' && data ? (
           <div className="space-y-4">
-            <h3 className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">
+            <SectionTitle as="h3">
               {t('plugins.autoGen.resultTitle')}
-            </h3>
+            </SectionTitle>
 
             {/* Editable site name and ID */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wide">
+                <SectionTitle as="label" className="block">
                   {t('plugins.autoGen.siteName')}
-                </label>
+                </SectionTitle>
                 <input
                   type="text"
                   value={editName}
@@ -1698,9 +1705,9 @@ function AutoGeneratorWizard({
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wide">
+                <SectionTitle as="label" className="block">
                   {t('plugins.autoGen.siteId')}
-                </label>
+                </SectionTitle>
                 <input
                   type="text"
                   value={editId}
@@ -1714,25 +1721,25 @@ function AutoGeneratorWizard({
             <div className="rounded-xl border border-outline-variant/15 bg-surface-container-highest/50 divide-y divide-outline-variant/10 overflow-hidden">
               {/* Base URL */}
               <div className="flex items-center gap-3 px-4 py-2.5">
-                <span className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wide w-28 shrink-0">
+                <SectionTitle as="span" className="w-28 shrink-0">
                   {t('plugins.autoGen.baseUrl')}
-                </span>
+                </SectionTitle>
                 <span className="text-xs sm:text-sm text-on-surface font-mono truncate">{data.siteInfo.baseUrl}</span>
               </div>
 
               {/* Detected title */}
               <div className="flex items-center gap-3 px-4 py-2.5">
-                <span className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wide w-28 shrink-0">
+                <SectionTitle as="span" className="w-28 shrink-0">
                   {t('plugins.autoGen.detectedTitle')}
-                </span>
+                </SectionTitle>
                 <span className="text-xs sm:text-sm text-on-surface truncate">{data.detected.title || '—'}</span>
               </div>
 
               {/* Chapters */}
               <div className="flex items-center gap-3 px-4 py-2.5">
-                <span className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wide w-28 shrink-0">
+                <SectionTitle as="span" className="w-28 shrink-0">
                   {t('plugins.autoGen.chaptersOk')}
-                </span>
+                </SectionTitle>
                 <div className="flex items-center gap-2">
                   <span
                     className={`material-symbols-outlined text-[18px] ${
@@ -1751,9 +1758,9 @@ function AutoGeneratorWizard({
 
               {/* Images */}
               <div className="flex items-center gap-3 px-4 py-2.5">
-                <span className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wide w-28 shrink-0">
+                <SectionTitle as="span" className="w-28 shrink-0">
                   {t('plugins.autoGen.imagesOk')}
-                </span>
+                </SectionTitle>
                 <div className="flex items-center gap-2">
                   <span
                     className={`material-symbols-outlined text-[18px] ${
@@ -1772,9 +1779,9 @@ function AutoGeneratorWizard({
 
               {/* Domains */}
               <div className="flex items-start gap-3 px-4 py-2.5">
-                <span className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wide w-28 shrink-0 pt-0.5">
+                <SectionTitle as="span" className="w-28 shrink-0 pt-0.5">
                   {t('plugins.autoGen.domains')}
-                </span>
+                </SectionTitle>
                 <div className="flex flex-wrap gap-1.5 min-w-0">
                   {data.siteInfo.domains.map((d) => (
                     <span
@@ -1801,13 +1808,13 @@ function AutoGeneratorWizard({
             {/* Source Code preview / copy */}
             {autoGenSource ? (
               <details className="group rounded-xl border border-outline-variant/15 bg-surface-container-highest/50 p-3">
-                <summary className="text-xs font-semibold text-on-surface-variant uppercase tracking-wide cursor-pointer hover:text-on-surface transition-colors flex items-center justify-between">
-                  <span className="flex items-center gap-1.5">
+                <summary className="cursor-pointer hover:text-on-surface transition-colors flex items-center justify-between">
+                  <SectionTitle as="span" className="flex items-center gap-1.5">
                     <span className="material-symbols-outlined text-[16px] transition-transform group-open:rotate-90">
                       chevron_right
                     </span>
                     <span>{t('plugins.autoGen.viewSourceHint')}</span>
-                  </span>
+                  </SectionTitle>
                   <button
                     type="button"
                     onClick={(e) => {

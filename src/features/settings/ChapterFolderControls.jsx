@@ -1,5 +1,5 @@
 import { useI18n } from '../../context/I18nContext';
-import { SearchableSelect } from '../../shared';
+import { SearchableSelect, SectionTitle } from '../../shared';
 import { formatChapterFolderName, formatChapterPageFileName } from '../../utils/chapterFolderFormat';
 
 /**
@@ -42,9 +42,9 @@ export default function ChapterFolderControls({
       <div className="space-y-2.5 pt-1">
         <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_6rem] sm:items-end max-w-2xl">
           <div className="space-y-1">
-            <label className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">
+            <SectionTitle as="label" className="block">
               {t('settings.chapterFolderPrefix')}
-            </label>
+            </SectionTitle>
             <input
               type="text"
               value={chapterFolder.prefix}
@@ -55,9 +55,9 @@ export default function ChapterFolderControls({
             />
           </div>
           <div className="space-y-1">
-            <label className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">
+            <SectionTitle as="label" className="block">
               {t('settings.chapterFolderPadDigits')}
-            </label>
+            </SectionTitle>
             <input
               type="number"
               min={1}
@@ -88,9 +88,9 @@ export default function ChapterFolderControls({
     <div className="space-y-4 w-full min-w-0">
       {/* 1. Tên thư mục chương */}
       <div className="space-y-2.5 p-3.5 rounded-xl bg-surface-container-highest/40 border border-outline-variant/10">
-        <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block">
+        <SectionTitle as="label" className="block">
           {t('settings.chapterFolderMode')}
-        </label>
+        </SectionTitle>
         <SearchableSelect
           value={chapterFolder.mode}
           onChange={(mode) => {
@@ -120,9 +120,9 @@ export default function ChapterFolderControls({
 
       {/* 2. Cách lưu ảnh */}
       <div className="space-y-2.5 p-3.5 rounded-xl bg-surface-container-highest/40 border border-outline-variant/10">
-        <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block">
+        <SectionTitle as="label" className="block">
           {t('settings.chapterFolderLayout')}
-        </label>
+        </SectionTitle>
         <SearchableSelect
           value={chapterFolder.layout === 'flat' ? 'flat' : 'subfolder'}
           onChange={(layout) => {
@@ -144,11 +144,11 @@ export default function ChapterFolderControls({
           </p>
 
           <div className="rounded-lg bg-surface-container-high/50 p-2.5 border border-outline-variant/10">
-            <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider block mb-1.5">
+            <SectionTitle as="span" className="block mb-1.5">
               {chapterFolder.layout === 'flat'
                 ? t('settings.chapterFolderFlatExample')
                 : t('settings.chapterFolderSubfolderExample')}
-            </span>
+            </SectionTitle>
             {chapterFolder.layout === 'flat' ? (
               <pre className="font-mono text-[11px] text-on-surface/90 leading-relaxed overflow-x-auto select-all">
 {`📁 ${mangaPlaceholder}/
@@ -196,9 +196,9 @@ export default function ChapterFolderControls({
                 {t('settings.mangadexVolumeGrouping.exampleHint')}
               </p>
               <div className="rounded-lg bg-surface-container-high/50 p-2.5 border border-outline-variant/10">
-                <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider block mb-1.5">
+                <SectionTitle as="span" className="block mb-1.5">
                   {t('settings.mangadexVolumeGrouping.exampleTitle')}
-                </span>
+                </SectionTitle>
                 <pre className="font-mono text-[11px] text-on-surface/90 leading-relaxed overflow-x-auto select-all">
 {`📁 ${mangaPlaceholder}/
 ├── 📁 Vol. 1/

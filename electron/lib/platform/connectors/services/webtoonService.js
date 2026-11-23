@@ -18,10 +18,11 @@ const {
   MAX_LENGTH_FOLDER_NAME,
 } = require('../../../shared/mangaUtils');
 const { USER_AGENT } = require('../../../download/connector/htmlConnectorUtils');
+const { WEBTOONS_IMAGE_REFERER } = require('../../../download/connector/connectorReferer');
 const logger = require('../../../shared/logger').createLogger('Webtoons');
 
 const SITE_DOMAIN = 'https://www.webtoons.com';
-const IMG_REFERER = 'https://www.webtoons.com/';
+const IMG_REFERER = WEBTOONS_IMAGE_REFERER;
 const LABEL = 'Webtoons';
 const CHROME_UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -547,7 +548,7 @@ async function downloadChapter(
 }
 
 const WEBTOONS_PAGE_SIZE = 48;
-const WEBTOONS_MAX_PAGES = 20;
+const WEBTOONS_MAX_PAGES = 500;
 
 function resolveWebtoonUrl(baseUrl, raw) {
   const s = String(raw || '').trim();
@@ -579,9 +580,76 @@ async function fetchWebtoonListingHtml(url, opts = {}) {
   }
 }
 
+function extractWebtoonTitleNoKey(urlString) {
+  const m = String(urlString || '').match(/[?&]title_no=(\d+)/i);
+  return m ? m[1] : String(urlString || '');
+}
+
+function collectSrcsetCandidates(srcset) {
+  const raw = String(srcset || '').trim();
+  if (!raw) return [];
+  // Strip base64/data URIs whose internal comma would otherwise split entries cleanly.
+  const sanitized = raw.replace(/data:[^,\s]+,[^\s,]*/gi, '');
+  const out = [];
+  for (const part of sanitized.split(',')) {
+    const token = part.trim().split(/\s+/)[0] || '';
+    if (!token) continue;
+    if (/^(?:https?:)?\/\//i.test(token) || token.startsWith('/') || /\.[a-z0-9]{2,5}(?:\?|$)/i.test(token)) {
+      out.push(token);
+    }
+  }
+  return out;
+}
+
+function isUsableCoverCandidate(rawCandidate) {
+  const raw = String(rawCandidate || '').trim();
+  if (!raw || raw.startsWith('#')) return false;
+  if (/^(?:data|javascript|vbscript):/i.test(raw)) return false;
+  if (raw.toLowerCase().includes('bg_transparency')) return false;
+  return true;
+}
+
+function extractWebtoonCoverUrl($, $a, pageUrl) {
+  const extractFromImgs = ($imgs) => {
+    for (let i = 0; i < $imgs.length; i += 1) {
+      const $img = $imgs.eq(i);
+      const candidates = [
+        $img.attr('data-url'),
+        $img.attr('data-src'),
+        $img.attr('data-original'),
+        $img.attr('src'),
+        ...collectSrcsetCandidates($img.attr('srcset')),
+      ];
+      for (const rawCandidate of candidates) {
+        if (!isUsableCoverCandidate(rawCandidate)) continue;
+        const resolved = resolveWebtoonUrl(pageUrl, rawCandidate);
+        if (/^https?:\/\//i.test(resolved)) return resolved;
+      }
+    }
+    return '';
+  };
+
+  const direct = extractFromImgs($a.find('img'));
+  if (direct) return direct;
+
+  const $li = $a.closest('li');
+  if ($li.length) {
+    const keys = new Set();
+    $li.find('a[href*="title_no="]').each((_, el) => {
+      const href = resolveWebtoonUrl(pageUrl, $(el).attr('href'));
+      if (href) keys.add(extractWebtoonTitleNoKey(href));
+    });
+    if (keys.size === 1) {
+      return extractFromImgs($li.find('img'));
+    }
+  }
+  return '';
+}
+
 function parseWebtoonsCards(html, pageUrl, { prioritizeUp = false } = {}) {
   const $ = cheerio.load(String(html || ''));
   const byKey = new Map();
+  const pendingByKey = new Map();
   const order = [];
 
   $('a[href*="title_no="]').each((_, el) => {
@@ -589,14 +657,17 @@ function parseWebtoonsCards(html, pageUrl, { prioritizeUp = false } = {}) {
     const mangaUrl = resolveWebtoonUrl(pageUrl, $a.attr('href'));
     if (!mangaUrl) return;
 
-    const titleNoMatch = mangaUrl.match(/[?&]title_no=(\d+)/i);
-    const key = titleNoMatch ? titleNoMatch[1] : mangaUrl;
+    const key = extractWebtoonTitleNoKey(mangaUrl);
     const hasUp = $a.find('.badge_up2, .ico_up, .txt_ico_up').length > 0;
+    const candidateCoverUrl = extractWebtoonCoverUrl($, $a, pageUrl);
 
     const existing = byKey.get(key);
     if (existing) {
       if (hasUp && !existing.latestChapterLabel) {
         existing.latestChapterLabel = 'UP';
+      }
+      if (!existing.coverUrl && candidateCoverUrl) {
+        existing.coverUrl = candidateCoverUrl;
       }
       return;
     }
@@ -608,16 +679,24 @@ function parseWebtoonsCards(html, pageUrl, { prioritizeUp = false } = {}) {
       $a.attr('title') ||
       ''
     ).trim();
-    if (!title) return;
+    if (!title) {
+      const prevPending = pendingByKey.get(key) || { coverUrl: '', hasUp: false };
+      pendingByKey.set(key, {
+        coverUrl: prevPending.coverUrl || candidateCoverUrl,
+        hasUp: prevPending.hasUp || hasUp,
+      });
+      return;
+    }
 
-    const rawCover = ($img.attr('data-url') || $img.attr('data-src') || $img.attr('src') || '').trim();
-    const coverUrl = rawCover && !/^data:/i.test(rawCover) ? resolveWebtoonUrl(pageUrl, rawCover) : '';
+    const pending = pendingByKey.get(key);
+    if (pending) pendingByKey.delete(key);
+    const resolvedHasUp = hasUp || Boolean(pending?.hasUp);
 
     const item = {
       title,
       mangaUrl,
-      coverUrl,
-      latestChapterLabel: hasUp ? 'UP' : '',
+      coverUrl: candidateCoverUrl || pending?.coverUrl || '',
+      latestChapterLabel: resolvedHasUp ? 'UP' : '',
     };
     byKey.set(key, item);
     order.push(item);

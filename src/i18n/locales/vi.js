@@ -913,6 +913,10 @@ export const vi = {
   'latestUpdates.stats.page': 'Trang',
   'latestUpdates.stats.sources': 'Số nguồn',
   'latestUpdates.stats.lastUpdated': 'Cập nhật lúc {time}',
+  'latestUpdates.stats.cachedBadge': 'Bộ nhớ đệm',
+  'latestUpdates.stats.cachedTooltip':
+    'Dữ liệu được lưu tạm trong 5 phút để chuyển nguồn tức thì. Bấm Tải danh sách để lấy dữ liệu mới nhất.',
+  'latestUpdates.stats.revalidating': 'Đang cập nhật dữ liệu mới…',
   'latestUpdates.stats.tip': 'Nhấp vào truyện để mở danh sách chương',
 
   'bulkScan.pickSource': 'Nguồn',
@@ -929,6 +933,7 @@ export const vi = {
   'bulkScan.cookieHintGeneric':
     '{site} yêu cầu Cookie đăng nhập / Cloudflare để quét danh sách ổn định.',
   'bulkScan.maxPagesLabel': 'Độ sâu quét',
+  'bulkScan.maxPagesAll': 'Tất cả trang (toàn bộ)',
   'bulkScan.maxPagesOption': '{count} trang',
   'bulkScan.fetchFailed': 'Không tải được danh sách quét.',
   'bulkScan.unsupportedSite': 'Nguồn này chưa hỗ trợ Quét Tất Cả.',
@@ -938,6 +943,7 @@ export const vi = {
   'bulkScan.shiftTip': 'Giữ Shift để chọn khoảng truyện',
   'bulkScan.loading': 'Đang tải…',
   'bulkScan.loadingPage': 'Đang tải trang {page}/{total}…',
+  'bulkScan.loadingPageWithCount': 'Đang tải trang {page}/{total} · {count} truyện…',
   'bulkScan.empty': 'Không có truyện nào.',
   'bulkScan.needElectron': 'Chạy bản desktop (Electron) để tải danh sách này.',
   'bulkScan.checkAll': 'Chọn tất cả',

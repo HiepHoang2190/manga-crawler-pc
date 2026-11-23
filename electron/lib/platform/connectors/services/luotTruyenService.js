@@ -387,7 +387,7 @@ class LuotTruyenService extends HtmlConnectorService {
 // Create service instance
 const service = new LuotTruyenService();
 
-const LUOTTRUYEN_MAX_PAGES = 20;
+const LUOTTRUYEN_MAX_PAGES = 500;
 
 function parseLuotTruyenListingHtml(html, pageUrl) {
   const $ = cheerio.load(String(html || ''));

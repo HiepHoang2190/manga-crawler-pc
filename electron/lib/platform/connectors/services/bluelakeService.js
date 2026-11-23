@@ -152,7 +152,7 @@ class BlueLakeService extends HtmlConnectorService {
 
 const service = new BlueLakeService();
 
-const BLUELAKE_MAX_PAGES = 20;
+const BLUELAKE_MAX_PAGES = 500;
 
 function cleanBluelakeTitle(raw) {
   return String(raw || '')

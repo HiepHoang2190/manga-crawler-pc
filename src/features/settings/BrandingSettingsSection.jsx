@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useBranding } from '../../context/BrandingContext';
 import { useI18n } from '../../context/I18nContext';
+import { SectionTitle } from '../../shared';
 
 /**
  * Xử lý ảnh biểu tượng thành chuẩn icon bo tròn:
@@ -377,7 +378,7 @@ export default function BrandingSettingsSection({
             e.stopPropagation();
             handleToggle();
           }}
-          title={isCollapsed ? t('settings.expandSection') : t('settings.collapseSection')}
+          data-tooltip={isCollapsed ? t('settings.expandSection') : t('settings.collapseSection')}
           aria-label={isCollapsed ? t('settings.expandSection') : t('settings.collapseSection')}
           className="size-8 rounded-xl flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest transition-all duration-150 cursor-pointer shrink-0"
         >
@@ -396,9 +397,9 @@ export default function BrandingSettingsSection({
           {/* Live Preview Container */}
       <div className="space-y-2 p-3.5 rounded-xl bg-surface-container-highest/40 border border-outline-variant/10">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block">
+          <SectionTitle as="span" className="block">
             {t('settings.branding.previewTitle')}
-          </span>
+          </SectionTitle>
           {hasChanges && (
             <span className="text-[11px] font-medium text-amber-500 dark:text-amber-400 flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
@@ -447,9 +448,9 @@ export default function BrandingSettingsSection({
 
       {/* App Name Input */}
       <div className="space-y-2 p-3.5 rounded-xl bg-surface-container-highest/40 border border-outline-variant/10">
-        <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block">
+        <SectionTitle as="label" className="block">
           {t('settings.branding.appNameLabel')}
-        </label>
+        </SectionTitle>
         <div className="flex items-center gap-2">
           <input
             type="text"
@@ -511,9 +512,9 @@ export default function BrandingSettingsSection({
 
       {/* Icon Type Selection */}
       <div className="space-y-3 p-3.5 rounded-xl bg-surface-container-highest/40 border border-outline-variant/10">
-        <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block">
+        <SectionTitle as="label" className="block">
           {t('settings.branding.iconLabel')}
-        </label>
+        </SectionTitle>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {/* 1. Manga Crawler Default */}
@@ -662,9 +663,9 @@ export default function BrandingSettingsSection({
               <div className="space-y-3 pt-3 border-t border-outline-variant/15">
                 {/* Shape Style */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block">
+                  <SectionTitle as="label" className="block">
                     {t('settings.branding.shapeLabel')}
-                  </label>
+                  </SectionTitle>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <button
                       type="button"
@@ -714,9 +715,9 @@ export default function BrandingSettingsSection({
 
                 {/* Fit Mode */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block">
+                  <SectionTitle as="label" className="block">
                     {t('settings.branding.fitModeLabel')}
-                  </label>
+                  </SectionTitle>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <button
                       type="button"

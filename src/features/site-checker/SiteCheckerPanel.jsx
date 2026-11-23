@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useI18n } from '../../context/I18nContext';
-import { StudioLayout, useStudioLayout, SearchableSelect } from '../../shared';
+import { StudioLayout, useStudioLayout, SearchableSelect, SectionTitle } from '../../shared';
 import { buildCookieExtractFeedback } from '../../utils/cookieExtractFeedback';
 import { sortConnectorsForChecker, buildHealthReportMarkdown, getUntestedConnectors } from './siteCheckerUtils';
 
 const BTN_ROW =
-  'inline-flex items-center justify-center gap-1.5 min-h-9 px-3.5 rounded-lg text-xs font-semibold transition-all active:scale-[0.98] disabled:opacity-45 disabled:pointer-events-none cursor-pointer select-none';
+  'inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold transition-all active:scale-95 disabled:opacity-45 disabled:pointer-events-none cursor-pointer select-none shrink-0';
 const BTN_SURFACE = `${BTN_ROW} bg-surface-container-high text-on-surface hover:bg-surface-bright border border-outline-variant/20`;
 const BTN_PRIMARY = `${BTN_ROW} bg-primary text-on-primary border border-primary hover:opacity-95 shadow-2xs`;
 
@@ -582,38 +582,99 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
       {/* Top Header Bar */}
       <StudioLayout.Toolbar
         leftSlot={
-          <div className="flex items-center gap-1.5 rounded-xl bg-surface-container-lowest p-1 border border-outline-variant/20 overflow-x-auto no-scrollbar">
-            {filterOptions.map((filter) => {
-              const isActive = statusFilter === filter.id;
-              return (
+          <div className="flex items-center gap-2 min-w-0 overflow-x-auto no-scrollbar">
+            <div
+              role="tablist"
+              aria-label={t('menu.siteChecker')}
+              className="inline-flex items-center gap-0.5 p-0.5 rounded-xl bg-surface-container-high/70 border border-outline-variant/25 overflow-x-auto no-scrollbar shrink-0"
+            >
+              {filterOptions.map((filter) => {
+                const isActive = statusFilter === filter.id;
+                return (
+                  <button
+                    key={filter.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    onClick={() => {
+                      setStatusFilter(filter.id);
+                      setShowErrorDetailId(null);
+                    }}
+                    className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium transition-all cursor-pointer select-none whitespace-nowrap shrink-0 ${
+                      isActive
+                        ? 'bg-primary text-on-primary font-semibold shadow-xs'
+                        : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/60'
+                    }`}
+                  >
+                    <span>{filter.label}</span>
+                    {filter.count !== undefined && (
+                      <span
+                        className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full tabular-nums ${
+                          isActive
+                            ? 'bg-on-primary/20 text-on-primary'
+                            : 'bg-surface-container-highest text-on-surface-variant'
+                        }`}
+                      >
+                        {filter.count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            <div
+              data-testid="site-checker-primary-action-slot"
+              className="flex items-center gap-2 shrink-0 empty:hidden pl-2.5 border-l border-outline-variant/25 ml-1"
+            >
+              {!running ? (
                 <button
-                  key={filter.id}
                   type="button"
-                  onClick={() => {
-                    setStatusFilter(filter.id);
-                    setShowErrorDetailId(null);
-                  }}
-                  className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition-all cursor-pointer select-none active:scale-95 shrink-0 ${
-                    isActive
-                      ? 'bg-primary text-on-primary shadow-xs'
-                      : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
-                  }`}
+                  onClick={startTestAll}
+                  disabled={isBusy || filteredConnectors.length === 0}
+                  className="h-8 px-3.5 shrink-0 rounded-lg bg-primary text-xs font-semibold text-on-primary transition-all hover:opacity-95 active:scale-95 disabled:pointer-events-none disabled:opacity-45 inline-flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer shadow-2xs"
+                  data-tooltip={
+                    filteredConnectors.length === 0
+                      ? t('siteChecker.emptyList')
+                      : filteredConnectors.length < connectors.length
+                      ? t('siteChecker.testFilteredTooltip', { count: filteredConnectors.length })
+                      : undefined
+                  }
+                  aria-label={
+                    filteredConnectors.length < connectors.length
+                      ? t('siteChecker.testFiltered', { count: filteredConnectors.length })
+                      : t('siteChecker.testAll')
+                  }
                 >
-                  <span>{filter.label}</span>
-                  {filter.count !== undefined && (
-                    <span
-                      className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
-                        isActive
-                          ? 'bg-on-primary/20 text-on-primary'
-                          : 'bg-surface-container-high text-on-surface-variant'
-                      }`}
-                    >
-                      {filter.count}
-                    </span>
-                  )}
+                  <span className="material-symbols-outlined text-[15px] leading-none">bolt</span>
+                  <span>
+                    {filteredConnectors.length < connectors.length
+                      ? t('siteChecker.testFiltered', { count: filteredConnectors.length })
+                      : t('siteChecker.testAll')}
+                  </span>
                 </button>
-              );
-            })}
+              ) : (
+                <button
+                  type="button"
+                  onClick={cancelTestAll}
+                  className="h-8 px-3.5 shrink-0 rounded-lg bg-error/15 text-error hover:bg-error/25 border border-error/30 text-xs font-semibold transition-all active:scale-95 inline-flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer"
+                  aria-label={t('siteChecker.cancel')}
+                >
+                  <span className="material-symbols-outlined text-[15px] leading-none">stop_circle</span>
+                  <span>{t('siteChecker.cancel')}</span>
+                </button>
+              )}
+            </div>
+          </div>
+        }
+        rightSlot={
+          <div className="flex items-center gap-2 shrink-0">
+            <SearchableSelect
+              size="sm"
+              value={sortMode}
+              onChange={setSortMode}
+              options={sortOptions}
+              className="w-44 shrink-0"
+            />
           </div>
         }
       />
@@ -675,9 +736,9 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
 
             {/* KPI Cards Grid */}
             <div className="space-y-1.5">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant/70">
+              <SectionTitle as="span" className="block">
                 {t('siteChecker.stats') || t('dashboard.stats') || 'Chỉ số kiểm tra'}
-              </span>
+              </SectionTitle>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
@@ -771,10 +832,10 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
 
             {/* Quick Site Directory */}
             <div className="space-y-1.5 pt-2 border-t border-outline-variant/15">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant/70 flex items-center justify-between">
+              <SectionTitle as="span" className="flex items-center justify-between">
                 <span>{t('siteChecker.quickSiteList')}</span>
                 <span className="text-[10px] tabular-nums font-normal">{filteredConnectors.length}</span>
-              </span>
+              </SectionTitle>
               <div className="space-y-1 max-h-60 overflow-y-auto custom-scrollbar pr-1">
                 {filteredConnectors.map((c) => {
                   const res = results[c.id];
@@ -823,34 +884,13 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
               <div className="flex items-center gap-2.5 flex-wrap">
                 <div className="flex items-center gap-2">
                   <span className="material-symbols-outlined text-[20px] text-primary">network_check</span>
-                  <h2 className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">
+                  <SectionTitle as="h2">
                     {t('siteChecker.connectorsListTitle', { count: filteredConnectors.length })}
-                  </h2>
+                  </SectionTitle>
                 </div>
 
-                {!running ? (
+                {!running && (stats.broken > 0 || (untestedConnectors.length > 0 && stats.tested > 0) || stats.tested > 0) ? (
                   <div className="flex items-center gap-2 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={startTestAll}
-                      disabled={isBusy || filteredConnectors.length === 0}
-                      className={BTN_PRIMARY}
-                      data-tooltip={
-                        filteredConnectors.length === 0
-                          ? t('siteChecker.emptyList')
-                          : filteredConnectors.length < connectors.length
-                          ? t('siteChecker.testFilteredTooltip', { count: filteredConnectors.length })
-                          : t('siteChecker.testAll')
-                      }
-                      aria-label={t('siteChecker.testAll')}
-                    >
-                      <span className="material-symbols-outlined text-[16px]">bolt</span>
-                      <span>
-                        {filteredConnectors.length < connectors.length
-                          ? t('siteChecker.testFiltered', { count: filteredConnectors.length })
-                          : t('siteChecker.testAll')}
-                      </span>
-                    </button>
                     {stats.broken > 0 && (
                       <button
                         type="button"
@@ -860,7 +900,7 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
                         data-tooltip={t('siteChecker.retestBrokenTooltip')}
                         aria-label={t('siteChecker.retestBroken')}
                       >
-                        <span className="material-symbols-outlined text-[16px] text-error">refresh</span>
+                        <span className="material-symbols-outlined text-[15px] leading-none text-error">refresh</span>
                         <span>{t('siteChecker.retestBroken', { count: stats.broken })}</span>
                       </button>
                     )}
@@ -873,7 +913,7 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
                         data-tooltip={t('siteChecker.testUntestedTooltip')}
                         aria-label={t('siteChecker.testUntestedTooltip')}
                       >
-                        <span className="material-symbols-outlined text-[16px] text-amber-500">pending_actions</span>
+                        <span className="material-symbols-outlined text-[15px] leading-none text-amber-500">pending_actions</span>
                         <span>{t('siteChecker.testUntested', { count: untestedConnectors.length })}</span>
                       </button>
                     )}
@@ -884,7 +924,7 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
                         className={BTN_SURFACE}
                         aria-label={t('siteChecker.copyReport')}
                       >
-                        <span className="material-symbols-outlined text-[16px] text-primary">
+                        <span className="material-symbols-outlined text-[15px] leading-none text-primary">
                           {copiedReport ? 'check' : 'content_copy'}
                         </span>
                         <span>{copiedReport ? t('siteChecker.copiedReport') : t('siteChecker.copyReport')}</span>
@@ -897,31 +937,13 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
                         className={BTN_SURFACE}
                         aria-label={t('siteChecker.resetResults')}
                       >
-                        <span className="material-symbols-outlined text-[16px]">restart_alt</span>
+                        <span className="material-symbols-outlined text-[15px] leading-none">restart_alt</span>
                         <span>{t('siteChecker.resetResults')}</span>
                       </button>
                     )}
                   </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={cancelTestAll}
-                    className="inline-flex items-center justify-center gap-1.5 min-h-9 px-3.5 rounded-lg text-xs font-semibold bg-error text-on-error hover:opacity-95 shadow-sm transition-all cursor-pointer"
-                    aria-label={t('siteChecker.cancel')}
-                  >
-                    <span className="material-symbols-outlined text-[16px] animate-spin">sync</span>
-                    <span>{t('siteChecker.cancel')}</span>
-                  </button>
-                )}
+                ) : null}
               </div>
-
-              <SearchableSelect
-                size="sm"
-                value={sortMode}
-                onChange={setSortMode}
-                options={sortOptions}
-                className="w-44 shrink-0"
-              />
             </div>
 
             {/* Cards Grid */}

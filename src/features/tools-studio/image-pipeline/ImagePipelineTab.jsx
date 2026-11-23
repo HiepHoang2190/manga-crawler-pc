@@ -1,7 +1,7 @@
 // src/features/tools-studio/image-pipeline/ImagePipelineTab.jsx
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from '../../../context/I18nContext';
-import { SourcePicker, ResizeSplitter, StudioLayout, OutputFormatSelector, OutputDestinationSelector, SearchableSelect, SaveDirErrorModal, CaesiumCompressControl } from '../../../shared';
+import { SourcePicker, ResizeSplitter, StudioLayout, OutputFormatSelector, OutputDestinationSelector, SearchableSelect, SaveDirErrorModal, CaesiumCompressControl, SectionTitle } from '../../../shared';
 import { ToolsStudioActionSlot, ToolsStudioCenterSlot } from '../ToolsStudioActionSlot';
 import { generateId } from './actionTypes';
 import { actionStackReducer, initialStackState, countEnabled } from './actionStack';
@@ -804,9 +804,9 @@ export default function ImagePipelineTab({
 
                   <div className="space-y-1.5 pt-2 border-t border-outline-variant/15">
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/50">
+                      <SectionTitle as="span">
                         {t('imagePipeline.output.concurrency')}
-                      </span>
+                      </SectionTitle>
                       <span className="text-[10px] text-on-surface-variant/60">
                         {t('imagePipeline.output.concurrencyHint')}
                       </span>

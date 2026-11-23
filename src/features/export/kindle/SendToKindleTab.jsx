@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useI18n } from '../../../context/I18nContext';
-import { ResizeSplitter, SearchableSelect, useToolsSidebarResize, EmptyState } from '../../../shared';
+import { ResizeSplitter, SearchableSelect, useToolsSidebarResize, EmptyState, SectionTitle } from '../../../shared';
 import { EbookStudioActionSlot, EbookStudioCenterSlot } from '../../ebook-studio/EbookStudioActionSlot';
 import {
   AMAZON_PDOCS_URL,
@@ -279,9 +279,9 @@ export default function SendToKindleTab({
           <div className="flex-1 overflow-y-auto custom-scrollbar px-4 py-5 space-y-5 mr-1.5">
             {/* 1. Tài khoản Amazon */}
             <div className="space-y-2">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/50">
+              <SectionTitle as="p">
                 {t('sendToKindle.accountTitle', 'Tài khoản Amazon')}
-              </p>
+              </SectionTitle>
               <div className="rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-4 space-y-3">
                 {checking ? (
                   <p className="text-xs text-on-surface-variant">{t('sendToKindle.checking')}</p>
@@ -341,9 +341,9 @@ export default function SendToKindleTab({
 
             {/* 2. Nguồn sách */}
             <div className="space-y-2">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/50">
+              <SectionTitle as="p">
                 {t('ebookStudio.converter.col1Title', 'Nguồn tệp')}
-              </p>
+              </SectionTitle>
               <div className="space-y-3 rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-3.5">
                 <button
                   type="button"
@@ -539,9 +539,9 @@ export default function SendToKindleTab({
                     {item.status === 'pending' && (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-outline-variant/10">
                         <label className="block min-w-0">
-                          <span className="text-[10px] uppercase tracking-wide text-on-surface-variant/60 font-semibold">
+                          <SectionTitle as="span" className="block">
                             {t('sendToKindle.docTitle')}
-                          </span>
+                          </SectionTitle>
                           <input
                             type="text"
                             value={item.title || ''}
@@ -552,9 +552,9 @@ export default function SendToKindleTab({
                           />
                         </label>
                         <label className="block min-w-0">
-                          <span className="text-[10px] uppercase tracking-wide text-on-surface-variant/60 font-semibold">
+                          <SectionTitle as="span" className="block">
                             {t('sendToKindle.docAuthor')}
-                          </span>
+                          </SectionTitle>
                           <input
                             type="text"
                             value={item.author || ''}

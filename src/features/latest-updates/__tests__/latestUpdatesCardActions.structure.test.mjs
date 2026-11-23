@@ -18,16 +18,22 @@ describe('LatestUpdatesPanel Manga Card Actions and Placeholder', () => {
     expect(content).not.toMatch(/\bunderline\b/);
   });
 
-  test('ViewModeToggle is positioned at the far right end of toolbar rightSlot', () => {
+  test('primary refresh button is placed next to subtabsSlot in leftSlot while ViewModeToggle stays at far right end of rightSlot', () => {
     const content = fs.readFileSync(panelPath, 'utf8');
+    const leftSlotMatch = content.match(/leftSlot=\{([\s\S]*?)\}\s*\n\s*rightSlot=/);
     const rightSlotMatch = content.match(/rightSlot=\{([\s\S]*?)\n\s*\}\s*\/>/);
+    expect(leftSlotMatch).not.toBeNull();
     expect(rightSlotMatch).not.toBeNull();
+    const leftSlotContent = leftSlotMatch[1];
     const rightSlotContent = rightSlotMatch[1];
-    const refreshIndex = rightSlotContent.indexOf('onClick={handleManualRefresh}');
+    expect(leftSlotContent.indexOf('onClick={handleManualRefresh}')).toBeGreaterThan(
+      leftSlotContent.indexOf('{subtabsSlot}'),
+    );
+    expect(rightSlotContent).not.toContain('handleManualRefresh');
+    const consoleIndex = rightSlotContent.indexOf('setPluginConsoleOpen');
     const viewModeIndex = rightSlotContent.indexOf('<ViewModeToggle');
-    expect(refreshIndex).toBeGreaterThan(-1);
     expect(viewModeIndex).toBeGreaterThan(-1);
-    expect(viewModeIndex).toBeGreaterThan(refreshIndex);
+    expect(viewModeIndex).toBeGreaterThan(consoleIndex);
   });
 
   test('Grid card is clickable to open chapter list drawer', () => {

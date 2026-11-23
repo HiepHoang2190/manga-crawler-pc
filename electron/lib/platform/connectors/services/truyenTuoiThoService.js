@@ -364,7 +364,7 @@ function downloadChapter(payload, connector) {
   return service_instance.downloadChapter(payload, connector || SITE_LABEL);
 }
 
-const TRUYENTUOITHO_MAX_PAGES = 20;
+const TRUYENTUOITHO_MAX_PAGES = 500;
 
 function parseTruyenTuoiThoHtml(html, pageUrl, { isSearch = false } = {}) {
   const $ = cheerio.load(String(html || ''));

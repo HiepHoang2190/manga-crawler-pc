@@ -693,7 +693,7 @@ function load(url, options) {
  * @returns {Promise<{ok: boolean, successCount?: number, totalPages?: number, failedPageIndices?: array, skipped?: boolean, aborted?: boolean, error?: string}>}
  */
 const MANHUAGUI_PAGE_SIZE = 60;
-const MANHUAGUI_MAX_PAGES = 20;
+const MANHUAGUI_MAX_PAGES = 500;
 
 function resolveManhuaguiUrl(baseUrl, raw) {
   const s = String(raw || '').trim();

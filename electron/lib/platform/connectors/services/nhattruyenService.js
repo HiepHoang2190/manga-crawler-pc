@@ -384,6 +384,10 @@ class NhattruyenService extends HtmlConnectorService {
   }
 
   async fetchLatestUpdates(options = {}) {
+    const signal = options.signal || null;
+    if (signal?.aborted) {
+      return { ok: false, aborted: true, siteId: SITE_ID, page: 1, totalPages: 1, items: [] };
+    }
     const page = Math.max(1, Math.floor(Number(options.page) || 1));
     const query = String(options.query || '').trim();
     const activeDomain = getActiveDomain();
@@ -401,9 +405,16 @@ class NhattruyenService extends HtmlConnectorService {
         referer: activeDomain,
         userAgent: USER_AGENT_JSOUP,
         accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        ...(signal ? { signal } : {}),
       });
     } catch (err) {
+      if (signal?.aborted || err?.name === 'AbortError') {
+        return { ok: false, aborted: true, siteId: SITE_ID, page, totalPages: 1, items: [] };
+      }
       return { ok: false, error: String(err?.message || err) };
+    }
+    if (signal?.aborted || fetched?.aborted) {
+      return { ok: false, aborted: true, siteId: SITE_ID, page, totalPages: 1, items: [] };
     }
 
     if (!fetched.ok) {

@@ -15,8 +15,8 @@ describe('ExploreSourceSelect Structure and Logic Tests', () => {
     expect(code).toContain('<SearchableSelect');
     // Uses explore.sourcesLabel by default
     expect(code).toContain("t('explore.sourcesLabel')");
-    // Standard uppercase styling
-    expect(code).toContain('uppercase tracking-wider text-on-surface-variant/70');
+    // Standard uppercase typography via shared SectionTitle
+    expect(code).toContain('<SectionTitle');
     // Exports extractConnectorHost
     expect(code).toContain('export function extractConnectorHost');
   });

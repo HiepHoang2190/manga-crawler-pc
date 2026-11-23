@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { ResizeSplitter } from '../../../shared';
+import { ResizeSplitter, SectionTitle } from '../../../shared';
 import { useI18n } from '../../../context/I18nContext';
 import { NODE_DEFINITIONS } from '../engine/nodeDefinitions';
 
@@ -62,9 +62,9 @@ export default function WorkflowPalette({
       {/* Header & Search */}
       <div className="p-3 border-b border-outline-variant/20 space-y-2 shrink-0">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-bold uppercase tracking-wider text-on-surface-variant truncate">
+          <SectionTitle as="span" className="truncate">
             {t('workflow.palette.title')}
-          </span>
+          </SectionTitle>
           <div className="flex items-center gap-1 shrink-0">
             <span className="text-[10px] text-on-surface-variant/70 font-mono">
               {t('workflow.palette.nodesCount', { count: filteredItems.length })}

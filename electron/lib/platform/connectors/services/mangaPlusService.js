@@ -167,7 +167,7 @@ function downloadChapter(payload, connector = LABEL) {
 }
 
 const MANGAPLUS_PAGE_SIZE = 48;
-const MANGAPLUS_MAX_PAGES = 20;
+const MANGAPLUS_MAX_PAGES = 500;
 
 function collectMangaPlusTitlesFromUpdated(respData) {
   const entries = respData?.success?.updatedTitleV2Group?.titles;

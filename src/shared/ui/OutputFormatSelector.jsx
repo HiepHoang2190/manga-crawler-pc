@@ -1,5 +1,6 @@
 import React from 'react';
 import { useI18n } from '../../context/I18nContext';
+import SectionTitle from './SectionTitle.jsx';
 
 export const OUTPUT_FORMATS = [
   { value: 'original', labelKey: 'outputFormat.original', defaultLabel: 'Giữ gốc' },
@@ -21,9 +22,9 @@ export default function OutputFormatSelector({
 
   return (
     <div className={`space-y-2 ${className}`.trim()}>
-      <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/50">
+      <SectionTitle as="p">
         {headingText}
-      </p>
+      </SectionTitle>
       <div className="grid grid-cols-4 gap-2">
         {formats.map((fmt) => {
           const selected = value === fmt.value;

@@ -52,7 +52,7 @@ function normalizeHistoryColWidths(obj) {
 const OFFLINE_SORT_MODES = ['titleAsc', 'titleDesc'];
 
 const BULK_SCAN_PAGE_SIZES = [20, 50, 100];
-const BULK_SCAN_MAX_PAGES_OPTIONS = [3, 5, 10, 20, 50];
+const BULK_SCAN_MAX_PAGES_OPTIONS = ['all', 10, 20, 50, 100];
 
 const DEFAULTS = {
   queueTab: 'queue',
@@ -72,7 +72,7 @@ const DEFAULTS = {
   bulkScan: {
     viewMode: 'grid',
     pageSize: 20,
-    maxPages: 10,
+    maxPages: 'all',
   },
 };
 
@@ -81,8 +81,9 @@ function normalizeBulkScanPageSize(n) {
   return BULK_SCAN_PAGE_SIZES.includes(num) ? num : DEFAULTS.bulkScan.pageSize;
 }
 
-function normalizeBulkScanMaxPages(n) {
-  const num = Number(n);
+function normalizeBulkScanMaxPages(v) {
+  if (v === 'all') return 'all';
+  const num = Number(v);
   return BULK_SCAN_MAX_PAGES_OPTIONS.includes(num) ? num : DEFAULTS.bulkScan.maxPages;
 }
 

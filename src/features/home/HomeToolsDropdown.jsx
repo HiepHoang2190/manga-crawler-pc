@@ -1,13 +1,13 @@
 import { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useI18n } from '../../context/I18nContext';
+import { SectionTitle } from '../../shared';
 
 export default function HomeToolsDropdown({
   tools = [],
   activeTab,
   onSelectTab,
   tabBusyMap = {},
-  onOpenHelp,
 }) {
   const { t } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
@@ -71,11 +71,40 @@ export default function HomeToolsDropdown({
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, [isOpen]);
 
-  // Close on Escape key
+  // Keyboard navigation inside portaled menu + Escape focus restoration
   useEffect(() => {
     if (!isOpen) return;
+    const menuEl = portalRef.current;
+    if (menuEl) {
+      const activeOrFirst =
+        menuEl.querySelector('[role="menuitem"][aria-current="true"]') ||
+        menuEl.querySelector('[role="menuitem"]');
+      activeOrFirst?.focus();
+    }
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
+        e.preventDefault();
+        setIsOpen(false);
+        triggerRef.current?.focus();
+        return;
+      }
+      if (!portalRef.current) return;
+      const items = Array.from(portalRef.current.querySelectorAll('[role="menuitem"]'));
+      if (!items.length) return;
+      const idx = items.indexOf(document.activeElement);
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        items[(idx + 1) % items.length]?.focus();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        items[(idx - 1 + items.length) % items.length]?.focus();
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        items[0]?.focus();
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        items[items.length - 1]?.focus();
+      } else if (e.key === 'Tab') {
         setIsOpen(false);
       }
     };
@@ -99,25 +128,21 @@ export default function HomeToolsDropdown({
         aria-haspopup="menu"
         aria-expanded={isOpen}
         data-tooltip={t('home.toolsDropdown.tooltip')}
-        className={`group/tools relative flex items-center h-full gap-2 px-3.5 sm:px-5 text-sm font-medium transition-all cursor-pointer border-b-2 -mb-px select-none shrink-0 ${
+        className={`group/tools relative inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium transition-all cursor-pointer select-none whitespace-nowrap shrink-0 ${
           isToolActive
-            ? 'bg-primary/10 text-primary border-primary font-semibold'
-            : 'text-on-surface-variant border-transparent hover:bg-surface-container-high hover:text-on-surface'
+            ? 'bg-primary text-on-primary font-semibold shadow-xs'
+            : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/60'
         }`}
       >
         {/* Busy Spinner or Icon */}
         {isAnyToolBusy ? (
           <span className="relative flex items-center justify-center shrink-0">
-            <span className="material-symbols-outlined text-[18px] leading-none text-cyan-500 dark:text-cyan-400 animate-spin shrink-0">
+            <span className="material-symbols-outlined text-[15px] leading-none text-cyan-500 dark:text-cyan-400 animate-spin shrink-0">
               progress_activity
-            </span>
-            <span className="absolute -top-1 -right-1 flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
             </span>
           </span>
         ) : (
-          <span className="material-symbols-outlined text-[18px] leading-none shrink-0">
+          <span className="material-symbols-outlined text-[16px] leading-none shrink-0">
             {isToolActive ? activeTool.icon : 'handyman'}
           </span>
         )}
@@ -135,29 +160,13 @@ export default function HomeToolsDropdown({
           </span>
         )}
 
-        {/* Help Icon if Active Tool has Guide */}
-        {isToolActive && onOpenHelp && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpenHelp(activeTool.id);
-            }}
-            className="inline-flex items-center justify-center w-4 h-4 rounded-full opacity-60 hover:opacity-100 transition-opacity duration-200 cursor-pointer text-current shrink-0"
-            data-tooltip={t('help.tabGuideTooltip')}
-            aria-label={t('help.tabGuideAria')}
-          >
-            <span className="material-symbols-outlined text-[13px] leading-none">help</span>
-          </button>
-        )}
-
         {/* Caret icon */}
         <span
-          className={`material-symbols-outlined text-[18px] leading-none transition-transform duration-200 opacity-70 ${
-            isOpen ? 'rotate-180 text-primary' : ''
+          className={`material-symbols-outlined text-[16px] leading-none transition-transform duration-150 opacity-80 ${
+            isOpen ? 'rotate-180' : ''
           }`}
         >
-          arrow_drop_down
+          expand_more
         </span>
       </button>
 
@@ -170,11 +179,11 @@ export default function HomeToolsDropdown({
             role="menu"
             aria-orientation="vertical"
             style={dropdownStyle}
-            className="rounded-xl border border-outline-variant/20 bg-surface-container-lowest dark:bg-zinc-900 shadow-2xl py-1.5 animate-fade-in backdrop-blur-md"
+            className="rounded-xl border border-outline-variant/20 bg-surface-container-high/95 shadow-2xl py-1.5 animate-fade-in backdrop-blur-md"
           >
-            <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant/60 border-b border-outline-variant/10 mb-1 select-none">
+            <SectionTitle className="px-3 py-1.5 border-b border-outline-variant/10 mb-1">
               {t('home.toolsDropdown.tooltip')}
-            </div>
+            </SectionTitle>
 
             <div className="flex flex-col gap-0.5 max-h-[60vh] overflow-y-auto custom-scrollbar px-1">
               {tools.map((tool) => {
@@ -186,14 +195,16 @@ export default function HomeToolsDropdown({
                     key={tool.id}
                     type="button"
                     role="menuitem"
+                    aria-current={isItemActive ? 'true' : undefined}
                     onClick={() => {
                       onSelectTab(tool.id);
                       setIsOpen(false);
+                      triggerRef.current?.focus();
                     }}
                     className={`w-full flex items-center justify-between gap-3 px-2.5 py-2 text-xs font-medium rounded-lg text-left transition-colors cursor-pointer select-none ${
                       isItemActive
                         ? 'bg-primary/15 text-primary font-semibold'
-                        : 'text-on-surface hover:bg-surface-container-high dark:hover:bg-zinc-800'
+                        : 'text-on-surface hover:bg-surface-container-highest'
                     }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0 flex-1">

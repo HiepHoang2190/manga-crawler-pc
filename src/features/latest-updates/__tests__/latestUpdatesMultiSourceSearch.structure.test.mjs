@@ -40,9 +40,14 @@ describe('LatestUpdatesPanel Multi-Source Search Integration', () => {
 
   test('latestListFetchTriggerKey incorporates selectedMultiSearchSiteIds only when isMultiSourceSearch is active', () => {
     const content = fs.readFileSync(panelPath, 'utf8');
-    expect(content).toContain('selectedMultiSearchSiteIds.slice().sort().join');
+    const cacheContent = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/features/latest-updates/latestUpdatesCache.mjs'),
+      'utf8',
+    );
+    expect(content).toContain('buildLatestListTriggerKey');
     expect(content).toContain('searchAllSources && selectedMultiSearchSiteIds.length === 0');
-    expect(content).toMatch(/scope\s*=\s*isMultiSourceSearch\s*\?\s*`all:\$\{selectedMultiSearchSiteIds/);
+    expect(cacheContent).toContain('selectedMultiSearchSiteIds.slice().sort().join');
+    expect(cacheContent).toMatch(/scope\s*=\s*isMultiSourceSearch\s*\?[\s\S]*all:\$\{/);
   });
 
   test('exports latestUpdatesMultiSearchCache and supports dual cache switching without redundant fetch', () => {

@@ -91,7 +91,7 @@ class MutualHeightsService extends HtmlConnectorService {
 
 const service = new MutualHeightsService();
 
-const MUTUALHEIGHTS_MAX_PAGES = 20;
+const MUTUALHEIGHTS_MAX_PAGES = 500;
 
 function pickMutualHeightsCover($img, pageUrl) {
   if (!$img || !$img.length) return '';

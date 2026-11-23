@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useI18n } from '../../context/I18nContext';
+import SectionTitle from './SectionTitle.jsx';
 
 export default function OutputDestinationSelector({
   inPlace = true,
@@ -87,9 +88,9 @@ export default function OutputDestinationSelector({
 
   return (
     <div className={`space-y-2.5 ${className}`.trim()}>
-      <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/50">
+      <SectionTitle as="p">
         {headingText}
-      </p>
+      </SectionTitle>
 
       <div className="space-y-2">
         <label className="flex cursor-pointer items-center gap-2 text-sm text-on-surface-variant hover:text-on-surface select-none">

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useI18n } from '../../../context/I18nContext';
+import { SectionTitle } from '../../../shared';
 import {
   getKindleJob,
   subscribeKindleJob,
@@ -446,9 +447,9 @@ export default function SendToKindleModal({ open, row, onClose }) {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <label className="block">
-              <span className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/60">
+              <SectionTitle as="span" className="block">
                 {t('sendToKindle.docTitle')}
-              </span>
+              </SectionTitle>
               <div className="relative mt-1.5">
                 <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 material-symbols-outlined text-[18px] leading-none text-on-surface-variant/70">
                   edit
@@ -464,9 +465,9 @@ export default function SendToKindleModal({ open, row, onClose }) {
               </div>
             </label>
             <label className="block">
-              <span className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/60">
+              <SectionTitle as="span" className="block">
                 {t('sendToKindle.docAuthor')}
-              </span>
+              </SectionTitle>
               <div className="relative mt-1.5">
                 <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 material-symbols-outlined text-[18px] leading-none text-on-surface-variant/70">
                   edit
@@ -484,9 +485,9 @@ export default function SendToKindleModal({ open, row, onClose }) {
           </div>
 
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/60 mb-1.5">
+            <SectionTitle as="p" className="mb-1.5">
               {t('sendToKindle.formatLabel')}
-            </p>
+            </SectionTitle>
             <div className="grid grid-cols-2 gap-2">
               {[
                 { value: 'pdf', label: t('sendToKindle.formatPdf'), hint: t('sendToKindle.formatHintPdf') },
@@ -561,9 +562,9 @@ export default function SendToKindleModal({ open, row, onClose }) {
                     {chaptersExpanded ? 'expand_less' : 'expand_more'}
                   </span>
                   <div className="min-w-0">
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/60">
+                    <SectionTitle as="p">
                       {t('sendToKindle.selectChapters')}
-                    </p>
+                    </SectionTitle>
                     <p className="text-xs text-on-surface-variant mt-0.5">
                       {t('sendToKindle.selectedCount', {
                         selected: selectedChapters.length,

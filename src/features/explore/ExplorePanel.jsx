@@ -115,7 +115,7 @@ export default function ExplorePanel({
     <div
       role="tablist"
       aria-label={t('menu.explore')}
-      className="inline-flex items-center p-0.5 rounded-xl bg-surface-container-high/70 border border-outline-variant/25 shrink-0"
+      className="inline-flex items-center gap-0.5 p-0.5 rounded-xl bg-surface-container-high/70 border border-outline-variant/25 overflow-x-auto no-scrollbar shrink-0"
     >
       <button
         type="button"
@@ -124,7 +124,7 @@ export default function ExplorePanel({
         aria-selected={activeSubtab === 'latest'}
         onClick={() => handleSelectSubtab('latest')}
         data-tooltip={t('explore.subtab.latestTooltip')}
-        className={`inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs font-medium transition-all cursor-pointer select-none ${
+        className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium transition-all cursor-pointer select-none whitespace-nowrap shrink-0 ${
           activeSubtab === 'latest'
             ? 'bg-primary text-on-primary font-semibold shadow-xs'
             : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/60'
@@ -140,7 +140,7 @@ export default function ExplorePanel({
         aria-selected={activeSubtab === 'followed'}
         onClick={() => handleSelectSubtab('followed')}
         data-tooltip={t('explore.subtab.followedTooltip')}
-        className={`inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs font-medium transition-all cursor-pointer select-none ${
+        className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium transition-all cursor-pointer select-none whitespace-nowrap shrink-0 ${
           activeSubtab === 'followed'
             ? 'bg-primary text-on-primary font-semibold shadow-xs'
             : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/60'
@@ -156,7 +156,7 @@ export default function ExplorePanel({
         aria-selected={activeSubtab === 'bulk'}
         onClick={() => handleSelectSubtab('bulk')}
         data-tooltip={t('explore.subtab.bulkTooltip')}
-        className={`inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs font-medium transition-all cursor-pointer select-none ${
+        className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium transition-all cursor-pointer select-none whitespace-nowrap shrink-0 ${
           activeSubtab === 'bulk'
             ? 'bg-primary text-on-primary font-semibold shadow-xs'
             : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/60'

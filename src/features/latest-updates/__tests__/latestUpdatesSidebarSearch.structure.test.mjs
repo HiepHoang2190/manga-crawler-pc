@@ -28,7 +28,7 @@ describe('LatestUpdatesPanel Sidebar Search Structure', () => {
     expect(code).toMatch(/e\.key\s*===\s*['"]f['"]\s*&&\s*\(e\.ctrlKey\s*\|\|\s*e\.metaKey\)/i);
   });
 
-  test('toolbar leftSlot cleanly renders subtabsSlot without duplicate search button', () => {
+  test('toolbar leftSlot cleanly renders subtabsSlot followed by explore-primary-action-slot without duplicate search button', () => {
     const code = fs.readFileSync(panelPath, 'utf8');
     const toolbarStart = code.indexOf('<StudioLayout.Toolbar');
     const toolbarEnd = code.indexOf('/>\n\n      <StudioLayout.Body>');
@@ -36,7 +36,13 @@ describe('LatestUpdatesPanel Sidebar Search Structure', () => {
     expect(toolbarEnd).toBeGreaterThan(toolbarStart);
 
     const toolbarCode = code.slice(toolbarStart, toolbarEnd);
-    expect(toolbarCode).toContain('leftSlot={subtabsSlot}');
+    const leftSlotMatch = toolbarCode.match(/leftSlot=\{([\s\S]*?)\}\s*\n\s*rightSlot=/);
+    expect(leftSlotMatch).not.toBeNull();
+    const subtabsIdx = leftSlotMatch[1].indexOf('{subtabsSlot}');
+    const slotIdx = leftSlotMatch[1].indexOf('data-testid="explore-primary-action-slot"');
+    expect(subtabsIdx).toBeGreaterThan(-1);
+    expect(slotIdx).toBeGreaterThan(subtabsIdx);
+    expect(toolbarCode).not.toContain('handleApplyLatestSearch');
   });
 
   test('search button and enter key are disabled when searchDraft is empty', () => {

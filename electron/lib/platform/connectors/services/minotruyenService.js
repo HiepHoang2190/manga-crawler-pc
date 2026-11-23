@@ -368,6 +368,10 @@ function sortBooksByBookIdDesc(rawBooks) {
  * @param {string} [options.minotruyenListingCategory]  `manga` | `comics`
  */
 async function fetchLatestUpdates(options = {}) {
+  const signal = options.signal || null;
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, items: [] };
+  }
   const site_origin = resolveLatestUpdatesSiteOrigin(options || {});
   const listing_category = normalizeLatestListingCategory(
     options.minotruyenListingCategory,
@@ -391,14 +395,26 @@ async function fetchLatestUpdates(options = {}) {
     listing_category,
     Boolean(search_query),
   );
-  const res = await fetch(url, {
-    headers: {
-      Accept: 'application/json',
-      'User-Agent': USER_AGENT,
-      Origin: site_origin,
-      Referer: `${site_origin}${refererPath}`,
-    },
-  });
+  let res;
+  try {
+    res = await fetch(url, {
+      ...(signal ? { signal } : {}),
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': USER_AGENT,
+        Origin: site_origin,
+        Referer: `${site_origin}${refererPath}`,
+      },
+    });
+  } catch (err) {
+    if (signal?.aborted || err?.name === 'AbortError') {
+      return { ok: false, aborted: true, items: [] };
+    }
+    return { ok: false, error: String(err?.message || err) };
+  }
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, items: [] };
+  }
   if (!res.ok) {
     return { ok: false, error: `HTTP ${res.status}` };
   }

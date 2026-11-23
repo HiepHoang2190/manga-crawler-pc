@@ -68,7 +68,7 @@ StudioLayout.Toolbar = function StudioToolbar({
       className={`relative h-11 min-h-[44px] border-b border-outline-variant/20 bg-surface-container-low/70 backdrop-blur px-4 flex items-center justify-between shrink-0 select-none gap-3 ${className}`}
     >
       {/* Left Slot: Toggle Sidebar (thay thế logo), Title, Subtitle, or custom left */}
-      <div className="flex items-center gap-2.5 min-w-0 z-10 shrink-0">
+      <div className="flex items-center gap-2.5 min-w-0 z-10">
         {onToggleLeftSidebar ? (
           <button
             type="button"

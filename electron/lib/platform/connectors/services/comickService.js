@@ -68,7 +68,7 @@ function load(url, language = 'en') {
  * @param {string} connector - Connector label
  * @returns {Promise<{ok: boolean, successCount?: number, totalPages?: number, failedPageIndices?: array}>}
  */
-const LATEST_UPDATES_PAGE_LIMIT = 20;
+const LATEST_UPDATES_PAGE_LIMIT = 500;
 const COMICK_CURSOR_CACHE = new Map();
 
 function pickComickLatestChapterLabel(item) {

@@ -21,12 +21,38 @@ describe('Explore Subtabs Layout Consistency Standards', () => {
     }
   });
 
-  test('all 3 subtabs accept and render subtabsSlot in StudioLayout.Toolbar leftSlot cleanly without outer clutter', () => {
+  test('all 3 subtabs accept and render subtabsSlot followed by explore-primary-action-slot in StudioLayout.Toolbar leftSlot cleanly without outer clutter', () => {
     for (const f of files) {
       const content = fs.readFileSync(f.path, 'utf8');
       expect(content).toContain('subtabsSlot');
       expect(content).toContain('StudioLayout.Toolbar');
-      expect(content).toMatch(/leftSlot=\{\s*subtabsSlot\s*\}/);
+      const leftSlotMatch = content.match(/leftSlot=\{([\s\S]*?)\}\s*\n\s*rightSlot=/);
+      expect(leftSlotMatch).not.toBeNull();
+      const leftSlotCode = leftSlotMatch[1];
+      const subtabsIdx = leftSlotCode.indexOf('{subtabsSlot}');
+      const primarySlotIdx = leftSlotCode.indexOf('data-testid="explore-primary-action-slot"');
+      expect(subtabsIdx).toBeGreaterThan(-1);
+      expect(primarySlotIdx).toBeGreaterThan(subtabsIdx);
+      expect(leftSlotCode).toContain('overflow-x-auto no-scrollbar');
+      expect(leftSlotCode).toContain('empty:hidden');
+      expect(leftSlotCode).toMatch(/subtabsSlot\s*\?\s*['"][^'"]*border-l border-outline-variant\/25[^'"]*['"]\s*:\s*['"]['"]/);
+
+      const rightSlotMatch = content.match(/rightSlot=\{([\s\S]*?)\n\s*\}\s*\/>/);
+      expect(rightSlotMatch).not.toBeNull();
+      const rightSlotCode = rightSlotMatch[1];
+      expect(rightSlotCode).toContain('<ViewModeToggle');
+      for (const forbidden of [
+        'handleManualRefresh',
+        'handleStopFetch',
+        'handleCheckAll',
+        'handleStopCheck',
+        'handleEnqueueAllNew',
+        'runLoad',
+        'stopScan',
+        'runEnqueue',
+      ]) {
+        expect(rightSlotCode).not.toContain(forbidden);
+      }
     }
   });
 
@@ -86,5 +112,16 @@ describe('Explore Subtabs Layout Consistency Standards', () => {
       const content = fs.readFileSync(f.path, 'utf8');
       expect(content).toContain('ExploreSourceSelect');
     }
+  });
+
+  test('ExplorePanel sub-tab buttons match toolbar primary action button height (h-8 px-3 inside p-0.5 pill)', () => {
+    const explorePanelPath = path.resolve(process.cwd(), 'src/features/explore/ExplorePanel.jsx');
+    const content = fs.readFileSync(explorePanelPath, 'utf8');
+    expect(content).toContain('p-0.5 rounded-xl');
+    for (const testId of ['subtab-latest', 'subtab-followed', 'subtab-bulk']) {
+      const match = content.match(new RegExp(`data-testid="${testId}"[\\s\\S]{0,400}className=\\{[^}]*h-8 px-3`));
+      expect(match).not.toBeNull();
+    }
+    expect(content).not.toMatch(/data-testid="subtab-[\s\S]{0,400}\bh-7\b/);
   });
 });

@@ -159,7 +159,7 @@ function downloadChapter(payload, connector) {
   return service.downloadChapter(payload, connector || LABEL);
 }
 
-const VIVICOMIC_MAX_PAGES = 20;
+const VIVICOMIC_MAX_PAGES = 500;
 
 function parseViviComicListingHtml(html, pageUrl) {
   const $ = cheerio.load(String(html || ''));

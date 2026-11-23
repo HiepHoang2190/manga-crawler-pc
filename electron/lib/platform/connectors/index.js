@@ -289,8 +289,18 @@ function connectorSupportsLatestUpdatesSearch(connector) {
 /** Khớp mobile Home + PC tab Mới cập nhật — tối đa số trang hiển thị/phân trang. */
 const LATEST_UPDATES_MAX_LISTING_PAGES = 20;
 
-const BULK_SCAN_DEFAULT_MAX_PAGES = 10;
-const BULK_SCAN_MAX_PAGES_CAP = 100;
+const BULK_SCAN_MAX_PAGES_CAP = 500;
+
+function resolveBulkScanMaxPages(rawMaxPages) {
+  if (rawMaxPages === undefined || rawMaxPages === null || rawMaxPages === '' || rawMaxPages === 'all') {
+    return BULK_SCAN_MAX_PAGES_CAP;
+  }
+  const n = Math.floor(Number(rawMaxPages));
+  if (!Number.isFinite(n) || n <= 0) {
+    return BULK_SCAN_MAX_PAGES_CAP;
+  }
+  return Math.min(BULK_SCAN_MAX_PAGES_CAP, Math.max(1, n));
+}
 
 /** Single-series fan sites that are better fetched directly via URL rather than catalog Bulk Scan. */
 const SINGLE_SERIES_BULK_SCAN_EXCLUDED_IDS = new Set([
@@ -461,10 +471,9 @@ async function fetchBulkScanFromLatestUpdates(connector, options = {}) {
   const siteId = String(connector?.id || '').trim();
   const signal = options.signal || null;
   const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
-  const cap = Math.min(
-    BULK_SCAN_MAX_PAGES_CAP,
-    Math.max(1, Math.floor(Number(options.maxPages) || BULK_SCAN_DEFAULT_MAX_PAGES)),
-  );
+  const onPartialUpdate =
+    typeof options.onPartialUpdate === 'function' ? options.onPartialUpdate : null;
+  const cap = resolveBulkScanMaxPages(options.maxPages);
   const pageDelayMs =
     typeof options.pageDelayMs === 'number' && options.pageDelayMs >= 0
       ? options.pageDelayMs
@@ -486,6 +495,7 @@ async function fetchBulkScanFromLatestUpdates(connector, options = {}) {
   const buildCallOpts = (page) => {
     const opts = {
       page,
+      perPage: options.perPage || 60,
       latestUpdatesSearch: '',
     };
     if (signal) opts.signal = signal;
@@ -552,11 +562,14 @@ async function fetchBulkScanFromLatestUpdates(connector, options = {}) {
 
   const rawTotalPages = Number(page1Res.totalPages);
   const hasPage1Items = Array.isArray(page1Res.items) && page1Res.items.length > 0;
-  const detected = hasPage1Items
+  let detected = hasPage1Items
     ? Math.min(cap, Math.max(1, Number.isFinite(rawTotalPages) && rawTotalPages >= 1 ? Math.floor(rawTotalPages) : cap))
     : 1;
   mergeItems(page1Res.items);
-  if (onProgress) onProgress({ page: 1, totalPages: detected });
+  if (onPartialUpdate) {
+    onPartialUpdate({ pagesFetched: 1, totalPagesDetected: detected, items: Array.from(byUrl.values()) });
+  }
+  if (onProgress) onProgress({ page: 1, totalPages: detected, itemsCount: byUrl.size });
 
   if (signal?.aborted) {
     return makeAbortedResult(1, detected, Array.from(byUrl.values()));
@@ -606,8 +619,19 @@ async function fetchBulkScanFromLatestUpdates(connector, options = {}) {
       break;
     }
 
+    const pageTotal = Number(pageRes.totalPages);
+    if (Number.isFinite(pageTotal) && pageTotal >= 1) {
+      const expanded = Math.min(cap, Math.floor(pageTotal));
+      if (expanded > detected) {
+        detected = expanded;
+      }
+    }
+
     pagesFetched += 1;
-    if (onProgress) onProgress({ page, totalPages: detected });
+    if (onPartialUpdate) {
+      onPartialUpdate({ pagesFetched, totalPagesDetected: detected, items: Array.from(byUrl.values()) });
+    }
+    if (onProgress) onProgress({ page, totalPages: detected, itemsCount: byUrl.size });
   }
 
   return {
@@ -637,14 +661,18 @@ async function fetchBulkScan(siteId, options = {}) {
       error: `Bulk scan is not supported for site: ${id || '(empty)'}`,
     };
   }
+  const normalizedOptions =
+    options && options.maxPages !== undefined
+      ? { ...options, maxPages: resolveBulkScanMaxPages(options.maxPages) }
+      : options || {};
   if (id === 'comicvn' && typeof c.fetchMoiNhatListing === 'function') {
-    return c.fetchMoiNhatListing(options || {});
+    return c.fetchMoiNhatListing(normalizedOptions);
   }
   if (typeof c.fetchBulkScanListing === 'function') {
-    return c.fetchBulkScanListing(options || {});
+    return c.fetchBulkScanListing(normalizedOptions);
   }
   if (connectorHasLatestUpdates(c)) {
-    return fetchBulkScanFromLatestUpdates(c, options || {});
+    return fetchBulkScanFromLatestUpdates(c, normalizedOptions);
   }
   return {
     ok: false,
@@ -780,6 +808,8 @@ module.exports = {
   fetchBulkScan,
   fetchBulkScanFromLatestUpdates,
   connectorSupportsBulkScan,
+  resolveBulkScanMaxPages,
+  BULK_SCAN_MAX_PAGES_CAP,
   connectorSupportsLatestUpdatesSearch,
   LATEST_UPDATES_SEARCH_SITE_IDS,
   LATEST_UPDATES_MAX_LISTING_PAGES,

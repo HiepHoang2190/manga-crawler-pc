@@ -453,7 +453,7 @@ class VietMessengerService extends HtmlConnectorService {
     if (signal?.aborted) {
       return { ok: false, aborted: true, siteId: 'vietmessenger', page: 1, totalPages: 1, items: [] };
     }
-    const page = Math.min(20, Math.max(1, Math.floor(Number(options.page) || 1)));
+    const page = Math.min(500, Math.max(1, Math.floor(Number(options.page) || 1)));
     const listingUrl = `${this.config.domain}comics/?page=${page}`;
     const cheerio = require('cheerio');
     const { fetchHtml } = require('../../../download/connector/htmlConnectorUtils');
@@ -544,7 +544,7 @@ class VietMessengerService extends HtmlConnectorService {
       ok: true,
       siteId: 'vietmessenger',
       page,
-      totalPages: Math.min(20, Math.max(page, totalPages)),
+      totalPages: Math.min(500, Math.max(page, totalPages)),
       items,
     };
   }

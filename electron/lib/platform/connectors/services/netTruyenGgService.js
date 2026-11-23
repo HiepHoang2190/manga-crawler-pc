@@ -194,7 +194,7 @@ class NetTruyenGgService extends HtmlConnectorService {
 const service = new NetTruyenGgService();
 
 const HINETTRUYEN_DOMAIN = 'https://hinettruyen.com/';
-const NETTRUYENGG_MAX_PAGES = 20;
+const NETTRUYENGG_MAX_PAGES = 500;
 
 async function fetchLatestUpdates(options = {}) {
   const signal = options.signal || null;

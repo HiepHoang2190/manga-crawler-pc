@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useI18n } from '../../../context/I18nContext';
 import MangaInfo from './MangaInfo.jsx';
-import { SearchableSelect, classifyFetchError } from '../../../shared';
+import { SearchableSelect, SectionTitle, classifyFetchError } from '../../../shared';
 import {
   buildCookieExtractFeedback,
   resolveCookieExtractTargetUrl,
@@ -326,7 +326,7 @@ export default function Sidebar({
         ) : null}
 
         <div className="space-y-2">
-          <label className="text-xs font-bold text-on-surface-variant tracking-widest uppercase">{t('sidebar.saveTo')}</label>
+          <SectionTitle as="label" className="block">{t('sidebar.saveTo')}</SectionTitle>
           <div className="grid grid-cols-[minmax(0,1fr)_5.5rem] gap-2 items-center">
             <div className="relative flex items-center min-w-0">
               <input
@@ -373,9 +373,9 @@ export default function Sidebar({
         </div>
 
         <div className="space-y-2">
-          <label className="text-xs font-bold text-on-surface-variant tracking-widest uppercase">
+          <SectionTitle as="label" className="block">
             {t('sidebar.site')} ({(connectors || []).length})
-          </label>
+          </SectionTitle>
           <div className="grid grid-cols-[minmax(0,1fr)_2.5rem] gap-2 items-center">
             <SearchableSelect
               value={site}
@@ -404,9 +404,9 @@ export default function Sidebar({
 
           {site === 'mangadex' && typeof setMangadexLanguage === 'function' ? (
             <div className="space-y-2">
-              <label className="text-xs font-bold text-on-surface-variant tracking-widest uppercase">
+              <SectionTitle as="label" className="block">
                 {t('sidebar.mangadexTranslationLang')}
-              </label>
+              </SectionTitle>
               <SearchableSelect
                 value={mangadexLanguage}
                 onChange={(v) => setMangadexLanguage(v)}
@@ -422,9 +422,9 @@ export default function Sidebar({
 
           {site === 'comick' && typeof setComickLanguage === 'function' ? (
             <div className="space-y-2">
-              <label className="text-xs font-bold text-on-surface-variant tracking-widest uppercase">
+              <SectionTitle as="label" className="block">
                 {t('sidebar.comickTranslationLang')}
-              </label>
+              </SectionTitle>
               <SearchableSelect
                 value={comickLanguage}
                 onChange={(v) => setComickLanguage(v)}
@@ -440,9 +440,9 @@ export default function Sidebar({
 
           {site === 'mangaball' && typeof setMangaballLanguage === 'function' ? (
             <div className="space-y-2">
-              <label className="text-xs font-bold text-on-surface-variant tracking-widest uppercase">
+              <SectionTitle as="label" className="block">
                 {t('sidebar.mangaballTranslationLang')}
-              </label>
+              </SectionTitle>
               <SearchableSelect
                 value={mangaballLanguage}
                 onChange={(v) => setMangaballLanguage(v)}

@@ -39,7 +39,7 @@ describe('ComicVN moi-nhat parse helpers', () => {
       '<a href="https://comicvn19.net/danh-muc/moi-nhat?page=2">2</a><a href="https://comicvn19.net/danh-muc/moi-nhat?page=9">9</a>';
     expect(parseMoiNhatMaxPage(html)).toBe(9);
     expect(parseMoiNhatMaxPage(fixture('moi_nhat_page_1.html'))).toBe(2);
-    expect(MOI_NHAT_MAX_PAGES_CAP).toBe(15);
+    expect(MOI_NHAT_MAX_PAGES_CAP).toBe(500);
   });
 
   test('parseMoiNhatListingHtml returns manga cards only (not chapter links)', () => {
@@ -83,8 +83,8 @@ describe('fetchMoiNhatListing', () => {
       'https://comicvn19.net/manga-three-aaaaaaaaaaaaaaaaaaaaaaa3.html',
     ]);
     expect(res.items[0].title).toBe('Manga One');
-    expect(progress[0]).toEqual({ page: 1, totalPages: 2 });
-    expect(progress[1]).toEqual({ page: 2, totalPages: 2 });
+    expect(progress[0]).toEqual({ page: 1, totalPages: 2, itemsCount: 2 });
+    expect(progress[1]).toEqual({ page: 2, totalPages: 2, itemsCount: 3 });
   });
 
   test('page 1 failure returns ok:false', async () => {
@@ -113,7 +113,7 @@ describe('fetchMoiNhatListing', () => {
       <div id="listComic"><ul class="list"><li>
         <div class="detail"><h3><a href="https://comicvn19.net/manga-one-aaaaaaaaaaaaaaaaaaaaaaa1.html">One</a></h3></div>
       </li></ul></div>
-      <a href="https://comicvn19.net/danh-muc/moi-nhat?page=99">99</a>`;
+      <a href="https://comicvn19.net/danh-muc/moi-nhat?page=999">999</a>`;
     let maxRequested = 1;
     await fetchMoiNhatListing({
       fetchHtmlImpl: async (url) => {
@@ -123,11 +123,32 @@ describe('fetchMoiNhatListing', () => {
         if (p === 1) return { ok: true, html: hugePager };
         return {
           ok: true,
-          html: '<div id="listComic"><ul class="list"></ul></div>',
+          html: `<div id="listComic"><ul class="list"><li><div class="detail"><h3><a href="https://comicvn19.net/manga-${p}-aaaaaaaaaaaaaaaaaaaaaaa1.html">Manga ${p}</a></h3></div></li></ul></div>`,
         };
       },
     });
-    expect(maxRequested).toBe(15);
+    expect(maxRequested).toBe(500);
+  });
+
+  test('stops early on empty page and treats non-positive maxPages as cap', async () => {
+    let calls = 0;
+    const partial = [];
+    const res = await fetchMoiNhatListing({
+      maxPages: -5,
+      onPartialUpdate: (snap) => partial.push(snap),
+      fetchHtmlImpl: async (url) => {
+        calls += 1;
+        if (url === `${DOMAIN}danh-muc/moi-nhat`) {
+          return { ok: true, html: fixture('moi_nhat_page_1.html') };
+        }
+        return { ok: true, html: '<div id="listComic"><ul class="list"></ul></div>' };
+      },
+    });
+    expect(calls).toBe(2);
+    expect(res.ok).toBe(true);
+    expect(res.pagesFetched).toBe(1);
+    expect(partial.length).toBe(1);
+    expect(partial[0].items.length).toBe(2);
   });
 
   test('cancelling via AbortController after page 1 stops remaining pages and returns aborted:true', async () => {

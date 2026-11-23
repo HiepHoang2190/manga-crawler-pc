@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import DualSourcePicker from './DualSourcePicker';
-import { ResizeSplitter, useToolsSidebarResize, SearchableSelect, EmptyState, SaveDirErrorModal } from '../../../shared';
+import { ResizeSplitter, useToolsSidebarResize, SearchableSelect, EmptyState, SaveDirErrorModal, SectionTitle } from '../../../shared';
 import { useI18n } from '../../../context/I18nContext';
 import KindleGenCompilerCard from './KindleGenCompilerCard';
 import { EbookStudioActionSlot, EbookStudioCenterSlot } from '../EbookStudioActionSlot';
@@ -366,9 +366,9 @@ export default function FormatConverterSubTab({
 
             {/* 2. Định dạng đích chuyển sang */}
             <div className="space-y-2">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/50">
+              <SectionTitle as="p">
                 {t('ebookStudio.converter.formatTitle', 'Định dạng')}
-              </p>
+              </SectionTitle>
               <div className="grid grid-cols-2 gap-2">
                 {TARGET_FORMATS.map((fmt) => {
                   const isSelected = targetFormat === fmt.id;
@@ -401,9 +401,9 @@ export default function FormatConverterSubTab({
 
             {/* 3. Cấu hình */}
             <div className="space-y-2">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/50">
+              <SectionTitle as="p">
                 {t('ebookStudio.converter.configTitle', 'Cấu hình')}
-              </p>
+              </SectionTitle>
               <div className="space-y-3 rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-4">
                 {targetFormat === 'cbz' && (
                   <div className="flex items-center gap-2 rounded-lg bg-amber-500/10 p-2.5 text-xs text-amber-600 dark:text-amber-400">
@@ -462,9 +462,9 @@ export default function FormatConverterSubTab({
             {/* 3.5. Công cụ biên dịch MOBI */}
             {targetFormat === 'mobi' && (
               <div className="space-y-2">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/50">
+                <SectionTitle as="p">
                   {t('ebookStudio.converter.compilerSectionTitle', 'Công cụ biên dịch')}
-                </p>
+                </SectionTitle>
                 <KindleGenCompilerCard disabled={converting} />
               </div>
             )}
@@ -476,9 +476,9 @@ export default function FormatConverterSubTab({
                 : 'border-outline-variant/20 bg-surface-container-low/50'
             }`}>
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-on-surface">
+                <SectionTitle as="span">
                   {t('ebookStudio.converter.outputDest')}
-                </span>
+                </SectionTitle>
                 {outputWarning && (
                   <span className="flex items-center gap-1 text-[11px] font-medium text-amber-600 dark:text-amber-400">
                     <span className="material-symbols-outlined text-[14px]">warning</span>

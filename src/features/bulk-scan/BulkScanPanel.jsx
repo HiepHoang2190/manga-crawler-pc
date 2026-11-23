@@ -1,6 +1,6 @@
 import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from '../../context/I18nContext';
-import { EmptyState, FetchErrorState, SearchableSelect, StudioLayout, useStudioLayout, ViewModeToggle } from '../../shared';
+import { EmptyState, FetchErrorState, SearchableSelect, SectionTitle, StudioLayout, useStudioLayout, ViewModeToggle } from '../../shared';
 import { ChaptersDrawer } from '../reader';
 import { dedupeChaptersByNumber } from '../download';
 import ExploreSourceSelect from '../explore/components/ExploreSourceSelect.jsx';
@@ -15,7 +15,7 @@ import {
 import { loadPanelUi, savePanelUi } from '../../utils/panelUiPrefs';
 
 const PAGE_SIZES = [20, 50, 100];
-const SCAN_MAX_PAGES_OPTIONS = [3, 5, 10, 20, 50];
+const SCAN_MAX_PAGES_OPTIONS = ['all', 10, 20, 50, 100];
 const BULK_DRAWER_CACHE_TTL_MS = 30 * 60 * 1000;
 const BULK_DRAWER_CACHE_MAX_ENTRIES = 48;
 const BULK_GRID_SKELETON_ITEMS = Array.from({ length: 12 }, (_, idx) => idx);
@@ -211,8 +211,10 @@ export default function BulkScanPanel({
     return PAGE_SIZES.includes(n) ? n : 20;
   });
   const [maxPages, setMaxPages] = useState(() => {
-    const n = Number(loadPanelUi().bulkScan?.maxPages);
-    return SCAN_MAX_PAGES_OPTIONS.includes(n) ? n : 10;
+    const raw = loadPanelUi().bulkScan?.maxPages;
+    if (raw === 'all') return 'all';
+    const n = Number(raw);
+    return SCAN_MAX_PAGES_OPTIONS.includes(n) ? n : 'all';
   });
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
@@ -726,6 +728,15 @@ export default function BulkScanPanel({
           : {}),
       });
       if (res?.aborted || scanCancelRef.current) {
+        const partialList = Array.isArray(res?.items) ? res.items : [];
+        if (partialList.length > 0) {
+          const partialSession = buildSessionAfterScan({ prevSelectedUrls, items: partialList });
+          setItems(partialSession.items);
+          setSelected(new Set(partialSession.selectedUrls));
+          setScannedAt(partialSession.scannedAt);
+          const saved = await saveBulkScanSessionAsync(selectedSiteId, partialSession);
+          if (!saved) setPersistWarning(true);
+        }
         return;
       }
       if (!res?.ok) {
@@ -860,6 +871,13 @@ export default function BulkScanPanel({
   const listStatus = useMemo(() => {
     if (busyList && cancellingScan) return t('bulkScan.stopping');
     if (busyList && listProgress) {
+      if (typeof listProgress.itemsCount === 'number' && listProgress.itemsCount > 0) {
+        return t('bulkScan.loadingPageWithCount', {
+          page: listProgress.page,
+          total: listProgress.totalPages,
+          count: listProgress.itemsCount,
+        });
+      }
       return t('bulkScan.loadingPage', {
         page: listProgress.page,
         total: listProgress.totalPages,
@@ -891,11 +909,19 @@ export default function BulkScanPanel({
 
   const maxPagesOptions = useMemo(
     () =>
-      SCAN_MAX_PAGES_OPTIONS.map((n) => ({
-        value: String(n),
-        label: t('bulkScan.maxPagesOption', { count: n }),
-        materialIcon: 'layers',
-      })),
+      SCAN_MAX_PAGES_OPTIONS.map((opt) =>
+        opt === 'all'
+          ? {
+              value: 'all',
+              label: t('bulkScan.maxPagesAll'),
+              materialIcon: 'all_inclusive',
+            }
+          : {
+              value: String(opt),
+              label: t('bulkScan.maxPagesOption', { count: opt }),
+              materialIcon: 'layers',
+            },
+      ),
     [t],
   );
 
@@ -921,69 +947,90 @@ export default function BulkScanPanel({
         showLeftSidebar={showLeftSidebar}
         onToggleLeftSidebar={toggleLeftSidebar}
         leftSidebarTooltip={showLeftSidebar ? t('sidebar.hidePanel') : t('sidebar.showPanel')}
-        leftSlot={subtabsSlot}
+        leftSlot={
+          <div className="flex items-center gap-2 min-w-0 overflow-x-auto no-scrollbar">
+            {subtabsSlot}
+            <div
+              data-testid="explore-primary-action-slot"
+              className={`flex items-center gap-2 shrink-0 empty:hidden ${
+                subtabsSlot ? 'pl-2.5 border-l border-outline-variant/25 ml-1' : ''
+              }`}
+            >
+              {busyList ? (
+                <button
+                  type="button"
+                  className="h-8 px-3.5 rounded-lg text-xs font-semibold bg-error/15 text-error hover:bg-error/25 border border-error/30 inline-flex items-center justify-center gap-1.5 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shrink-0"
+                  disabled={cancellingScan}
+                  onClick={stopScan}
+                  data-tooltip={cancellingScan ? t('bulkScan.stopping') : t('bulkScan.stopScan')}
+                  aria-label={cancellingScan ? t('bulkScan.stopping') : t('bulkScan.stopScan')}
+                >
+                  <span className="material-symbols-outlined text-[15px] leading-none">stop_circle</span>
+                  <span>{cancellingScan ? t('bulkScan.stopping') : t('bulkScan.stopScan')}</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="h-8 px-3.5 rounded-lg text-xs font-semibold bg-primary text-on-primary hover:opacity-95 shadow-2xs inline-flex items-center justify-center gap-1.5 transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none cursor-pointer shrink-0"
+                  disabled={controlsBusy || !selectedSiteId}
+                  onClick={() => void runLoad()}
+                  data-tooltip={items.length > 0 ? t('bulkScan.rescanSource') : t('bulkScan.scanSource')}
+                  aria-label={items.length > 0 ? t('bulkScan.rescanSource') : t('bulkScan.scanSource')}
+                >
+                  <span className="material-symbols-outlined text-[15px] leading-none">sync</span>
+                  <span>{items.length > 0 ? t('bulkScan.rescanSource') : t('bulkScan.scanSource')}</span>
+                </button>
+              )}
+
+              {items.length > 0 ? (
+                <button
+                  type="button"
+                  className="h-8 px-3 rounded-lg text-xs font-semibold bg-emerald-600 dark:bg-emerald-500 text-white hover:opacity-95 shadow-2xs inline-flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0"
+                  disabled={!selectedCount || controlsBusy || !selectedSiteId}
+                  onClick={() => void runEnqueue()}
+                  data-tooltip={
+                    enqueueBusy
+                      ? t('bulkScan.enqueueBusy')
+                      : selectedCount > 0
+                        ? t('bulkScan.enqueueSelectedCount', { count: selectedCount })
+                        : t('bulkScan.enqueueSelected')
+                  }
+                  aria-label={
+                    enqueueBusy
+                      ? t('bulkScan.enqueueBusy')
+                      : selectedCount > 0
+                        ? t('bulkScan.enqueueSelectedCount', { count: selectedCount })
+                        : t('bulkScan.enqueueSelected')
+                  }
+                >
+                  <span className="material-symbols-outlined text-[15px] leading-none">playlist_add</span>
+                  <span>
+                    {enqueueBusy
+                      ? t('bulkScan.enqueueBusy')
+                      : selectedCount > 0
+                        ? t('bulkScan.enqueueSelectedCount', { count: selectedCount })
+                        : t('bulkScan.enqueueSelected')}
+                  </span>
+                </button>
+              ) : null}
+
+              {enqueueBusy ? (
+                <button
+                  type="button"
+                  className="h-8 px-3 rounded-lg text-xs font-semibold bg-error/15 text-error hover:bg-error/25 border border-error/30 inline-flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
+                  onClick={stopEnqueue}
+                  data-tooltip={t('bulkScan.stop')}
+                  aria-label={t('bulkScan.stop')}
+                >
+                  <span className="material-symbols-outlined text-[15px] leading-none">cancel</span>
+                  <span>{t('bulkScan.stop')}</span>
+                </button>
+              ) : null}
+            </div>
+          </div>
+        }
         rightSlot={
           <div className="flex items-center gap-2">
-            {items.length > 0 ? (
-              <button
-                type="button"
-                className="h-8 px-3 rounded-lg text-xs font-semibold bg-emerald-600 dark:bg-emerald-500 text-white hover:opacity-95 shadow-2xs inline-flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0"
-                disabled={!selectedCount || controlsBusy || !selectedSiteId}
-                onClick={() => void runEnqueue()}
-                data-tooltip={
-                  enqueueBusy
-                    ? t('bulkScan.enqueueBusy')
-                    : selectedCount > 0
-                      ? t('bulkScan.enqueueSelectedCount', { count: selectedCount })
-                      : t('bulkScan.enqueueSelected')
-                }
-              >
-                <span className="material-symbols-outlined text-[15px] leading-none">playlist_add</span>
-                <span>
-                  {enqueueBusy
-                    ? t('bulkScan.enqueueBusy')
-                    : selectedCount > 0
-                      ? t('bulkScan.enqueueSelectedCount', { count: selectedCount })
-                      : t('bulkScan.enqueueSelected')}
-                </span>
-              </button>
-            ) : null}
-
-            {enqueueBusy ? (
-              <button
-                type="button"
-                className="h-8 px-3 rounded-lg text-xs font-semibold bg-error/15 text-error hover:bg-error/25 border border-error/30 inline-flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
-                onClick={stopEnqueue}
-              >
-                <span className="material-symbols-outlined text-[15px] leading-none">cancel</span>
-                <span>{t('bulkScan.stop')}</span>
-              </button>
-            ) : null}
-
-            {busyList ? (
-              <button
-                type="button"
-                className="h-8 px-3.5 rounded-lg text-xs font-semibold bg-error/15 text-error hover:bg-error/25 border border-error/30 inline-flex items-center justify-center gap-1.5 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shrink-0"
-                disabled={cancellingScan}
-                onClick={stopScan}
-                data-tooltip={cancellingScan ? t('bulkScan.stopping') : t('bulkScan.stopScan')}
-              >
-                <span className="material-symbols-outlined text-[15px] leading-none">stop_circle</span>
-                <span>{cancellingScan ? t('bulkScan.stopping') : t('bulkScan.stopScan')}</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="h-8 px-3.5 rounded-lg text-xs font-semibold bg-primary text-on-primary hover:opacity-95 shadow-2xs inline-flex items-center justify-center gap-1.5 transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none cursor-pointer shrink-0"
-                disabled={controlsBusy || !selectedSiteId}
-                onClick={() => void runLoad()}
-                data-tooltip={items.length > 0 ? t('bulkScan.rescanSource') : t('bulkScan.scanSource')}
-              >
-                <span className="material-symbols-outlined text-[15px] leading-none">sync</span>
-                <span>{items.length > 0 ? t('bulkScan.rescanSource') : t('bulkScan.scanSource')}</span>
-              </button>
-            )}
-
             <ViewModeToggle
               viewMode={viewMode}
               onChange={handleViewModeChange}
@@ -1012,13 +1059,17 @@ export default function BulkScanPanel({
 
             {/* 1b. Độ sâu quét (Scan Depth) */}
             <div>
-              <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/60 mb-1.5 px-1">
+              <SectionTitle className="mb-1.5 px-0.5">
                 {t('bulkScan.maxPagesLabel')}
-              </div>
+              </SectionTitle>
               <SearchableSelect
                 options={maxPagesOptions}
                 value={String(maxPages)}
                 onChange={(val) => {
+                  if (val === 'all') {
+                    setMaxPages('all');
+                    return;
+                  }
                   const n = Number(val);
                   if (SCAN_MAX_PAGES_OPTIONS.includes(n)) setMaxPages(n);
                 }}
@@ -1038,10 +1089,10 @@ export default function BulkScanPanel({
             {/* 2. Trạng thái (Mẫu 2: Vertical 3-row list — zero truncation, tabular counts) */}
             {items.length > 0 && (
               <div>
-                <div className="flex items-center justify-between gap-2 mb-1.5 px-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/60">
+                <div className="flex items-center justify-between gap-2 mb-1.5 px-0.5">
+                  <SectionTitle as="span">
                     {t('bulkScan.statusFilter')}
-                  </span>
+                  </SectionTitle>
                   <button
                     type="button"
                     onClick={toggleSelectAll}
@@ -1110,9 +1161,9 @@ export default function BulkScanPanel({
             {/* 3. Tìm kiếm (Search Box with Clear button) */}
             {items.length > 0 && (
               <div>
-                <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/60 mb-1.5 px-1">
+                <SectionTitle className="mb-1.5 px-0.5">
                   {t('common.search')}
-                </div>
+                </SectionTitle>
                 <div className="relative flex items-center">
                   <input
                     type="text"

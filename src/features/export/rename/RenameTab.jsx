@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useI18n } from '../../../context/I18nContext';
-import { SourcePicker, SearchableSelect, ResizeSplitter, useToolsSidebarResize } from '../../../shared';
+import { SourcePicker, SearchableSelect, ResizeSplitter, useToolsSidebarResize, SECTION_TITLE_CLASS } from '../../../shared';
 import { ToolsStudioActionSlot, ToolsStudioCenterSlot } from '../../tools-studio/ToolsStudioActionSlot';
 
 const CATEGORY_OPTIONS = [
@@ -89,7 +89,7 @@ function blockedReasonKey(reason_value) {
 }
 
 function fieldLabelClass() {
-  return 'text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/50';
+  return SECTION_TITLE_CLASS;
 }
 
 function textInputClass() {

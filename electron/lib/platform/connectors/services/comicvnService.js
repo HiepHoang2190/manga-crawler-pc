@@ -18,7 +18,7 @@ const DOMAIN = 'https://comicvn19.net/';
 const LABEL = 'ComicVN';
 const MANGA_ID_RE = /-([a-f0-9]{24})\.html$/i;
 const MOI_NHAT_PATH = 'danh-muc/moi-nhat';
-const MOI_NHAT_MAX_PAGES_CAP = 15;
+const MOI_NHAT_MAX_PAGES_CAP = 500;
 const TOKEN_DOWNLOAD_DELAY_MS = 500;
 
 /**
@@ -137,11 +137,14 @@ async function fetchMoiNhatListing(options = {}) {
   const fetchImpl =
     typeof options.fetchHtmlImpl === 'function' ? options.fetchHtmlImpl : fetchHtml;
   const ua = options.userAgent || USER_AGENT;
-  const cap = Math.min(
-    MOI_NHAT_MAX_PAGES_CAP,
-    Math.max(1, Math.floor(Number(options.maxPages) || MOI_NHAT_MAX_PAGES_CAP)),
-  );
+  const rawMax = options.maxPages;
+  const nMax = Math.floor(Number(rawMax));
+  const cap =
+    rawMax === undefined || rawMax === null || rawMax === '' || rawMax === 'all' || !Number.isFinite(nMax) || nMax <= 0
+      ? MOI_NHAT_MAX_PAGES_CAP
+      : Math.min(MOI_NHAT_MAX_PAGES_CAP, Math.max(1, nMax));
   const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+  const onPartialUpdate = typeof options.onPartialUpdate === 'function' ? options.onPartialUpdate : null;
   const signal = options.signal || null;
   const makeAbortedResult = (pagesFetched, totalPagesDetected, items = []) => ({
     ok: false,
@@ -195,14 +198,20 @@ async function fetchMoiNhatListing(options = {}) {
   const detected = Math.min(cap, Math.max(1, parseMoiNhatMaxPage(fetched.html)));
   const byUrl = new Map();
   const mergeItems = (list) => {
+    let added = 0;
     for (const it of list) {
       if (!it?.mangaUrl || byUrl.has(it.mangaUrl)) continue;
       byUrl.set(it.mangaUrl, it);
+      added += 1;
     }
+    return added;
   };
 
   mergeItems(parseMoiNhatListingHtml(fetched.html, page1Url));
-  if (onProgress) onProgress({ page: 1, totalPages: detected });
+  if (onPartialUpdate) {
+    onPartialUpdate({ pagesFetched: 1, totalPagesDetected: detected, items: Array.from(byUrl.values()) });
+  }
+  if (onProgress) onProgress({ page: 1, totalPages: detected, itemsCount: byUrl.size });
   if (signal?.aborted) {
     return makeAbortedResult(1, detected, Array.from(byUrl.values()));
   }
@@ -237,9 +246,16 @@ async function fetchMoiNhatListing(options = {}) {
       warn = pageRes?.error || `HTTP error page ${page}`;
       break;
     }
-    mergeItems(parseMoiNhatListingHtml(pageRes.html, url));
+    const pageItems = parseMoiNhatListingHtml(pageRes.html, url);
+    const addedCount = mergeItems(pageItems);
+    if (pageItems.length === 0 || addedCount === 0) {
+      break;
+    }
     pagesFetched += 1;
-    if (onProgress) onProgress({ page, totalPages: detected });
+    if (onPartialUpdate) {
+      onPartialUpdate({ pagesFetched, totalPagesDetected: detected, items: Array.from(byUrl.values()) });
+    }
+    if (onProgress) onProgress({ page, totalPages: detected, itemsCount: byUrl.size });
     if (signal?.aborted) {
       return makeAbortedResult(pagesFetched, detected, Array.from(byUrl.values()));
     }

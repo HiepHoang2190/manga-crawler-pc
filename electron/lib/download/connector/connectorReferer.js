@@ -52,6 +52,7 @@ const FLAMECOMICS_IMAGE_REFERER = 'https://flamecomics.xyz/';
 const SANGCHANHTEAM_IMAGE_REFERER = 'https://sangchanhteam.com/';
 const TCBSCANMANGA_IMAGE_REFERER = 'https://tcbscanmanga.com/';
 const KINGDOMHOIQUAN_IMAGE_REFERER = 'https://kingdomhoiquan.com/';
+const WEBTOONS_IMAGE_REFERER = 'https://www.webtoons.com/';
 
 function isTcbscanmangaImageCdnHost(hostname) {
   const h = String(hostname).toLowerCase();
@@ -358,6 +359,15 @@ function isTruyenGgImageCdnHost(hostname) {
   return isTruyenGgSiteHost(hostname) || isTruyenQQNoImageCdnHost(hostname);
 }
 
+function isWebtoonsImageCdnHost(hostname) {
+  const h = String(hostname || '').toLowerCase();
+  return (
+    h === 'webtoons.com' ||
+    h.endsWith('.webtoons.com') ||
+    (h.endsWith('.pstatic.net') && h.includes('webtoon'))
+  );
+}
+
 function getDynamicReferer(siteId, defaultReferer) {
   try {
     return connectorDomainManager.getDomain(siteId, defaultReferer);
@@ -424,6 +434,7 @@ function getImageRefererForUrl(urlString) {
   if (isSangchanhteamImageCdnHost(hostname)) return getDynamicReferer('sangchanhteam', SANGCHANHTEAM_IMAGE_REFERER);
   if (isTcbscanmangaImageCdnHost(hostname)) return getDynamicReferer('tcbscanmanga', TCBSCANMANGA_IMAGE_REFERER);
   if (isKingdomHoiQuanImageCdnHost(hostname)) return getDynamicReferer('kingdomhoiquan', KINGDOMHOIQUAN_IMAGE_REFERER);
+  if (isWebtoonsImageCdnHost(hostname)) return getDynamicReferer('webtoons', WEBTOONS_IMAGE_REFERER);
   if (hostname === 'drive.google.com' || hostname === 'docs.google.com') {
     return GOOGLE_DRIVE_IMAGE_REFERER;
   }
@@ -528,5 +539,7 @@ module.exports = {
   isTcbscanmangaImageCdnHost,
   KINGDOMHOIQUAN_IMAGE_REFERER,
   isKingdomHoiQuanImageCdnHost,
+  WEBTOONS_IMAGE_REFERER,
+  isWebtoonsImageCdnHost,
   getImageRefererForUrl,
 };

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useI18n } from '../../../../context/I18nContext';
-import { SearchableSelect } from '../../../../shared';
+import { SearchableSelect, SectionTitle } from '../../../../shared';
 import { SettingCard } from './SettingCard';
 
 export function TranslateGeneralSettingsSection({
@@ -33,9 +33,9 @@ export function TranslateGeneralSettingsSection({
       >
         <div className="flex items-end gap-2">
           <div className="flex-1 min-w-0">
-            <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block mb-1">
+            <SectionTitle as="label" className="block mb-1">
               {t('translate.settings.sourceLang')}
-            </label>
+            </SectionTitle>
             <SearchableSelect
               value={safeSettings.sourceLanguage || 'auto'}
               onChange={(val) => save({ sourceLanguage: val })}
@@ -50,9 +50,9 @@ export function TranslateGeneralSettingsSection({
           </div>
 
           <div className="flex-1 min-w-0">
-            <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block mb-1">
+            <SectionTitle as="label" className="block mb-1">
               {t('translate.settings.targetLang')}
-            </label>
+            </SectionTitle>
             <SearchableSelect
               value={safeSettings.targetLanguage || 'vi'}
               onChange={(val) => save({ targetLanguage: val })}

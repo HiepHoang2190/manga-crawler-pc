@@ -111,8 +111,8 @@ function parseTotalChapterPages(html) {
   return max;
 }
 
-/** Full /manga catalog scan for Quét Tất Cả — site currently ~67 pages. */
-const MANGA_BULK_SCAN_MAX_PAGES_CAP = 80;
+/** Full /manga catalog scan cap for Quét Tất Cả. */
+const MANGA_BULK_SCAN_MAX_PAGES_CAP = 500;
 
 /**
  * Total pages on /manga catalog (chips + ?page= links + data-manga-catalog-page).
@@ -328,11 +328,14 @@ function createMoeTruyenFamilyService(siteConfig = {}) {
     const fetchImpl =
       typeof options.fetchHtmlImpl === 'function' ? options.fetchHtmlImpl : fetchHtml;
     const ua = options.userAgent || USER_AGENT_JSOUP;
-    const cap = Math.min(
-      MANGA_BULK_SCAN_MAX_PAGES_CAP,
-      Math.max(1, Math.floor(Number(options.maxPages) || MANGA_BULK_SCAN_MAX_PAGES_CAP)),
-    );
+    const rawMax = options.maxPages;
+    const nMax = Math.floor(Number(rawMax));
+    const cap =
+      rawMax === undefined || rawMax === null || rawMax === '' || rawMax === 'all' || !Number.isFinite(nMax) || nMax <= 0
+        ? MANGA_BULK_SCAN_MAX_PAGES_CAP
+        : Math.min(MANGA_BULK_SCAN_MAX_PAGES_CAP, Math.max(1, nMax));
     const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+    const onPartialUpdate = typeof options.onPartialUpdate === 'function' ? options.onPartialUpdate : null;
     const signal = options.signal || null;
     const makeAbortedResult = (pagesFetched, totalPagesDetected, items = []) => ({
       ok: false,
@@ -386,14 +389,20 @@ function createMoeTruyenFamilyService(siteConfig = {}) {
     const detected = Math.min(cap, Math.max(1, parseMangaCatalogMaxPage(fetched.html)));
     const byUrl = new Map();
     const mergeItems = (list) => {
+      let added = 0;
       for (const it of list) {
         if (!it?.mangaUrl || byUrl.has(it.mangaUrl)) continue;
         byUrl.set(it.mangaUrl, it);
+        added += 1;
       }
+      return added;
     };
 
     mergeItems(parseMangaCatalogListing(fetched.html, page1Url));
-    if (onProgress) onProgress({ page: 1, totalPages: detected });
+    if (onPartialUpdate) {
+      onPartialUpdate({ pagesFetched: 1, totalPagesDetected: detected, items: Array.from(byUrl.values()) });
+    }
+    if (onProgress) onProgress({ page: 1, totalPages: detected, itemsCount: byUrl.size });
     if (signal?.aborted) {
       return makeAbortedResult(1, detected, Array.from(byUrl.values()));
     }
@@ -428,9 +437,16 @@ function createMoeTruyenFamilyService(siteConfig = {}) {
         warn = pageRes?.error || `HTTP error page ${page}`;
         break;
       }
-      mergeItems(parseMangaCatalogListing(pageRes.html, url));
+      const pageItems = parseMangaCatalogListing(pageRes.html, url);
+      const addedCount = mergeItems(pageItems);
+      if (pageItems.length === 0 || addedCount === 0) {
+        break;
+      }
       pagesFetched += 1;
-      if (onProgress) onProgress({ page, totalPages: detected });
+      if (onPartialUpdate) {
+        onPartialUpdate({ pagesFetched, totalPagesDetected: detected, items: Array.from(byUrl.values()) });
+      }
+      if (onProgress) onProgress({ page, totalPages: detected, itemsCount: byUrl.size });
       if (signal?.aborted) {
         return makeAbortedResult(pagesFetched, detected, Array.from(byUrl.values()));
       }

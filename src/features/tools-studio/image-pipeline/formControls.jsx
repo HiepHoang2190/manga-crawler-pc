@@ -1,6 +1,8 @@
 // src/features/tools-studio/image-pipeline/formControls.jsx
+import { SectionTitle } from '../../../shared';
+
 export function SectionLabel({ children }) {
-  return <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/50">{children}</p>;
+  return <SectionTitle as="p">{children}</SectionTitle>;
 }
 
 const GRID_COLS = { 2: 'grid-cols-2', 3: 'grid-cols-3', 4: 'grid-cols-4' };

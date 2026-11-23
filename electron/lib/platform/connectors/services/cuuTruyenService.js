@@ -43,7 +43,9 @@ function extractRecentlyUpdatedList(root) {
 
 function deriveRecentlyUpdatedTotalPages(root, page, perPage, itemCount) {
   const meta =
-    root && typeof root === 'object' ? (root.meta ?? root.pagination ?? {}) : {};
+    root && typeof root === 'object'
+      ? (root._metadata ?? root.meta ?? root.pagination ?? {})
+      : {};
   const pagination = typeof meta.pagination === 'object' ? meta.pagination : meta;
   const buckets = [
     pagination.last_page,
@@ -58,7 +60,7 @@ function deriveRecentlyUpdatedTotalPages(root, page, perPage, itemCount) {
     const n = typeof c === 'string' ? parseInt(c, 10) : Number(c);
     if (Number.isFinite(n) && n >= 1) return Math.floor(n);
   }
-  const total = pagination.total ?? meta.total ?? root.total;
+  const total = pagination.total ?? meta.total ?? meta.total_count ?? root.total;
   const tNum = typeof total === 'string' ? parseInt(total, 10) : Number(total);
   if (Number.isFinite(tNum) && tNum >= 0 && perPage > 0) {
     const tp = Math.ceil(tNum / perPage);
@@ -217,6 +219,10 @@ function parseQuickSearchResponse(root, originBase) {
  * @param {number} [options.perPage]
  */
 async function fetchLatestUpdates(options = {}) {
+  const signal = options.signal || null;
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, siteId: 'cuutruyen', page: 1, totalPages: 1, items: [] };
+  }
   const rawSearch = options.latestUpdatesSearch ?? options.searchQuery;
   const searchQuery = String(rawSearch || '').trim();
   if (searchQuery) {
@@ -249,6 +255,9 @@ async function fetchLatestUpdates(options = {}) {
     : DEFAULT_LATEST_PER_PAGE;
   const path = `mangas/recently_updated?page=${page}&per_page=${perPage}`;
   const resp = await fetchCuuTruyenApi(path, LATEST_UPDATES_CONTEXT_URL);
+  if (signal?.aborted) {
+    return { ok: false, aborted: true, siteId: 'cuutruyen', page, totalPages: 1, items: [] };
+  }
   if (!resp.body) {
     return { ok: false, error: formatCuuTruyenApiError(resp, 'mới cập nhật') };
   }

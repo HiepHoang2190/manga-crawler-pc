@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../../context/I18nContext';
+import { SectionTitle } from '../../../shared';
 
 export default function PdfExportTab({ savePath = '', onRunningChange }) {
   const { t } = useI18n();
@@ -227,9 +228,9 @@ export default function PdfExportTab({ savePath = '', onRunningChange }) {
 
           {/* Thư mục truyện */}
           <div className="space-y-1.5">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/50">
+            <SectionTitle as="p">
               {t('pdfExportTab.selectDir')}
-            </p>
+            </SectionTitle>
             {mangaDir ? (
               <div className="flex items-center gap-1.5 rounded-lg border border-outline-variant/20 bg-surface-container-highest/50 px-2.5 py-2">
                 <span className="material-symbols-outlined text-[14px] leading-none shrink-0 text-on-surface-variant/50">folder</span>
@@ -259,9 +260,9 @@ export default function PdfExportTab({ savePath = '', onRunningChange }) {
 
           {/* Tên file */}
           <div className="space-y-1.5">
-            <label className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/50">
+            <SectionTitle as="label" className="block">
               {t('pdfExportTab.outputBaseName')}
-            </label>
+            </SectionTitle>
             <input
               type="text"
               value={outputBaseName}
@@ -274,9 +275,9 @@ export default function PdfExportTab({ savePath = '', onRunningChange }) {
 
           {/* Lưu tại */}
           <div className="space-y-1.5">
-            <label className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/50">
+            <SectionTitle as="label" className="block">
               {t('sidebar.saveTo')}
-            </label>
+            </SectionTitle>
             <div className="flex gap-1.5">
               <input
                 type="text"
@@ -300,9 +301,9 @@ export default function PdfExportTab({ savePath = '', onRunningChange }) {
 
           {/* Chế độ đóng gói */}
           <div className="space-y-2">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/50">
+            <SectionTitle as="p">
               {t('pdfExportTab.modeLabel')}
-            </p>
+            </SectionTitle>
             <label className="flex cursor-pointer items-center gap-2 text-sm text-on-surface-variant hover:text-on-surface">
               <input type="radio" name="pdf-tab-pack-mode" checked={packMode === 'singleVolume'} onChange={() => setPackMode('singleVolume')} disabled={exporting} className="accent-primary" />
               {t('pdfExportTab.modeSingleVolume')}
@@ -330,9 +331,9 @@ export default function PdfExportTab({ savePath = '', onRunningChange }) {
 
           {/* Tùy chọn */}
           <div className="space-y-2.5">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/50">
+            <SectionTitle as="p">
               {t('pdfExportTab.optionsHeading')}
-            </p>
+            </SectionTitle>
             <label className="flex cursor-pointer items-center gap-2 text-sm text-on-surface-variant hover:text-on-surface">
               <input type="checkbox" checked={openFolderAfter} onChange={(e) => setOpenFolderAfter(e.target.checked)} disabled={exporting} className="rounded accent-primary" />
               {t('pdfExportTab.openFolderAfter')}

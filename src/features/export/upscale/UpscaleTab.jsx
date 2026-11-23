@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useI18n } from '../../../context/I18nContext';
-import { SourcePicker, ResizeSplitter, useToolsSidebarResize, SearchableSelect, OutputFormatSelector, OutputDestinationSelector, SaveDirErrorModal, CaesiumCompressControl, ViewModeToggle } from '../../../shared';
+import { SourcePicker, ResizeSplitter, useToolsSidebarResize, SearchableSelect, OutputFormatSelector, OutputDestinationSelector, SaveDirErrorModal, CaesiumCompressControl, ViewModeToggle, SectionTitle } from '../../../shared';
 import { ToolsStudioActionSlot, ToolsStudioCenterSlot } from '../../tools-studio/ToolsStudioActionSlot';
 import { getUpscaleSuffix, buildUpscaleOutputPath, getUpscaleOutputFolder, sortImages } from './upscaleNaming';
 import InteractiveUpscalePreviewModal from './InteractiveUpscalePreviewModal';
@@ -1198,9 +1198,9 @@ export default function UpscaleTab({
 
         {/* 2. Engine & Model */}
         <div className="space-y-2">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/50">
+          <SectionTitle as="p">
             {t('upscale.sectionEngine')}
-          </p>
+          </SectionTitle>
           <SearchableSelect
             groups={modelGroups}
             value={selectedModelId}
@@ -1307,9 +1307,9 @@ export default function UpscaleTab({
 
         {/* 3. Scale Factor */}
         <div className="flex items-center justify-between gap-2">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/50">
+          <SectionTitle as="p">
             {t('upscale.scale')}
-          </p>
+          </SectionTitle>
           <div className="inline-flex p-0.5 rounded-lg bg-surface-container-highest/60 border border-outline-variant/20 gap-0.5">
             {availableScales.map((s) => (
               <button
@@ -1333,9 +1333,9 @@ export default function UpscaleTab({
         {/* 4. Denoise Level */}
         {availableDenoiseOptions.length > 0 && (
           <div className="space-y-1.5">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/50">
+            <SectionTitle as="p">
               {t('upscale.denoise')}
-            </p>
+            </SectionTitle>
             <div className={`grid ${availableDenoiseOptions.length === 2 ? 'grid-cols-2' : 'grid-cols-4'} p-0.5 rounded-lg bg-surface-container-highest/60 border border-outline-variant/20 gap-1`}>
               {availableDenoiseOptions.map((d) => (
                 <button
@@ -1360,9 +1360,9 @@ export default function UpscaleTab({
 
         {/* 5. Hardware Device (GPU / CPU) */}
         <div className="space-y-2">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/50">
+          <SectionTitle as="p">
             {t('upscale.gpuDevice')}
-          </p>
+          </SectionTitle>
           <SearchableSelect
             options={gpuOptions}
             value={String(selectedGpu)}
@@ -1376,9 +1376,9 @@ export default function UpscaleTab({
 
         {/* 6. Tile Size */}
         <div className="space-y-2">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant/50">
+          <SectionTitle as="p">
             {t('upscale.tileSize')}
-          </p>
+          </SectionTitle>
           <SearchableSelect
             options={tileSizeOptions}
             value={String(tileSize)}

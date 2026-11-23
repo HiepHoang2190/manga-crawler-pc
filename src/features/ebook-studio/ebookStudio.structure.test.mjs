@@ -287,3 +287,11 @@ test('FormatConverterSubTab, MangaPackagingSubTab, and EbookToolsSubTab validate
   expect(toolsSrc).toContain('outputWarning');
 });
 
+test('EbookStudio sub-tab pill buttons match toolbar action button height (h-8 px-3 inside p-0.5 wrapper)', () => {
+  const studioSrc = fs.readFileSync(path.join(dirname, 'EbookStudio.jsx'), 'utf8');
+  expect(studioSrc).toContain('rounded-xl bg-surface-container-high/70 border border-outline-variant/25');
+  expect(studioSrc).toContain('p-0.5');
+  expect(studioSrc).toMatch(/data-testid=\{`subtab-\$\{tab\.id\}`\}[\s\S]{0,500}\bh-8 px-3\b/);
+  expect(studioSrc).not.toMatch(/data-testid=\{`subtab-\$\{tab\.id\}`\}[\s\S]{0,500}(?:\bpy-1\.5\b|\bh-7\b)/);
+});
+
