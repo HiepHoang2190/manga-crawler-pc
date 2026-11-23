@@ -5,7 +5,15 @@ import MenuBar, { VIEWS } from './MenuBar.jsx';
 import ConsolePanel from './ConsolePanel.jsx';
 import StatusBar from './StatusBar.jsx';
 import CommandPaletteModal from './CommandPaletteModal.jsx';
+import ClipboardUrlBanner from './ClipboardUrlBanner.jsx';
 import { formatShortcutHint, getVisibleOrderedViews, isEditableEventTarget } from './commandPaletteUtils.mjs';
+import {
+  computeQueueTaskbarProgress,
+  summarizeQueueCompletion,
+  shouldNotifyQueueCompletion,
+} from './downloadProgressUtils.mjs';
+import { extractCandidateHttpUrl, shouldOfferClipboardUrl } from './clipboardUrlUtils.mjs';
+import { countUnreadErrorsSince } from './consoleLogUtils.mjs';
 import { useTheme } from '../../context/ThemeContext';
 import { useSettings, SettingsPanel, UpdateBadge, AppUpdateModal } from '../settings';
 import { useConnectorList } from '../../platform/connectors';
@@ -294,6 +302,14 @@ export default function ShellLayout() {
   const [menuHelpTabId, setMenuHelpTabId] = useState(null);
   /** Global Command Palette (⌘K / Ctrl+K) */
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  /** Smart Clipboard URL Banner */
+  const [clipboardCandidate, setClipboardCandidate] = useState(null);
+  const dismissedClipboardUrlsRef = useRef(new Set());
+  /** Unread error timestamp threshold while Console drawer is collapsed */
+  const [lastSeenErrorTime, setLastSeenErrorTime] = useState(() => Date.now());
+  /** Previous queueProcessing state + snapshot for desktop completion notification */
+  const wasQueueProcessingRef = useRef(false);
+  const queueStartSnapshotRef = useRef({ done: 0, errors: 0 });
   /** Trạng thái tab Connector đang quét kiểm tra kết nối */
   const [siteCheckerBusy, setSiteCheckerBusy] = useState(false);
   const tabBusyMap = useMemo(() => ({
@@ -437,6 +453,28 @@ export default function ShellLayout() {
       });
     }
 
+    if (Array.isArray(favorites) && favorites.length > 0) {
+      const favGroupLabel = t('commandPalette.group.favorites');
+      for (const fav of favorites) {
+        const favTitle = String(fav?.title || '').trim();
+        const favUrl = String(fav?.mangaUrl || '').trim();
+        if (!favTitle || !favUrl) continue;
+        const sync = favoriteSyncById?.[fav.id];
+        const newCount = sync?.hasNew && typeof sync.remoteCount === 'number' ? sync.remoteCount : 0;
+        items.push({
+          id: `fav:${fav.id || favUrl}`,
+          group: favGroupLabel,
+          label: favTitle,
+          keywords: `${favTitle} ${fav?.siteId || ''} ${favUrl}`,
+          icon: 'bookmark',
+          badge: newCount > 0 ? t('commandPalette.newChaptersBadge', { count: newCount }) : '',
+          onSelect: () => {
+            void fetchMangaFromFavorite(fav);
+          },
+        });
+      }
+    }
+
     return items;
   }, [
     visibleOrderedViews,
@@ -449,7 +487,149 @@ export default function ShellLayout() {
     queue,
     stopQueue,
     startQueue,
+    favorites,
+    favoriteSyncById,
+    fetchMangaFromFavorite,
   ]);
+
+  const queueProgressSummary = useMemo(
+    () => computeQueueTaskbarProgress(queue, downloadProgress, queueProcessing),
+    [queue, downloadProgress, queueProcessing]
+  );
+
+  useEffect(() => {
+    const api = typeof window !== 'undefined' ? window.electronAPI : null;
+    if (!api?.setTaskbarProgress) return undefined;
+    api.setTaskbarProgress(queueProgressSummary.ratio, queueProgressSummary.mode);
+    return undefined;
+  }, [queueProgressSummary.ratio, queueProgressSummary.mode]);
+
+  useEffect(() => {
+    return () => {
+      window.electronAPI?.setTaskbarProgress?.(-1, 'none');
+    };
+  }, []);
+
+  useEffect(() => {
+    const wasRunning = wasQueueProcessingRef.current;
+    const isRunning = Boolean(queueProcessing);
+    wasQueueProcessingRef.current = isRunning;
+
+    if (!wasRunning && isRunning) {
+      const startSummary = summarizeQueueCompletion(queue);
+      queueStartSnapshotRef.current = { done: startSummary.done, errors: startSummary.errors };
+      return;
+    }
+
+    if (!wasRunning || isRunning) return;
+
+    const api = typeof window !== 'undefined' ? window.electronAPI : null;
+    if (!api?.showDesktopNotification) return;
+    const summary = summarizeQueueCompletion(queue);
+    const { notify, deltaDone, deltaErrors } = shouldNotifyQueueCompletion(
+      queueStartSnapshotRef.current,
+      summary
+    );
+    if (!notify) return;
+
+    const body =
+      deltaErrors > 0
+        ? t('notification.downloadDoneWithErrorsBody', {
+            done: deltaDone,
+            errors: deltaErrors,
+            manga: summary.mangaCount,
+          })
+        : t('notification.downloadDoneBody', {
+            done: deltaDone,
+            manga: summary.mangaCount,
+          });
+    api
+      .showDesktopNotification({
+        title: t('notification.downloadDoneTitle'),
+        body,
+      })
+      .catch(() => {});
+  }, [queueProcessing, queue, t]);
+
+  useEffect(() => {
+    if (!logFooterVisible) return;
+    const latestLogTime = logs.length > 0 ? Number(logs[logs.length - 1]?.t || Date.now()) : Date.now();
+    setLastSeenErrorTime((prev) => Math.max(prev, latestLogTime));
+  }, [logFooterVisible, logs]);
+
+  const unreadErrorCount = useMemo(
+    () => (logFooterVisible ? 0 : countUnreadErrorsSince(logs, lastSeenErrorTime)),
+    [logFooterVisible, logs, lastSeenErrorTime]
+  );
+
+  useEffect(() => {
+    if (!authBootstrapped || !isSignedIn) return undefined;
+    const api = typeof window !== 'undefined' ? window.electronAPI : null;
+    if (!api?.readClipboardText || !api?.detectSiteFromUrl) return undefined;
+
+    let timerId = null;
+    let cancelled = false;
+
+    const inspectClipboard = async () => {
+      try {
+        const raw = await api.readClipboardText();
+        const candidateUrl = extractCandidateHttpUrl(raw);
+        if (!candidateUrl || cancelled) return;
+        const detectedSiteId = await api.detectSiteFromUrl(candidateUrl);
+        if (cancelled) return;
+        const ok = shouldOfferClipboardUrl({
+          url: candidateUrl,
+          siteId: detectedSiteId,
+          currentSourceUrl: sourceUrl,
+          dismissedUrls: dismissedClipboardUrlsRef.current,
+        });
+        if (!ok) return;
+        const matchedConnector = connectorList.find((c) => c.id === detectedSiteId);
+        setClipboardCandidate({
+          url: candidateUrl,
+          siteId: detectedSiteId,
+          siteName: matchedConnector?.name || detectedSiteId,
+        });
+      } catch {
+        /* ignore clipboard probe errors */
+      }
+    };
+
+    const onWindowFocus = () => {
+      if (timerId) clearTimeout(timerId);
+      timerId = setTimeout(() => {
+        timerId = null;
+        void inspectClipboard();
+      }, 250);
+    };
+
+    window.addEventListener('focus', onWindowFocus);
+    return () => {
+      cancelled = true;
+      if (timerId) clearTimeout(timerId);
+      window.removeEventListener('focus', onWindowFocus);
+    };
+  }, [authBootstrapped, isSignedIn, sourceUrl, connectorList]);
+
+  const handleDismissClipboardUrl = useCallback((candidate) => {
+    if (candidate?.url) {
+      dismissedClipboardUrlsRef.current.add(candidate.url);
+    }
+    setClipboardCandidate(null);
+  }, []);
+
+  const handleFetchClipboardUrl = useCallback(
+    async (candidate) => {
+      if (!candidate?.url || !candidate?.siteId) return;
+      dismissedClipboardUrlsRef.current.add(candidate.url);
+      setClipboardCandidate(null);
+      setMenuView('home');
+      setSite(candidate.siteId);
+      setSourceUrl(candidate.url);
+      await loadMangaWithParams(candidate.siteId, candidate.url, { force: true });
+    },
+    [setMenuView, setSite, setSourceUrl, loadMangaWithParams]
+  );
 
   const handleLogFooterResizePointerDown = useCallback((e) => {
     if (e.button !== 0) return;
@@ -1416,12 +1596,20 @@ export default function ShellLayout() {
         mangaTitle={manga?.title}
         queueProcessing={queueProcessing}
         downloadProgress={downloadProgress}
+        queueProgressSummary={queueProgressSummary}
+        unreadErrorCount={unreadErrorCount}
         logFooterVisible={logFooterVisible}
         onToggleLogFooter={toggleLogFooter}
       />
 
         </div>
       ) : null}
+
+      <ClipboardUrlBanner
+        candidate={clipboardCandidate}
+        onFetch={handleFetchClipboardUrl}
+        onDismiss={handleDismissClipboardUrl}
+      />
 
       {authBootstrapped && isSignedIn && pendingRestoreQueue ? (
         <QueueRestoreModal

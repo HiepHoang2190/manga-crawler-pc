@@ -4519,4 +4519,29 @@ export const vi = {
   'commandPalette.hint.navigate': 'Di chuyển',
   'commandPalette.hint.select': 'Chọn',
   'commandPalette.hint.close': 'Đóng',
+  'commandPalette.group.favorites': 'Truyện đang theo dõi',
+  'commandPalette.newChaptersBadge': '+{count} mới',
+
+  // Desktop Notifications
+  'notification.downloadDoneTitle': 'Tải truyện hoàn tất',
+  'notification.downloadDoneBody': 'Đã tải xong {done} chương ({manga} truyện).',
+  'notification.downloadDoneWithErrorsBody': 'Hoàn tất {done} chương, {errors} chương lỗi ({manga} truyện).',
+
+  // Smart Clipboard URL Banner
+  'clipboardBanner.detected': 'Phát hiện link từ {site}',
+  'clipboardBanner.fetchNow': 'Nạp ngay',
+  'clipboardBanner.dismiss': 'Bỏ qua',
+
+  // Console Panel Pro & StatusBar Progress/Errors
+  'console.filter.all': 'Tất cả',
+  'console.filter.error': 'Lỗi',
+  'console.filter.warn': 'Cảnh báo',
+  'console.filter.success': 'Thành công',
+  'console.searchPlaceholder': 'Lọc nhật ký...',
+  'console.searchClear': 'Xóa bộ lọc',
+  'console.copyLog': 'Sao chép nhật ký',
+  'console.copied': 'Đã chép',
+  'console.noMatch': 'Không có dòng nhật ký khớp bộ lọc.',
+  'statusBar.unreadErrors': '{count} lỗi mới trong nhật ký',
+  'statusBar.queueChaptersProgress': '{done}/{total} chap',
 };

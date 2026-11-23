@@ -10,6 +10,8 @@ const CHANNEL_MAP = {
     'window:minimize',
     'window:maximize',
     'window:close',
+    'window:setProgressBar',
+    'app:notify',
     'shell:showItemInFolder',
     'shell:openMangaFolder',
     'shell:openChapterFolder',

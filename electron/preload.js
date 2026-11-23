@@ -4,6 +4,8 @@ const api = {
   minimize: () => ipcRenderer.send('window:minimize'),
   maximize: () => ipcRenderer.send('window:maximize'),
   close: () => ipcRenderer.send('window:close'),
+  setTaskbarProgress: (progress, mode) => ipcRenderer.send('window:setProgressBar', { progress, mode }),
+  showDesktopNotification: (payload) => ipcRenderer.invoke('app:notify', payload),
   readClipboardText: () => ipcRenderer.invoke('clipboard:readText'),
 
   getDefaultDownloadPath: () => ipcRenderer.invoke('app:defaultDownloadPath'),

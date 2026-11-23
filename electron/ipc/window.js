@@ -1,6 +1,8 @@
 const fs = require('fs');
-const { ipcMain, shell, clipboard } = require('electron');
+const { ipcMain, shell, clipboard, Notification } = require('electron');
 const { resolveMangaDir, resolveChapterDir } = require('../lib/download/connector/connectorPathUtils');
+
+const ALLOWED_PROGRESS_MODES = new Set(['none', 'normal', 'indeterminate', 'error', 'paused']);
 
 function registerWindowIpc(ipc_context) {
   ipcMain.handle('clipboard:readText', () => {
@@ -22,6 +24,50 @@ function registerWindowIpc(ipc_context) {
     }
   });
   ipcMain.on('window:close', () => ipc_context.getMainWindow()?.close());
+
+  ipcMain.on('window:setProgressBar', (_event, payload = {}) => {
+    const main_window = ipc_context.getMainWindow();
+    if (!main_window || main_window.isDestroyed()) return;
+    try {
+      const raw = Number(payload?.progress);
+      const progress = Number.isFinite(raw) && raw >= 0 ? Math.min(1, raw) : -1;
+      const mode = ALLOWED_PROGRESS_MODES.has(payload?.mode) ? payload.mode : undefined;
+      if (process.platform === 'win32' && mode) {
+        main_window.setProgressBar(progress, { mode });
+      } else {
+        main_window.setProgressBar(progress);
+      }
+    } catch {
+      /* ignore unsupported progress call */
+    }
+  });
+
+  ipcMain.handle('app:notify', (_event, payload = {}) => {
+    try {
+      if (typeof Notification?.isSupported === 'function' && !Notification.isSupported()) {
+        return { ok: false, error: 'Notifications unsupported' };
+      }
+      const title = String(payload?.title || '').trim().slice(0, 200);
+      if (!title) return { ok: false, error: 'Empty title' };
+      const body = String(payload?.body || '').trim().slice(0, 500);
+      const notification = new Notification({
+        title,
+        body,
+        silent: Boolean(payload?.silent),
+      });
+      notification.on('click', () => {
+        const main_window = ipc_context.getMainWindow();
+        if (main_window && !main_window.isDestroyed()) {
+          if (main_window.isMinimized()) main_window.restore();
+          main_window.focus();
+        }
+      });
+      notification.show();
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: String(e?.message || e) };
+    }
+  });
 
   ipcMain.handle('shell:showItemInFolder', async (_event, fullPath) => {
     try {

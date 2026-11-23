@@ -4541,4 +4541,29 @@ export const en = {
   'commandPalette.hint.navigate': 'Navigate',
   'commandPalette.hint.select': 'Select',
   'commandPalette.hint.close': 'Close',
+  'commandPalette.group.favorites': 'Bookmarked Manga',
+  'commandPalette.newChaptersBadge': '+{count} new',
+
+  // Desktop Notifications
+  'notification.downloadDoneTitle': 'Download Complete',
+  'notification.downloadDoneBody': 'Finished downloading {done} chapters ({manga} manga).',
+  'notification.downloadDoneWithErrorsBody': 'Completed {done} chapters with {errors} failed ({manga} manga).',
+
+  // Smart Clipboard URL Banner
+  'clipboardBanner.detected': 'Detected link from {site}',
+  'clipboardBanner.fetchNow': 'Fetch Now',
+  'clipboardBanner.dismiss': 'Dismiss',
+
+  // Console Panel Pro & StatusBar Progress/Errors
+  'console.filter.all': 'All',
+  'console.filter.error': 'Errors',
+  'console.filter.warn': 'Warnings',
+  'console.filter.success': 'Success',
+  'console.searchPlaceholder': 'Filter logs...',
+  'console.searchClear': 'Clear filter',
+  'console.copyLog': 'Copy logs',
+  'console.copied': 'Copied',
+  'console.noMatch': 'No log entries match your filter.',
+  'statusBar.unreadErrors': '{count} new errors in console',
+  'statusBar.queueChaptersProgress': '{done}/{total} ch',
 };

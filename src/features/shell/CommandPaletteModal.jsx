@@ -10,7 +10,7 @@ export default function CommandPaletteModal({ open, items = [], onClose }) {
   const inputRef = useRef(null);
   const listRef = useRef(null);
 
-  const filteredItems = useMemo(() => filterPaletteItems(items, query), [items, query]);
+  const filteredItems = useMemo(() => filterPaletteItems(items, query).slice(0, 50), [items, query]);
 
   useEffect(() => {
     if (!open) return;
@@ -161,6 +161,11 @@ export default function CommandPaletteModal({ open, items = [], onClose }) {
                     <span className="truncate">{item.label}</span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
+                    {item.badge ? (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/15 text-emerald-500 border border-emerald-500/25">
+                        {item.badge}
+                      </span>
+                    ) : null}
                     {item.active ? (
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-primary/15 text-primary border border-primary/25">
                         {t('commandPalette.activeBadge')}
