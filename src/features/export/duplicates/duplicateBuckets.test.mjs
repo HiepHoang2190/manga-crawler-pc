@@ -1,7 +1,10 @@
 import {
   normalizePathForCompare,
   removeDeletedFilesFromBuckets,
+  removePathsAndDissolveGroups,
+  compareDuplicatesFirst,
   toggleGroupCollapseInSet,
+  getDuplicateGroupKey,
   collectAllGroupIds,
   applyDuplicateRangeSelection,
   computeSelectedDuplicateStats,
@@ -393,6 +396,50 @@ describe('DuplicateFinder - Bucket State Updates on Deletion', () => {
       expect(resolveDuplicateSelectionPreset(onlyCopies, new Set(['/c1.jpg', '/c2.jpg']))).toBe(
         'all'
       );
+    });
+
+    test('smartMode: getDuplicateGroupKey maps smart categories into semantic groups and preset detects suggested trash', () => {
+      const smartItems = [
+        { fullPath: '/orig.jpg', isOriginal: true, duplicateGroup: 1, category: 'DUPLICATE', isSuggestedForTrash: false },
+        { fullPath: '/copy.jpg', isOriginal: false, duplicateGroup: 1, category: 'DUPLICATE', isSuggestedForTrash: true },
+        { fullPath: '/qr.jpg', isOriginal: false, duplicateGroup: null, category: 'QR_CODE', isSuggestedForTrash: true },
+        { fullPath: '/blank.jpg', isOriginal: false, duplicateGroup: null, category: 'BLANK_PAGE', isSuggestedForTrash: true },
+      ];
+      expect(getDuplicateGroupKey(smartItems[0])).toBe(1);
+      expect(getDuplicateGroupKey(smartItems[2])).toBe('smart:QR_CODE');
+      expect(collectAllGroupIds(smartItems)).toEqual(new Set([1, 'smart:QR_CODE', 'smart:BLANK_PAGE']));
+      expect(
+        resolveDuplicateSelectionPreset(smartItems, new Set(['/copy.jpg', '/qr.jpg', '/blank.jpg']))
+      ).toBe('copies');
+    });
+
+    test('compareDuplicatesFirst enforces strictly transitive ordering without interleaving smart & duplicate groups', () => {
+      const mixed = [
+        { fullPath: '/g2_orig.jpg', name: '010.jpg', duplicateGroup: 2, isOriginal: true },
+        { fullPath: '/g1_copy.jpg', name: '003.jpg', duplicateGroup: 1, isOriginal: false },
+        { fullPath: '/blank.jpg', name: '002.jpg', duplicateGroup: null, category: 'BLANK_PAGE' },
+        { fullPath: '/qr.jpg', name: '099.jpg', duplicateGroup: null, category: 'QR_CODE' },
+        { fullPath: '/g1_orig.jpg', name: '005.jpg', duplicateGroup: 1, isOriginal: true },
+      ];
+      mixed.sort(compareDuplicatesFirst);
+      expect(mixed.map((m) => m.fullPath)).toEqual([
+        '/qr.jpg',
+        '/blank.jpg',
+        '/g1_orig.jpg',
+        '/g1_copy.jpg',
+        '/g2_orig.jpg',
+      ]);
+    });
+
+    test('removePathsAndDissolveGroups dissolves 1-file numeric duplicate groups while preserving smart trash items', () => {
+      const items = [
+        { fullPath: 'C:/manga/g1_orig.jpg', duplicateGroup: 1, isOriginal: true },
+        { fullPath: 'C:/manga/g1_copy.jpg', duplicateGroup: 1, isOriginal: false },
+        { fullPath: 'C:/manga/blank1.jpg', duplicateGroup: null, category: 'BLANK_PAGE', isSuggestedForTrash: true },
+        { fullPath: 'C:/manga/blank2.jpg', duplicateGroup: null, category: 'BLANK_PAGE', isSuggestedForTrash: true },
+      ];
+      const next = removePathsAndDissolveGroups(items, ['c:\\manga\\g1_copy.jpg', 'C:/manga/blank1.jpg']);
+      expect(next.map((i) => i.fullPath)).toEqual(['C:/manga/blank2.jpg']);
     });
   });
 });

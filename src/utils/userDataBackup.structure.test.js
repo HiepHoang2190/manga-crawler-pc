@@ -18,5 +18,6 @@ test('BACKUP_SECTIONS in userDataBackup.js includes plugins and site_checker lay
   expect(src).toMatch(/manga_studio_left_sidebar_width_v1/);
   expect(src).toMatch(/mangaAutoRetryMax/);
   expect(src).toMatch(/duplicateScanRecursive_v2/);
+  expect(src).toMatch(/duplicate_smart_scan_v1/);
 });
 

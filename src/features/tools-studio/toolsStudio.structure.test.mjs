@@ -68,7 +68,7 @@ test('ToolsStudio.jsx manages tabBusyMap and renders progress spinner on header 
 test('DuplicateFinderTab.jsx implements duplicate group clustering with group cards and actions', () => {
   const dupSrc = fs.readFileSync(path.join(dirname, '../export/duplicates/DuplicateFinderTab.jsx'), 'utf8');
   expect(dupSrc).toMatch(/groupedDuplicates/);
-  expect(dupSrc).toMatch(/item\.duplicateGroup/);
+  expect(dupSrc).toMatch(/item\.duplicateGroup|getDuplicateGroupKey/);
   expect(dupSrc).toMatch(/toggleGroupSelection/);
   expect(dupSrc).toMatch(/selectOnlyGroupCopies/);
   expect(dupSrc).toMatch(/uncheckGroup/);

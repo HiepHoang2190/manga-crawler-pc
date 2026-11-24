@@ -8,13 +8,19 @@ import DuplicatePreviewModal from './DuplicatePreviewModal';
 import {
   formatBytes,
   toggleGroupCollapseInSet,
+  getDuplicateGroupKey,
   collectAllGroupIds,
+  resolveSmartCategoryBadgeMeta,
+  compareDuplicatesFirst,
+  removePathsAndDissolveGroups,
   applyDuplicateRangeSelection,
   computeSelectedDuplicateStats,
   getVisibleSelectablePaths,
   findNextPreviewPath,
   resolveDuplicateSelectionPreset,
 } from './duplicateUtils';
+
+const SMART_SCAN_STORAGE_KEY = 'duplicate_smart_scan_v1';
 
 const previewThumbnailCache = new Map();
 
@@ -153,6 +159,26 @@ export default function DuplicateFinderTab({
   // Search & sort states
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('name_asc');
+  const [smartMode, setSmartMode] = useState(() => {
+    try {
+      if (typeof window === 'undefined' || !window.localStorage) return true;
+      const saved = window.localStorage.getItem(SMART_SCAN_STORAGE_KEY);
+      return saved === null ? true : saved !== 'false';
+    } catch {
+      return true;
+    }
+  });
+  const [scannedSmartMode, setScannedSmartMode] = useState(false);
+
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem(SMART_SCAN_STORAGE_KEY, String(smartMode));
+      }
+    } catch {
+      // ignore storage quota / privacy errors
+    }
+  }, [smartMode]);
 
   // Collapsed groups state (Set of groupIds that are currently collapsed)
   const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());
@@ -172,6 +198,7 @@ export default function DuplicateFinderTab({
     setImportedFiles([]);
     setScannedDuplicates([]);
     setHasScanned(false);
+    setScannedSmartMode(false);
     setStats({ total: 0, duplicates: 0, ok: 0 });
     setScanError('');
     setSelectedForDelete(new Set());
@@ -270,6 +297,7 @@ export default function DuplicateFinderTab({
       setImportedFiles([]);
       setScannedDuplicates([]);
       setHasScanned(false);
+      setScannedSmartMode(false);
       setStats({ total: 0, duplicates: 0, ok: 0 });
       setLoadingFiles(false);
       return;
@@ -277,6 +305,7 @@ export default function DuplicateFinderTab({
 
     setLoadingFiles(true);
     setHasScanned(false);
+    setScannedSmartMode(false);
     setScannedDuplicates([]);
     setSelectedForDelete(new Set());
     setScanError('');
@@ -320,10 +349,12 @@ export default function DuplicateFinderTab({
             roots: folders,
             recursive: includeSubfolders,
             maxDepth: 8,
+            smartMode,
           }
         : {
             files: sourceFiles,
             recursive: false,
+            smartMode,
           };
       const r = await api.duplicateScan(payload);
       if (r?.cancelled) {
@@ -333,17 +364,21 @@ export default function DuplicateFinderTab({
       if (!r?.ok) {
         setScannedDuplicates([]);
         setHasScanned(false);
+        setScannedSmartMode(false);
         setSelectedForDelete(new Set());
         setScanError(r?.error || t('duplicateTab.scanFailed'));
         return;
       }
 
+      const effectiveSmartMode = Boolean(r.smartMode ?? smartMode);
       const allScanned = Array.isArray(r.images) ? r.images : [];
-      // User requirement: "khi bấm Quét chỉ hiện thị ảnh bị trùng thôi"
-      const duplicateImages = allScanned.filter((img) => img.isDuplicate);
+      const duplicateImages = effectiveSmartMode
+        ? allScanned.filter((img) => img.isDuplicate || img.isSuggestedForTrash)
+        : allScanned.filter((img) => img.isDuplicate);
 
       setScannedDuplicates(duplicateImages);
       setHasScanned(true);
+      setScannedSmartMode(effectiveSmartMode);
       setSortBy('duplicates_first');
       // Mặc định thu gọn (collapse) tất cả nhóm trùng sau khi quét
       setCollapsedGroups(collectAllGroupIds(duplicateImages));
@@ -356,22 +391,31 @@ export default function DuplicateFinderTab({
         }
       );
 
-      // Mặc định chọn tất cả ảnh trùng lặp sau khi quét
+      // Mặc định chọn tất cả ảnh trùng (classic) hoặc chỉ ảnh đề xuất xóa/bản sao (smartMode)
       const autoSelected = new Set();
-      for (const img of duplicateImages) {
-        autoSelected.add(img.fullPath);
+      if (effectiveSmartMode) {
+        for (const img of duplicateImages) {
+          if (img.isSuggestedForTrash || !img.isOriginal) {
+            autoSelected.add(img.fullPath);
+          }
+        }
+      } else {
+        for (const img of duplicateImages) {
+          autoSelected.add(img.fullPath);
+        }
       }
       setSelectedForDelete(autoSelected);
     } catch (e) {
       setScannedDuplicates([]);
       setHasScanned(false);
+      setScannedSmartMode(false);
       setSelectedForDelete(new Set());
       setScanError(String(e?.message || e));
     } finally {
       setScanning(false);
       setScanProgress(null);
     }
-  }, [api, hasSource, folders, sourceFiles, includeSubfolders, t]);
+  }, [api, hasSource, folders, sourceFiles, includeSubfolders, smartMode, t]);
 
   const handleCancelScan = useCallback(() => {
     if (api?.duplicateCancelScan) {
@@ -392,13 +436,13 @@ export default function DuplicateFinderTab({
   // Remove single image from list (does not delete file on disk)
   const handleRemoveItem = useCallback((pathToRemove) => {
     if (hasScanned) {
-      setScannedDuplicates((prev) => prev.filter((img) => img.fullPath !== pathToRemove));
+      setScannedDuplicates((prev) => removePathsAndDissolveGroups(prev, [pathToRemove]));
       setStats((prev) => ({
         ...prev,
         total: Math.max(0, (prev.total || 0) - 1),
       }));
     } else {
-      setImportedFiles((prev) => prev.filter((f) => f.fullPath !== pathToRemove));
+      setImportedFiles((prev) => removePathsAndDissolveGroups(prev, [pathToRemove]));
     }
     setSelectedForDelete((prev) => {
       if (!prev.has(pathToRemove)) return prev;
@@ -433,7 +477,11 @@ export default function DuplicateFinderTab({
     [importedFiles]
   );
   const copiesCount = useMemo(
-    () => scannedDuplicates.filter((img) => !img.isOriginal).length,
+    () => scannedDuplicates.filter((img) => img.isDuplicate && !img.isOriginal).length,
+    [scannedDuplicates]
+  );
+  const smartTrashCount = useMemo(
+    () => scannedDuplicates.filter((img) => img.isSuggestedForTrash && !img.isDuplicate).length,
     [scannedDuplicates]
   );
   const totalGroupCount = useMemo(
@@ -443,7 +491,7 @@ export default function DuplicateFinderTab({
   const totalReclaimableBytes = useMemo(
     () =>
       scannedDuplicates.reduce(
-        (sum, img) => sum + (!img.isOriginal ? Number(img?.sizeBytes) || 0 : 0),
+        (sum, img) => sum + (img.isSuggestedForTrash || !img.isOriginal ? Number(img?.sizeBytes) || 0 : 0),
         0
       ),
     [scannedDuplicates]
@@ -471,13 +519,14 @@ export default function DuplicateFinderTab({
         return;
       }
 
-      const deletedSet = new Set(r.deleted || []);
-      if (deletedSet.size > 0) {
-        setScannedDuplicates((prev) => prev.filter((img) => !deletedSet.has(img.fullPath)));
-        setImportedFiles((prev) => prev.filter((img) => !deletedSet.has(img.fullPath)));
+      const deletedList = r.deleted || [];
+      if (deletedList.length > 0) {
+        const deletedSet = new Set(deletedList);
+        setScannedDuplicates((prev) => removePathsAndDissolveGroups(prev, deletedList));
+        setImportedFiles((prev) => removePathsAndDissolveGroups(prev, deletedList));
         setStats((prev) => ({
           ...prev,
-          total: Math.max(0, (prev.total || 0) - deletedSet.size),
+          total: Math.max(0, (prev.total || 0) - deletedList.length),
         }));
         setSelectedForDelete((prev) => {
           const next = new Set(prev);
@@ -486,9 +535,9 @@ export default function DuplicateFinderTab({
         });
 
         if (r.errors && r.errors.length > 0) {
-          setDeleteMessage(t('duplicateTab.deletePartial', { deleted: deletedSet.size, errors: r.errors.length }));
+          setDeleteMessage(t('duplicateTab.deletePartial', { deleted: deletedList.length, errors: r.errors.length }));
         } else {
-          setDeleteMessage(t('duplicateTab.deleteDone', { count: deletedSet.size }));
+          setDeleteMessage(t('duplicateTab.deleteDone', { count: deletedList.length }));
         }
       } else if (r.errors && r.errors.length > 0) {
         setDeleteMessage(r.errors[0]?.error || t('duplicateTab.deleteFailed'));
@@ -518,11 +567,7 @@ export default function DuplicateFinderTab({
     // 2. Sort
     list.sort((a, b) => {
       if (hasScanned && sortBy === 'duplicates_first') {
-        if (a.duplicateGroup && b.duplicateGroup && a.duplicateGroup !== b.duplicateGroup) {
-          return a.duplicateGroup - b.duplicateGroup;
-        }
-        if (a.isOriginal !== b.isOriginal) return a.isOriginal ? -1 : 1;
-        return (a.name || '').localeCompare(b.name || '', undefined, { numeric: true });
+        return compareDuplicatesFirst(a, b);
       }
       if (sortBy === 'name_asc') {
         return (a.name || '').localeCompare(b.name || '', undefined, { numeric: true });
@@ -566,14 +611,14 @@ export default function DuplicateFinderTab({
     });
   }, [allDisplayedChecked, displayedItems]);
 
-  // Quick select duplicate copies only (except first original) across displayed items
+  // Quick select duplicate copies & smart suggested trash across displayed items
   const selectExceptFirstPerGroup = useCallback(() => {
     lastClickedIndexRef.current = null;
     lastClickedSelectedRef.current = true;
     setSelectedForDelete((prev) => {
       const next = new Set(prev);
       for (const item of displayedItems) {
-        if (item.isDuplicate && !item.isOriginal) {
+        if (item.isSuggestedForTrash || (item.isDuplicate && !item.isOriginal)) {
           next.add(item.fullPath);
         } else {
           next.delete(item.fullPath);
@@ -600,13 +645,20 @@ export default function DuplicateFinderTab({
 
   const displayedHasCopies = useMemo(
     () =>
-      displayedItems.some((item) => !item.isOriginal) &&
-      displayedItems.some((item) => item.isOriginal),
+      displayedItems.some((item) => item.isSuggestedForTrash || !item.isOriginal) &&
+      displayedItems.some((item) => !item.isSuggestedForTrash && item.isOriginal),
     [displayedItems]
   );
 
   const selectionPresetOptions = useMemo(() => {
     const total = displayedItems.length;
+    const copiesPresetLabel =
+      scannedSmartMode && smartTrashCount > 0
+        ? t('duplicateTab.selectSuggestedTrash')
+        : t('duplicateTab.keepOneOriginal');
+    const copiesPresetIcon =
+      scannedSmartMode && smartTrashCount > 0 ? 'auto_delete' : 'filter_1';
+
     const baseOptions = [
       {
         value: 'all',
@@ -622,9 +674,9 @@ export default function DuplicateFinderTab({
               value: 'copies',
               label:
                 selectionPreset === 'copies'
-                  ? `${t('duplicateTab.keepOneOriginal')} (${visibleSelectedInDisplayedCount}/${total})`
-                  : t('duplicateTab.keepOneOriginal'),
-              materialIcon: 'filter_1',
+                  ? `${copiesPresetLabel} (${visibleSelectedInDisplayedCount}/${total})`
+                  : copiesPresetLabel,
+              materialIcon: copiesPresetIcon,
             },
           ]
         : []),
@@ -652,7 +704,7 @@ export default function DuplicateFinderTab({
       ];
     }
     return baseOptions;
-  }, [selectionPreset, displayedItems.length, visibleSelectedInDisplayedCount, displayedHasCopies, t]);
+  }, [selectionPreset, displayedItems.length, visibleSelectedInDisplayedCount, displayedHasCopies, scannedSmartMode, smartTrashCount, t]);
 
   const handleSelectionPresetChange = useCallback(
     (mode) => {
@@ -667,20 +719,26 @@ export default function DuplicateFinderTab({
     [allDisplayedChecked, handleToggleSelectAll, selectExceptFirstPerGroup, handleClearDisplayedSelection]
   );
 
-  // Gom nhóm ảnh trùng theo từng cụm/nhóm trùng (Duplicate Group)
+  // Gom nhóm ảnh trùng theo từng cụm/nhóm trùng (Duplicate Group) hoặc nhóm Smart category
   const groupedDuplicates = useMemo(() => {
     if (!hasScanned) return [];
     const map = new Map();
     for (const item of displayedItems) {
-      const gId = item.duplicateGroup ?? 'ungrouped';
+      const gId = getDuplicateGroupKey(item);
       if (!map.has(gId)) {
         map.set(gId, []);
       }
       map.get(gId).push(item);
     }
     return Array.from(map.entries()).map(([groupId, items]) => {
-      const originals = items.filter((img) => img.isOriginal);
-      const copies = items.filter((img) => !img.isOriginal);
+      const isSmartTrashGroup = String(groupId).startsWith('smart:');
+      const smartBadgeMeta = isSmartTrashGroup ? resolveSmartCategoryBadgeMeta(items[0], t) : null;
+      const originals = isSmartTrashGroup
+        ? []
+        : items.filter((img) => img.isOriginal && !img.isSuggestedForTrash);
+      const copies = isSmartTrashGroup
+        ? items
+        : items.filter((img) => img.isSuggestedForTrash || !img.isOriginal);
       const totalSize = items.reduce((sum, img) => sum + (img.sizeBytes || 0), 0);
       const reclaimableSize = copies.reduce((sum, img) => sum + (img.sizeBytes || 0), 0);
       const allCopiesChecked =
@@ -690,14 +748,19 @@ export default function DuplicateFinderTab({
         items.length > 0 && items.every((img) => selectedForDelete.has(img.fullPath));
       const someItemsChecked = items.some((img) => selectedForDelete.has(img.fullPath));
       const allOriginalsChecked =
-        originals.length > 0 && originals.every((img) => selectedForDelete.has(img.fullPath));
+        !isSmartTrashGroup &&
+        originals.length > 0 &&
+        originals.every((img) => selectedForDelete.has(img.fullPath));
       const onlyCopiesSelected =
+        !isSmartTrashGroup &&
         copies.length > 0 &&
         allCopiesChecked &&
         originals.every((img) => !selectedForDelete.has(img.fullPath));
 
       return {
         groupId,
+        isSmartTrashGroup,
+        smartBadgeMeta,
         items,
         originals,
         copies,
@@ -711,7 +774,7 @@ export default function DuplicateFinderTab({
         onlyCopiesSelected,
       };
     });
-  }, [hasScanned, displayedItems, selectedForDelete]);
+  }, [hasScanned, displayedItems, selectedForDelete, t]);
 
   // Visual render order of visible rows for Shift+click range selection
   const visibleSelectablePaths = useMemo(
@@ -969,6 +1032,37 @@ export default function DuplicateFinderTab({
               foldersMaxHeightClass="max-h-[55vh]"
             />
 
+            {/* (1b) Tuỳ chọn Quét thông minh (Default-on Smart Duplicate & Ad Detector) */}
+            <label
+              data-testid="duplicate-smart-mode-toggle"
+              className={`flex items-start gap-2.5 rounded-xl border p-3 transition-colors select-none ${
+                scanning || deleteBusy || !hasElectron
+                  ? 'opacity-50 cursor-not-allowed border-outline-variant/20 bg-surface-container-low'
+                  : smartMode
+                    ? 'cursor-pointer border-primary/40 bg-primary/10'
+                    : 'cursor-pointer border-outline-variant/20 bg-surface-container-high/45 hover:border-outline-variant/45'
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={smartMode}
+                disabled={scanning || deleteBusy || !hasElectron}
+                onChange={(e) => setSmartMode(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded accent-primary cursor-pointer disabled:cursor-not-allowed shrink-0"
+              />
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-on-surface">
+                  <span className="material-symbols-outlined text-[15px] text-primary leading-none">
+                    auto_awesome
+                  </span>
+                  <span>{t('duplicateTab.smartMode.label')}</span>
+                </div>
+                <p className="text-[11px] leading-snug text-on-surface-variant/85">
+                  {t('duplicateTab.smartMode.description')}
+                </p>
+              </div>
+            </label>
+
             {/* Thông báo lỗi / kết quả */}
             {scanError ? (
               <p className="text-xs text-error whitespace-pre-wrap" role="alert">
@@ -1009,6 +1103,14 @@ export default function DuplicateFinderTab({
                   <span className="font-bold text-emerald-600 dark:text-emerald-400 text-right tabular-nums">
                     {hasScanned ? formatBytes(totalReclaimableBytes) : '—'}
                   </span>
+                  {hasScanned && scannedSmartMode && (
+                    <>
+                      <span className="text-on-surface-variant">{t('duplicateTab.overview.smartTrash')}</span>
+                      <span className="font-bold text-amber-600 dark:text-amber-400 text-right tabular-nums">
+                        {smartTrashCount}
+                      </span>
+                    </>
+                  )}
                 </div>
                 <div className="mt-2.5 pt-2 border-t border-primary/10 space-y-1.5 text-[10px] text-on-surface-variant/75 leading-relaxed">
                   <div className="flex items-start gap-1.5">
@@ -1171,7 +1273,7 @@ export default function DuplicateFinderTab({
           ) : hasScanned && scannedDuplicates.length === 0 ? (
             <EmptyState
               icon="check_circle"
-              title={t('duplicateTab.noDuplicatesFound')}
+              title={scannedSmartMode ? t('duplicateTab.noDuplicatesFoundSmart') : t('duplicateTab.noDuplicatesFound')}
               description={t('duplicateTab.allImagesUnique')}
             />
           ) : displayedItems.length === 0 ? (
@@ -1232,9 +1334,11 @@ export default function DuplicateFinderTab({
                             toggleGroupSelection(group);
                           }}
                           aria-label={
-                            group.allItemsChecked || group.allCopiesChecked
-                              ? t('duplicateTab.uncheckAll')
-                              : t('duplicateTab.selectAllExceptFirst')
+                            group.isSmartTrashGroup
+                              ? (group.allItemsChecked ? t('duplicateTab.uncheckAll') : t('duplicateTab.selectEntireGroup'))
+                              : (group.allItemsChecked || group.allCopiesChecked
+                                  ? t('duplicateTab.uncheckAll')
+                                  : t('duplicateTab.selectAllExceptFirst'))
                           }
                           className="flex items-center justify-center p-0.5 rounded text-on-surface-variant/70 hover:text-primary transition-colors cursor-pointer shrink-0"
                         >
@@ -1266,13 +1370,24 @@ export default function DuplicateFinderTab({
                         {/* Thông tin nhóm */}
                         <div className="min-w-0 flex-1 space-y-1">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="shrink-0 font-bold text-xs text-primary px-2 py-0.5 rounded-md bg-primary/10 border border-primary/25">
-                              {t('duplicateTab.group', { id: group.groupId })}
-                            </span>
+                            {group.isSmartTrashGroup && group.smartBadgeMeta ? (
+                              <span
+                                className={`shrink-0 inline-flex items-center gap-1 font-bold text-xs px-2 py-0.5 rounded-md border ${group.smartBadgeMeta.badgeClass}`}
+                              >
+                                <span className="material-symbols-outlined text-[13px] leading-none">
+                                  {group.smartBadgeMeta.icon}
+                                </span>
+                                <span>{group.smartBadgeMeta.groupLabel}</span>
+                              </span>
+                            ) : (
+                              <span className="shrink-0 font-bold text-xs text-primary px-2 py-0.5 rounded-md bg-primary/10 border border-primary/25">
+                                {t('duplicateTab.group', { id: group.groupId })}
+                              </span>
+                            )}
 
                             <span className="truncate text-on-surface-variant font-medium">
                               {t('duplicateTab.groupFilesCount', { count: group.items.length })}
-                              {group.copies.length > 0 && (
+                              {!group.isSmartTrashGroup && group.copies.length > 0 && (
                                 <span className="text-rose-500 dark:text-rose-400 font-semibold ml-1">
                                   ({group.copies.length} {t('duplicateTab.filterCopiesOnly') || 'bản sao'})
                                 </span>
@@ -1286,7 +1401,7 @@ export default function DuplicateFinderTab({
                               </span>
                             )}
 
-                            {group.allOriginalsChecked && (
+                            {!group.isSmartTrashGroup && group.allOriginalsChecked && (
                               <span
                                 data-testid="duplicate-group-all-selected-warning"
                                 className="inline-flex items-center gap-1 rounded-md border border-amber-500/35 bg-amber-500/12 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300 shrink-0"
@@ -1321,23 +1436,41 @@ export default function DuplicateFinderTab({
 
                       {/* Các nút thao tác nhanh theo nhóm */}
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <button
-                          type="button"
-                          disabled={group.copies.length === 0}
-                          aria-pressed={group.onlyCopiesSelected}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            selectOnlyGroupCopies(group);
-                          }}
-                          className={`h-7 px-2.5 rounded-lg text-[11px] border transition-colors cursor-pointer whitespace-nowrap disabled:opacity-45 disabled:cursor-not-allowed ${
-                            group.onlyCopiesSelected
-                              ? 'border-primary/40 bg-primary/15 text-primary font-semibold'
-                              : 'border-outline-variant/25 bg-surface-container-highest text-on-surface font-medium hover:border-primary/40 hover:text-primary'
-                          }`}
-                          data-tooltip={t('duplicateTab.selectAllExceptFirst')}
-                        >
-                          {t('duplicateTab.selectGroupCopies')}
-                        </button>
+                        {group.isSmartTrashGroup ? (
+                          <button
+                            type="button"
+                            aria-pressed={group.allItemsChecked}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleGroupSelection(group);
+                            }}
+                            className={`h-7 px-2.5 rounded-lg text-[11px] border transition-colors cursor-pointer whitespace-nowrap ${
+                              group.allItemsChecked
+                                ? 'border-primary/40 bg-primary/15 text-primary font-semibold'
+                                : 'border-outline-variant/25 bg-surface-container-highest text-on-surface font-medium hover:border-primary/40 hover:text-primary'
+                            }`}
+                          >
+                            {t('duplicateTab.selectEntireGroup')}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={group.copies.length === 0}
+                            aria-pressed={group.onlyCopiesSelected}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              selectOnlyGroupCopies(group);
+                            }}
+                            className={`h-7 px-2.5 rounded-lg text-[11px] border transition-colors cursor-pointer whitespace-nowrap disabled:opacity-45 disabled:cursor-not-allowed ${
+                              group.onlyCopiesSelected
+                                ? 'border-primary/40 bg-primary/15 text-primary font-semibold'
+                                : 'border-outline-variant/25 bg-surface-container-highest text-on-surface font-medium hover:border-primary/40 hover:text-primary'
+                            }`}
+                            data-tooltip={t('duplicateTab.selectAllExceptFirst')}
+                          >
+                            {t('duplicateTab.selectGroupCopies')}
+                          </button>
+                        )}
                         <button
                           type="button"
                           aria-pressed={!group.someItemsChecked}
@@ -1381,6 +1514,7 @@ export default function DuplicateFinderTab({
                       <ul className="divide-y divide-outline-variant/10">
                         {group.items.map((item) => {
                           const isChecked = selectedForDelete.has(item.fullPath);
+                          const rowSmartMeta = resolveSmartCategoryBadgeMeta(item, t);
                           return (
                             <li
                               key={item.fullPath}
@@ -1413,10 +1547,14 @@ export default function DuplicateFinderTab({
                               <span
                                 className={[
                                   'material-symbols-outlined shrink-0 text-[18px]',
-                                  item.isOriginal ? 'text-cyan-500 dark:text-cyan-400' : 'text-rose-500 dark:text-rose-400',
+                                  rowSmartMeta
+                                    ? rowSmartMeta.iconClass
+                                    : item.isOriginal
+                                      ? 'text-cyan-500 dark:text-cyan-400'
+                                      : 'text-rose-500 dark:text-rose-400',
                                 ].join(' ')}
                               >
-                                {item.isOriginal ? 'photo_library' : 'content_copy'}
+                                {rowSmartMeta ? rowSmartMeta.icon : item.isOriginal ? 'photo_library' : 'content_copy'}
                               </span>
 
                               {/* 3. Tên tệp & Đường dẫn tương đối */}
@@ -1442,14 +1580,30 @@ export default function DuplicateFinderTab({
                               </div>
 
                               {/* 5. Badges trạng thái */}
-                              {item.isOriginal ? (
-                                <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold border border-cyan-500/30 bg-cyan-500/10 text-cyan-600 dark:text-cyan-400">
-                                  {t('duplicateTab.originalBadge')}
+                              {rowSmartMeta ? (
+                                <span
+                                  data-tooltip={rowSmartMeta.tooltip}
+                                  className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold border ${rowSmartMeta.badgeClass}`}
+                                >
+                                  {rowSmartMeta.label}
                                 </span>
                               ) : (
-                                <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold border border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400">
-                                  {t('duplicateTab.duplicateBadge')}
-                                </span>
+                                <>
+                                  {item.matchType === 'fuzzy' && (
+                                    <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold border border-primary/30 bg-primary/10 text-primary">
+                                      {t('duplicateTab.badgeFuzzy')}
+                                    </span>
+                                  )}
+                                  {item.isOriginal ? (
+                                    <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold border border-cyan-500/30 bg-cyan-500/10 text-cyan-600 dark:text-cyan-400">
+                                      {t('duplicateTab.originalBadge')}
+                                    </span>
+                                  ) : (
+                                    <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold border border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400">
+                                      {t('duplicateTab.duplicateBadge')}
+                                    </span>
+                                  )}
+                                </>
                               )}
 
                               {/* 6. Cụm nút hành động đồng chuẩn h-8 w-8 rounded-lg border */}

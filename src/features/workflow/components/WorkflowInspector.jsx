@@ -1174,6 +1174,32 @@ export default function WorkflowInspector({
 
         {selectedNode.type === 'duplicate_cleaner' && (
           <div className="space-y-3">
+            {/* Quét thông minh (Smart Duplicate & Ad Detector) */}
+            <label
+              data-testid="workflow-duplicate-smart-mode"
+              className={`flex items-start gap-2.5 rounded-xl border p-2.5 cursor-pointer transition-colors select-none ${
+                data.smartMode !== false
+                  ? 'border-primary/40 bg-primary/10'
+                  : 'border-outline-variant/25 bg-surface-container-low/60 hover:border-outline-variant/45'
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={data.smartMode !== false}
+                onChange={(e) => handleChange('smartMode', e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded accent-primary cursor-pointer shrink-0"
+              />
+              <div className="min-w-0 flex-1 space-y-0.5">
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold text-on-surface">
+                  <span className="material-symbols-outlined text-[14px] text-primary leading-none">auto_awesome</span>
+                  <span>{t('workflow.inspector.duplicateSmartMode')}</span>
+                </div>
+                <p className="text-[10px] leading-snug text-on-surface-variant/85">
+                  {t('workflow.inspector.duplicateSmartModeDesc')}
+                </p>
+              </div>
+            </label>
+
             {/* Điều kiện nhóm trùng lặp */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-[11px] font-semibold text-on-surface-variant">
@@ -1189,12 +1215,12 @@ export default function WorkflowInspector({
                 className="w-full accent-primary cursor-pointer"
               />
               <p className="text-[10px] text-on-surface-variant/80 leading-relaxed">
-                Chỉ khi phát hiện từ <strong>{data.minDuplicateCount || 3} ảnh</strong> giống hệt/tương đồng trở lên mới giữ 1 ảnh gốc và chuyển các ảnh dư thừa vào Thùng rác. Nhóm ít hơn sẽ giữ nguyên an toàn.
+                Chỉ khi phát hiện từ <strong>{data.minDuplicateCount || 3} ảnh</strong> giống hệt/tương đồng trở lên mới giữ 1 ảnh gốc và chuyển các ảnh dư thừa vào Thùng rác (ảnh rác/QC đứng lẻ vẫn được dọn khi bật Quét thông minh).
               </p>
             </div>
 
             {/* Độ nhạy */}
-            <div className="space-y-1.5">
+            <div className={`space-y-1.5 transition-opacity ${data.smartMode === false ? 'opacity-50' : ''}`}>
               <label className="text-[11px] font-semibold text-on-surface-variant">
                 Độ nhạy tương đồng: {data.similarityThreshold || 92}%
               </label>
@@ -1202,9 +1228,10 @@ export default function WorkflowInspector({
                 type="range"
                 min="80"
                 max="99"
+                disabled={data.smartMode === false}
                 value={data.similarityThreshold || 92}
                 onChange={(e) => handleChange('similarityThreshold', Number(e.target.value))}
-                className="w-full accent-primary cursor-pointer"
+                className="w-full accent-primary cursor-pointer disabled:cursor-not-allowed"
               />
             </div>
 

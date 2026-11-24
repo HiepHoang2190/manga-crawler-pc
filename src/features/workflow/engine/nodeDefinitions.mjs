@@ -104,7 +104,7 @@ export const NODE_DEFINITIONS = {
     description: 'Tự động phát hiện ảnh bìa lặp, credit hoặc ảnh trùng và dọn vào Thùng rác.',
     inputs: [{ id: 'images_dir', type: 'images_dir', label: 'Folder Ảnh' }],
     outputs: [{ id: 'images_dir', type: 'images_dir', label: 'Folder Sạch' }],
-    defaultData: { minDuplicateCount: 3, similarityThreshold: 92, action: 'trash', recursive: true, folderPath: '' },
+    defaultData: { smartMode: true, minDuplicateCount: 3, similarityThreshold: 92, action: 'trash', recursive: true, folderPath: '' },
   },
 
   split_double_page: {

@@ -221,4 +221,42 @@ describe('DuplicateFinder UI & UX upgrade structure', () => {
     expect(src).toMatch(/setStats\(\(prev\)\s*=>/);
     expect(src).not.toContain('bg-black/92');
   });
+
+  test('renders Smart Scan toggle card (default ON) and integrates smartMode categories into scanner, UI & preview', () => {
+    expect(src).toContain('data-testid="duplicate-smart-mode-toggle"');
+    expect(src).toContain("duplicate_smart_scan_v1");
+    expect(src).toMatch(/saved\s*===\s*null\s*\?\s*true\s*:\s*saved\s*!==\s*['"]false['"]/);
+    expect(src).toMatch(/smartMode/);
+
+    const inspectorSrc = fs.readFileSync(
+      path.join(rootDir, 'src/features/workflow/components/WorkflowInspector.jsx'),
+      'utf8'
+    );
+    expect(inspectorSrc).toContain('data-testid="workflow-duplicate-smart-mode"');
+    expect(inspectorSrc).toContain('t(\'workflow.inspector.duplicateSmartMode\')');
+    expect(src).toContain('resolveSmartCategoryBadgeMeta');
+    expect(src).toContain('getDuplicateGroupKey');
+    expect(src).toContain('compareDuplicatesFirst');
+    expect(src).toContain('removePathsAndDissolveGroups');
+    expect(src).toContain("t('duplicateTab.smartMode.label')");
+    expect(src).toContain("t('duplicateTab.selectSuggestedTrash')");
+
+    const previewSrc = fs.readFileSync(path.join(__dirname, 'DuplicatePreviewModal.jsx'), 'utf8');
+    expect(previewSrc).toContain('resolveSmartCategoryBadgeMeta');
+    expect(previewSrc).toContain('badgeFuzzy');
+
+    for (const key of [
+      "'duplicateTab.smartMode.label':",
+      "'duplicateTab.smartMode.description':",
+      "'duplicateTab.selectSuggestedTrash':",
+      "'duplicateTab.badgeQr':",
+      "'duplicateTab.badgeCredit':",
+      "'duplicateTab.badgeBanner':",
+      "'duplicateTab.badgeBlank':",
+      "'duplicateTab.overview.smartTrash':",
+    ]) {
+      expect(vi).toContain(key);
+      expect(en).toContain(key);
+    }
+  });
 });

@@ -148,6 +148,7 @@
     "extract-zip": "^2.0.1",
     "fast-glob": "^3.3.3",
     "jimp": "^0.22.12",
+    "jsqr": "^1.4.0",
     "kindleunpack": "^1.0.5",
     "libsodium-wrappers-sumo": "^0.8.4",
     "node-unrar-js": "^2.0.2",

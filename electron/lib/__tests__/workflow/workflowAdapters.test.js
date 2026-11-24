@@ -423,6 +423,7 @@ describe('Workflow Adapters & Execution', () => {
       const adapters = createAdapters({ ipc_context: mockIpcContext });
       const node = {
         data: {
+          smartMode: false,
           minDuplicateCount: 3,
           action: 'trash',
         },
@@ -442,6 +443,136 @@ describe('Workflow Adapters & Execution', () => {
       expect(trashedPaths).not.toContain(file3);
     } finally {
       duplicateScanner.findDuplicatesInDirectory = originalFindDuplicates;
+    }
+  });
+
+  test('duplicate_cleaner smartMode (default ON) cleans non-story trash & fuzzy duplicates keeping best quality original', async () => {
+    const sharp = require('sharp');
+    const mangaDir = path.join(tempDir, 'smart_dup_workflow');
+    const chDir = path.join(mangaDir, 'Chap 01');
+    fs.mkdirSync(chDir, { recursive: true });
+
+    const trashedPaths = [];
+    const adapters = createAdapters({
+      ipc_context: {
+        trashItem: async (p) => {
+          trashedPaths.push(p);
+          if (fs.existsSync(p)) fs.unlinkSync(p);
+        },
+      },
+    });
+
+    // 1. Standalone blank white page & thin horizontal ad banner -> should be cleaned automatically
+    const blankPath = path.join(chDir, '001_blank.jpg');
+    const bannerPath = path.join(chDir, '002_banner.jpg');
+    await sharp({
+      create: { width: 200, height: 300, channels: 3, background: { r: 255, g: 255, b: 255 } },
+    }).jpeg().toFile(blankPath);
+    await sharp({
+      create: { width: 728, height: 90, channels: 3, background: { r: 20, g: 110, b: 210 } },
+    })
+      .composite([
+        {
+          input: await sharp({
+            create: { width: 180, height: 90, channels: 3, background: { r: 245, g: 190, b: 20 } },
+          }).png().toBuffer(),
+          left: 20,
+          top: 0,
+        },
+      ])
+      .jpeg()
+      .toFile(bannerPath);
+
+    // 2. Fuzzy near-duplicate pair (003_hi.jpg 600x900 vs a_low.webp 300x450) with minDuplicateCount: 2
+    const w = 600, h = 900;
+    const raw = Buffer.alloc(w * h * 3);
+    for (let y = 0; y < h; y += 1) {
+      for (let x = 0; x < w; x += 1) {
+        const v = Math.floor((x / w) * 180 + (y / h) * 60);
+        const i = (y * w + x) * 3;
+        raw[i] = v; raw[i + 1] = v; raw[i + 2] = v;
+      }
+    }
+    const hiBuf = await sharp(raw, { raw: { width: w, height: h, channels: 3 } }).jpeg({ quality: 92 }).toBuffer();
+    const hiPath = path.join(chDir, '003_hi.jpg');
+    const loPath = path.join(chDir, '000_low.webp');
+    await fs.promises.writeFile(hiPath, hiBuf);
+    const resized = await sharp(hiBuf).resize(300, 450).toBuffer();
+    await sharp(resized)
+      .composite([
+        {
+          input: await sharp({
+            create: { width: 40, height: 60, channels: 3, background: { r: 0, g: 0, b: 0 } },
+          }).png().toBuffer(),
+          left: 260,
+          top: 390,
+        },
+      ])
+      .webp({ quality: 65 })
+      .toFile(loPath);
+
+    const node = {
+      data: {
+        // Omitted smartMode intentionally to verify default ON
+        minDuplicateCount: 2,
+        similarityThreshold: 92,
+        recursive: true,
+        action: 'trash',
+      },
+    };
+
+    const progressLogs = [];
+    await adapters.duplicate_cleaner(node, { images_dir: mangaDir }, (p) => progressLogs.push(p.message));
+
+    expect(trashedPaths).toContain(blankPath);
+    expect(trashedPaths).toContain(bannerPath);
+    expect(trashedPaths).toContain(loPath);
+    expect(trashedPaths).not.toContain(hiPath);
+    expect(fs.existsSync(hiPath)).toBe(true);
+  });
+
+  test('duplicate_cleaner handles scan failure gracefully and continues batch when single trashItem fails', async () => {
+    const duplicateScanner = require('../../export/image/duplicateImageScanner');
+    const origScan = duplicateScanner.scanDuplicateImages;
+    const localDir = path.join(tempDir, 'dup_resilience');
+    fs.mkdirSync(localDir, { recursive: true });
+    const f1 = path.join(localDir, 'b1.jpg');
+    const f2 = path.join(localDir, 'b2.jpg');
+    fs.writeFileSync(f1, 'x');
+    fs.writeFileSync(f2, 'y');
+
+    try {
+      // 1. scanRes.ok === false must warn cleanly instead of reporting clean success
+      duplicateScanner.scanDuplicateImages = async () => ({ ok: false, error: 'Simulated scan error' });
+      const warnLogs = [];
+      const adapters1 = createAdapters({});
+      await adapters1.duplicate_cleaner({ data: { folderPath: localDir } }, {}, (p) => warnLogs.push(p));
+      expect(warnLogs.some((l) => l.type === 'warn' && l.message.includes('Simulated scan error'))).toBe(true);
+
+      // 2. One failing trashItem falls back & does not abort remaining deletions
+      duplicateScanner.scanDuplicateImages = async () => ({
+        ok: true,
+        images: [
+          { fullPath: f1, isDuplicate: false, isSuggestedForTrash: true },
+          { fullPath: f2, isDuplicate: false, isSuggestedForTrash: true },
+        ],
+      });
+      const attempted = [];
+      const adapters2 = createAdapters({
+        ipc_context: {
+          trashItem: async (p) => {
+            attempted.push(p);
+            if (p === f1) throw new Error('Recycle Bin unavailable');
+            if (fs.existsSync(p)) fs.unlinkSync(p);
+          },
+        },
+      });
+      await adapters2.duplicate_cleaner({ data: { folderPath: localDir } }, {}, () => {});
+      expect(attempted).toEqual([f1, f2]);
+      expect(fs.existsSync(f1)).toBe(false);
+      expect(fs.existsSync(f2)).toBe(false);
+    } finally {
+      duplicateScanner.scanDuplicateImages = origScan;
     }
   });
 

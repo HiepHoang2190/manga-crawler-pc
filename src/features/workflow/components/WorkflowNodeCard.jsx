@@ -480,13 +480,23 @@ export default function WorkflowNodeCard({
           </div>
         )}
 
-        {node.type === 'duplicate_cleaner' && node.data?.folderPath && (
-          <div
-            className="text-[10px] text-on-surface-variant truncate bg-surface-container px-2 py-1 rounded-md border border-outline-variant/20 flex items-center gap-1"
-            data-tooltip={node.data.folderPath}
-          >
-            <span className="material-symbols-outlined text-xs shrink-0 text-amber-500">folder</span>
-            <span className="truncate">{getFolderDisplayName(node.data.folderPath)}</span>
+        {node.type === 'duplicate_cleaner' && (
+          <div className="space-y-1">
+            {node.data?.smartMode !== false && (
+              <div className="inline-flex items-center gap-1 rounded-md border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                <span className="material-symbols-outlined text-[12px] leading-none">auto_awesome</span>
+                <span>{t('workflow.node.duplicateSmartBadge')}</span>
+              </div>
+            )}
+            {node.data?.folderPath && (
+              <div
+                className="text-[10px] text-on-surface-variant truncate bg-surface-container px-2 py-1 rounded-md border border-outline-variant/20 flex items-center gap-1"
+                data-tooltip={node.data.folderPath}
+              >
+                <span className="material-symbols-outlined text-xs shrink-0 text-amber-500">folder</span>
+                <span className="truncate">{getFolderDisplayName(node.data.folderPath)}</span>
+              </div>
+            )}
           </div>
         )}
 

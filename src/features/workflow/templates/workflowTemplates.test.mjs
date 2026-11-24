@@ -47,6 +47,8 @@ describe('workflowTemplates & storage', () => {
       'upload_google_drive',
     ]);
     expect(tpl.edges).toHaveLength(4);
+    const cleaner = tpl.nodes.find((n) => n.type === 'duplicate_cleaner');
+    expect(cleaner?.data?.smartMode).toBe(true);
   });
 
   test('contains template_cbz_basic in DEFAULT_TEMPLATES with valid pipeline', () => {
@@ -60,6 +62,8 @@ describe('workflowTemplates & storage', () => {
       'export_cbz',
     ]);
     expect(tpl.edges).toHaveLength(3);
+    const cleaner = tpl.nodes.find((n) => n.type === 'duplicate_cleaner');
+    expect(cleaner?.data?.smartMode).toBe(true);
   });
 
   test('exportWorkflowJson serializes cleanly', () => {

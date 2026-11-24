@@ -1812,9 +1812,6 @@ export default function ShellLayout() {
       <StatusBar
         savePath={savePath}
         mangaTitle={manga?.title}
-        queueProcessing={queueProcessing}
-        downloadProgress={downloadProgress}
-        queueProgressSummary={queueProgressSummary}
         unreadErrorCount={unreadErrorCount}
         logFooterVisible={logFooterVisible}
         onToggleLogFooter={toggleLogFooter}

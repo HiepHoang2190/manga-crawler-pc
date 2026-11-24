@@ -26,11 +26,18 @@ function registerToolsIpc(ipc_context) {
     const recursive = payload?.recursive;
     const maxDepth = payload?.maxDepth;
     const files = payload?.files;
+    const smartMode = Boolean(payload?.smartMode);
     try {
       const onProgress = (processed, total, currentFile) => {
-        event.sender.send('duplicate:scan-progress', { processed, total, currentFile });
+        if (!event.sender.isDestroyed()) {
+          try {
+            event.sender.send('duplicate:scan-progress', { processed, total, currentFile });
+          } catch {
+            // ignore closed/destroyed window send error
+          }
+        }
       };
-      return await scanDuplicateImages(roots, { recursive, maxDepth, files }, onProgress);
+      return await scanDuplicateImages(roots, { recursive, maxDepth, files, smartMode }, onProgress);
     } catch (e) {
       return { ok: false, error: String(e?.message || e), buckets: [] };
     }

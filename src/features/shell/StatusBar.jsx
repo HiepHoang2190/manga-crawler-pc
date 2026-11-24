@@ -5,9 +5,6 @@ import ZoomControlBadge from './ZoomControlBadge.jsx';
 export default function StatusBar({
   savePath = '',
   mangaTitle = '',
-  queueProcessing = false,
-  downloadProgress = null,
-  queueProgressSummary = null,
   unreadErrorCount = 0,
   logFooterVisible = true,
   onToggleLogFooter,
@@ -18,15 +15,6 @@ export default function StatusBar({
   onResetZoom,
 }) {
   const { t } = useI18n();
-  const dp = downloadProgress;
-  let statusRight = t('statusBar.ready');
-  if (queueProcessing && dp && dp.total > 0) {
-    statusRight = t('statusBar.downloadingPage', { current: dp.current, total: dp.total });
-  } else if (queueProcessing) {
-    statusRight = t('statusBar.processingQueue');
-  }
-
-  const showQueueChapters = queueProcessing && queueProgressSummary?.totalChapters > 0;
 
   return (
     <footer className="bg-surface-container-low h-8 px-4 flex items-center justify-between z-50 font-headline text-[11px] font-medium tracking-wide uppercase border-t border-outline-variant/10 shrink-0">
@@ -84,32 +72,6 @@ export default function StatusBar({
             </span>
           </button>
         ) : null}
-
-        {showQueueChapters ? (
-          <div className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary normal-case tabular-nums shrink-0">
-            <span>
-              {t('statusBar.queueChaptersProgress', {
-                done: queueProgressSummary.doneChapters,
-                total: queueProgressSummary.totalChapters,
-              })}
-            </span>
-            <span className="w-12 h-1.5 rounded-full bg-surface-container-highest overflow-hidden">
-              <span
-                className={`block h-full rounded-full transition-all duration-200 ${
-                  queueProgressSummary.errorChapters > 0 ? 'bg-amber-400' : 'bg-primary'
-                }`}
-                style={{ width: `${Math.min(100, Math.max(4, queueProgressSummary.percent || 0))}%` }}
-              />
-            </span>
-          </div>
-        ) : null}
-
-        <span
-          className="text-on-surface-variant normal-case truncate text-right min-w-0"
-          data-tooltip={queueProcessing && dp ? `${dp.mangaTitle || ''} — ${dp.chapterTitle || ''}` : undefined}
-        >
-          {statusRight}
-        </span>
       </div>
     </footer>
   );

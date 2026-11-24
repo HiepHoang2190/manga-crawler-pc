@@ -20,6 +20,7 @@ export const DEFAULT_TEMPLATES = [
         x: 360,
         y: 260,
         data: {
+          smartMode: true,
           minDuplicateCount: 2,
           similarityThreshold: 92,
           action: 'trash',
@@ -112,6 +113,7 @@ export const DEFAULT_TEMPLATES = [
         x: 660,
         y: 100,
         data: {
+          smartMode: true,
           minDuplicateCount: 3,
           similarityThreshold: 92,
           action: 'trash',

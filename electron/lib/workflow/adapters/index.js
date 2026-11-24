@@ -695,93 +695,204 @@ function createAdapters({ connectors = null, ipc_context = null } = {}) {
       };
     },
 
-    duplicate_cleaner: async (node, inputs, onProgress = () => {}) => {
+    duplicate_cleaner: async (node, inputs, onProgress = () => {}, signal) => {
       const imagesDir = (inputs.images_dir || node.data?.folderPath || '').trim();
       if (!imagesDir || !fs.existsSync(imagesDir)) {
         throw new Error('Chưa kết nối thư mục đầu vào hoặc chưa chọn thư mục trong phần cài đặt của khối Lọc & Xoá Ảnh Trùng.');
+      }
+      if (signal?.aborted) {
+        throw new Error('Đã dừng tác vụ.');
       }
 
       const minDuplicateCount = Math.max(2, Number(node.data?.minDuplicateCount) || 3);
       const isRecursive = node.data?.recursive !== false;
       const action = node.data?.action || 'trash';
+      const smartMode = node.data?.smartMode !== false;
+      const similarityThreshold = Math.max(80, Math.min(99, Number(node.data?.similarityThreshold) || 92));
+      const maxHammingDistance = Math.max(
+        1,
+        Math.min(12, Math.round(((100 - similarityThreshold) / 100) * 64))
+      );
 
       onProgress({
-        message: `Đang quét ảnh trùng lặp trong: ${path.basename(imagesDir)} (điều kiện nhóm: ≥ ${minDuplicateCount} ảnh)...`,
+        message: `Đang quét ảnh trùng lặp${smartMode ? ' (Quét thông minh)' : ''} trong: ${path.basename(imagesDir)} (điều kiện nhóm: ≥ ${minDuplicateCount} ảnh)...`,
         step: 'cleanup',
       });
 
-      let duplicateGroups = [];
-      try {
-        const { findDuplicatesInDirectory } = require('../../export/image/duplicateImageScanner');
-        const scanRes = await findDuplicatesInDirectory(imagesDir, {
-          recursive: isRecursive,
-        }, (cur, tot) => {
-          if (tot > 0 && cur % 15 === 0) {
-            onProgress({
-              message: `Đang quét ảnh trùng: ${cur}/${tot} trang...`,
-              step: 'cleanup',
-            });
+      const filesToDeleteSet = new Set();
+      let qualifiedDupGroupCount = 0;
+      let smartTrashCount = 0;
+
+      if (smartMode) {
+        let scanRes = null;
+        try {
+          const { scanDuplicateImages } = require('../../export/image/duplicateImageScanner');
+          scanRes = await scanDuplicateImages(
+            [imagesDir],
+            { recursive: isRecursive, smartMode: true, maxHammingDistance, signal },
+            (cur, tot) => {
+              if (tot > 0 && cur % 15 === 0) {
+                onProgress({
+                  message: `Đang quét ảnh trùng thông minh: ${cur}/${tot} trang...`,
+                  step: 'cleanup',
+                });
+              }
+            }
+          );
+        } catch (err) {
+          onProgress({
+            message: `Lỗi khi quét ảnh trùng: ${err.message || String(err)}`,
+            step: 'cleanup',
+            type: 'warn',
+          });
+          return { images_dir: imagesDir, mangaTitle: inputs.mangaTitle, baseSaveDir: inputs.baseSaveDir };
+        }
+
+        if (!scanRes?.ok) {
+          onProgress({
+            message: scanRes?.error || 'Quét ảnh trùng thông minh không hoàn tất.',
+            step: 'cleanup',
+            type: 'warn',
+          });
+          return { images_dir: imagesDir, mangaTitle: inputs.mangaTitle, baseSaveDir: inputs.baseSaveDir };
+        }
+
+        const scannedImages = Array.isArray(scanRes.images) ? scanRes.images : [];
+        const dupGroupsMap = new Map();
+        for (const img of scannedImages) {
+          if (img?.isDuplicate && img.duplicateGroup != null) {
+            if (!dupGroupsMap.has(img.duplicateGroup)) dupGroupsMap.set(img.duplicateGroup, []);
+            dupGroupsMap.get(img.duplicateGroup).push(img);
+          } else if (img?.isSuggestedForTrash && !img.isDuplicate && img.fullPath) {
+            filesToDeleteSet.add(img.fullPath);
+            smartTrashCount += 1;
           }
-        });
-        duplicateGroups = scanRes?.duplicateGroups || [];
-      } catch (err) {
-        onProgress({
-          message: `Lỗi khi quét ảnh trùng: ${err.message || String(err)}`,
-          step: 'cleanup',
-          type: 'warn',
-        });
-        return { images_dir: imagesDir, mangaTitle: inputs.mangaTitle, baseSaveDir: inputs.baseSaveDir };
-      }
+        }
 
-      if (!duplicateGroups || duplicateGroups.length === 0) {
-        onProgress({
-          message: `Không phát hiện ảnh trùng lặp nào trong ${path.basename(imagesDir)}.`,
-          step: 'cleanup',
-          type: 'success',
-        });
-        return { images_dir: imagesDir, mangaTitle: inputs.mangaTitle, baseSaveDir: inputs.baseSaveDir };
-      }
+        for (const groupItems of dupGroupsMap.values()) {
+          if (groupItems.length >= minDuplicateCount) {
+            qualifiedDupGroupCount += 1;
+            for (const img of groupItems) {
+              if (!img.isOriginal && img.fullPath) {
+                filesToDeleteSet.add(img.fullPath);
+              }
+            }
+          }
+        }
 
-      // Filter groups that satisfy the minDuplicateCount threshold
-      const qualifiedGroups = duplicateGroups.filter(
-        (g) => Array.isArray(g.files) && g.files.length >= minDuplicateCount
-      );
+        if (filesToDeleteSet.size === 0) {
+          const hasUnqualifiedDups = dupGroupsMap.size > 0;
+          onProgress({
+            message: hasUnqualifiedDups
+              ? `Tìm thấy ${dupGroupsMap.size} nhóm ảnh tương đồng nhưng chưa đạt điều kiện ≥ ${minDuplicateCount} ảnh và không có ảnh rác. Toàn bộ ảnh được giữ nguyên an toàn.`
+              : `Không phát hiện ảnh trùng lặp hay ảnh rác nào trong ${path.basename(imagesDir)}.`,
+            step: 'cleanup',
+            type: hasUnqualifiedDups ? 'info' : 'success',
+          });
+          return { images_dir: imagesDir, mangaTitle: inputs.mangaTitle, baseSaveDir: inputs.baseSaveDir };
+        }
+      } else {
+        let duplicateGroups = [];
+        try {
+          const { findDuplicatesInDirectory } = require('../../export/image/duplicateImageScanner');
+          const scanRes = await findDuplicatesInDirectory(imagesDir, {
+            recursive: isRecursive,
+            isCancelled: () => Boolean(signal?.aborted),
+          }, (cur, tot) => {
+            if (tot > 0 && cur % 15 === 0) {
+              onProgress({
+                message: `Đang quét ảnh trùng: ${cur}/${tot} trang...`,
+                step: 'cleanup',
+              });
+            }
+          });
+          if (scanRes?.isCancelled) {
+            onProgress({
+              message: 'Đã dừng quét ảnh trùng lặp.',
+              step: 'cleanup',
+              type: 'warn',
+            });
+            return { images_dir: imagesDir, mangaTitle: inputs.mangaTitle, baseSaveDir: inputs.baseSaveDir };
+          }
+          duplicateGroups = scanRes?.duplicateGroups || [];
+        } catch (err) {
+          onProgress({
+            message: `Lỗi khi quét ảnh trùng: ${err.message || String(err)}`,
+            step: 'cleanup',
+            type: 'warn',
+          });
+          return { images_dir: imagesDir, mangaTitle: inputs.mangaTitle, baseSaveDir: inputs.baseSaveDir };
+        }
 
-      if (qualifiedGroups.length === 0) {
-        onProgress({
-          message: `Tìm thấy ${duplicateGroups.length} nhóm ảnh tương đồng nhưng không nhóm nào đạt điều kiện ≥ ${minDuplicateCount} ảnh. Toàn bộ ảnh được giữ nguyên an toàn.`,
-          step: 'cleanup',
-          type: 'info',
-        });
-        return { images_dir: imagesDir, mangaTitle: inputs.mangaTitle, baseSaveDir: inputs.baseSaveDir };
-      }
+        if (!duplicateGroups || duplicateGroups.length === 0) {
+          onProgress({
+            message: `Không phát hiện ảnh trùng lặp nào trong ${path.basename(imagesDir)}.`,
+            step: 'cleanup',
+            type: 'success',
+          });
+          return { images_dir: imagesDir, mangaTitle: inputs.mangaTitle, baseSaveDir: inputs.baseSaveDir };
+        }
 
-      // Collect duplicate files to remove (keep the first original file in each group)
-      const filesToDelete = [];
-      for (const group of qualifiedGroups) {
-        const sorted = [...group.files].sort((a, b) =>
-          a.fullPath.localeCompare(b.fullPath, undefined, { numeric: true })
+        const qualifiedGroups = duplicateGroups.filter(
+          (g) => Array.isArray(g.files) && g.files.length >= minDuplicateCount
         );
-        for (let idx = 1; idx < sorted.length; idx++) {
-          filesToDelete.push(sorted[idx].fullPath);
+        qualifiedDupGroupCount = qualifiedGroups.length;
+
+        if (qualifiedGroups.length === 0) {
+          onProgress({
+            message: `Tìm thấy ${duplicateGroups.length} nhóm ảnh tương đồng nhưng không nhóm nào đạt điều kiện ≥ ${minDuplicateCount} ảnh. Toàn bộ ảnh được giữ nguyên an toàn.`,
+            step: 'cleanup',
+            type: 'info',
+          });
+          return { images_dir: imagesDir, mangaTitle: inputs.mangaTitle, baseSaveDir: inputs.baseSaveDir };
+        }
+
+        for (const group of qualifiedGroups) {
+          const sorted = [...group.files].sort((a, b) =>
+            a.fullPath.localeCompare(b.fullPath, undefined, { numeric: true })
+          );
+          for (let idx = 1; idx < sorted.length; idx++) {
+            filesToDeleteSet.add(sorted[idx].fullPath);
+          }
         }
       }
 
+      const filesToDelete = [...filesToDeleteSet];
+      const detectedParts = [];
+      if (qualifiedDupGroupCount > 0) detectedParts.push(`${qualifiedDupGroupCount} nhóm trùng đạt chuẩn`);
+      if (smartTrashCount > 0) detectedParts.push(`${smartTrashCount} ảnh rác/QC`);
+
       onProgress({
-        message: `Phát hiện ${qualifiedGroups.length} nhóm trùng đạt chuẩn. Đang đưa ${filesToDelete.length} ảnh dư thừa vào ${action === 'trash' ? 'Thùng rác' : 'mục xóa'}...`,
+        message: `Phát hiện ${detectedParts.join(' và ')}. Đang đưa ${filesToDelete.length} ảnh dư thừa vào ${action === 'trash' ? 'Thùng rác' : 'mục xóa'}...`,
         step: 'cleanup',
       });
 
       if (action === 'trash') {
         try {
           if (ipc_context?.trashItem) {
+            let trashedCount = 0;
+            let errorCount = 0;
             for (const f of filesToDelete) {
-              await ipc_context.trashItem(f);
+              try {
+                await ipc_context.trashItem(f);
+                trashedCount += 1;
+              } catch {
+                try {
+                  if (fs.existsSync(f)) {
+                    await fs.promises.unlink(f);
+                    trashedCount += 1;
+                  } else {
+                    errorCount += 1;
+                  }
+                } catch {
+                  errorCount += 1;
+                }
+              }
             }
             onProgress({
-              message: `Đã chuyển thành công ${filesToDelete.length} ảnh trùng lặp vào Thùng rác an toàn.`,
+              message: `Đã chuyển thành công ${trashedCount} ảnh trùng lặp vào Thùng rác an toàn.${errorCount > 0 ? ` (${errorCount} lỗi)` : ''}`,
               step: 'cleanup',
-              type: 'success',
+              type: errorCount > 0 && trashedCount === 0 ? 'warn' : 'success',
             });
           } else {
             const { deleteFilesUnderRoots } = require('../../export/image/duplicateImageScanner');

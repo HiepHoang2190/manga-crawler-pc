@@ -122,6 +122,7 @@ export const BACKUP_SECTIONS = {
       'mangadex_volume_folder_grouping_v1',
       'duplicateScanRecursive',
       'duplicateScanRecursive_v2',
+      'duplicate_smart_scan_v1',
       'mangaMangadexLanguage',
       'mangaComickLanguage',
       'mangaMangaballLanguage',

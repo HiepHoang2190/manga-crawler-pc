@@ -58,15 +58,147 @@ export function toggleGroupCollapseInSet(prevSet, groupId) {
   return next;
 }
 
+const SMART_GROUP_CATEGORIES = new Set([
+  'QR_CODE',
+  'CREDIT_PAGE',
+  'AD_BANNER',
+  'BLANK_PAGE',
+]);
+const SMART_CATEGORY_SORT_ORDER = {
+  QR_CODE: 0,
+  CREDIT_PAGE: 1,
+  AD_BANNER: 2,
+  BLANK_PAGE: 3,
+};
+
+function getSortBucketRank(item) {
+  if (item?.duplicateGroup == null && item?.category && SMART_GROUP_CATEGORIES.has(item.category)) {
+    return 0;
+  }
+  if (item?.duplicateGroup != null) return 1;
+  return 2;
+}
+
 /**
- * Collects all unique group IDs from duplicate images into a Set for default collapse.
+ * Strictly transitive comparator placing smart trash groups first, then numbered duplicate groups cleanly.
+ */
+export function compareDuplicatesFirst(a, b) {
+  const rankA = getSortBucketRank(a);
+  const rankB = getSortBucketRank(b);
+  if (rankA !== rankB) return rankA - rankB;
+
+  if (rankA === 0) {
+    const orderA = SMART_CATEGORY_SORT_ORDER[a.category] ?? 99;
+    const orderB = SMART_CATEGORY_SORT_ORDER[b.category] ?? 99;
+    if (orderA !== orderB) return orderA - orderB;
+  } else if (rankA === 1) {
+    if (a.duplicateGroup !== b.duplicateGroup) {
+      return Number(a.duplicateGroup) - Number(b.duplicateGroup);
+    }
+    if (Boolean(a.isOriginal) !== Boolean(b.isOriginal)) {
+      return a.isOriginal ? -1 : 1;
+    }
+  }
+  return (a.name || '').localeCompare(b.name || '', undefined, { numeric: true });
+}
+
+/**
+ * Removes deleted/dismissed file paths (cross-platform normalized) and dissolves 1-item duplicate groups
+ * while keeping standalone smart-detected items intact.
+ */
+export function removePathsAndDissolveGroups(prevItems, pathsToRemove) {
+  if (!Array.isArray(prevItems) || prevItems.length === 0) return [];
+  const removeList = Array.isArray(pathsToRemove) ? pathsToRemove : [pathsToRemove];
+  const removeSet = new Set(removeList.map(normalizePathForCompare).filter(Boolean));
+  if (removeSet.size === 0) return prevItems;
+
+  const remaining = prevItems.filter(
+    (item) => item?.fullPath && !removeSet.has(normalizePathForCompare(item.fullPath))
+  );
+  const groupCounts = new Map();
+  for (const item of remaining) {
+    if (item.duplicateGroup != null) {
+      groupCounts.set(item.duplicateGroup, (groupCounts.get(item.duplicateGroup) || 0) + 1);
+    }
+  }
+  return remaining.filter(
+    (item) => item.duplicateGroup == null || (groupCounts.get(item.duplicateGroup) || 0) > 1
+  );
+}
+
+/**
+ * Maps a scanned smart-mode category item to its localized badge, group label, icon, and tooltip metadata.
+ */
+export function resolveSmartCategoryBadgeMeta(item, t) {
+  if (!item?.category || !SMART_GROUP_CATEGORIES.has(item.category)) return null;
+  if (item.category === 'QR_CODE') {
+    return {
+      label: t('duplicateTab.badgeQr'),
+      groupLabel: t('duplicateTab.smartGroupQr'),
+      icon: 'qr_code',
+      tooltip: item.details?.qrText || t('duplicateTab.badgeQr'),
+      badgeClass: 'border-purple-500/35 bg-purple-500/12 text-purple-600 dark:text-purple-400',
+      iconClass: 'text-purple-500 dark:text-purple-400',
+    };
+  }
+  if (item.category === 'CREDIT_PAGE') {
+    return {
+      label: t('duplicateTab.badgeCredit'),
+      groupLabel: t('duplicateTab.smartGroupCredit'),
+      icon: 'badge',
+      tooltip: t('duplicateTab.badgeCredit'),
+      badgeClass: 'border-amber-500/35 bg-amber-500/12 text-amber-700 dark:text-amber-300',
+      iconClass: 'text-amber-500 dark:text-amber-400',
+    };
+  }
+  if (item.category === 'AD_BANNER') {
+    const reasonCode = item.details?.bannerReasonCode;
+    const ratio = item.details?.aspectRatio;
+    const bannerTooltip =
+      reasonCode === 'aspect_ratio' && ratio
+        ? t('duplicateTab.bannerReasonAspect', { ratio })
+        : reasonCode === 'short_height' && item.height
+          ? t('duplicateTab.bannerReasonHeight', { height: item.height })
+          : t('duplicateTab.badgeBanner');
+    return {
+      label: t('duplicateTab.badgeBanner'),
+      groupLabel: t('duplicateTab.smartGroupBanner'),
+      icon: 'ad_units',
+      tooltip: bannerTooltip,
+      badgeClass: 'border-rose-500/35 bg-rose-500/12 text-rose-600 dark:text-rose-400',
+      iconClass: 'text-rose-500 dark:text-rose-400',
+    };
+  }
+  return {
+    label: t('duplicateTab.badgeBlank'),
+    groupLabel: t('duplicateTab.smartGroupBlank'),
+    icon: 'crop_square',
+    tooltip: t('duplicateTab.badgeBlank'),
+    badgeClass: 'border-outline-variant/40 bg-surface-container-highest text-on-surface-variant',
+    iconClass: 'text-on-surface-variant',
+  };
+}
+
+/**
+ * Resolves the UI group key for a scanned duplicate or smart-detected item.
+ */
+export function getDuplicateGroupKey(item) {
+  if (item?.duplicateGroup != null) return item.duplicateGroup;
+  if (item?.category && SMART_GROUP_CATEGORIES.has(item.category)) {
+    return `smart:${item.category}`;
+  }
+  return 'ungrouped';
+}
+
+/**
+ * Collects all unique group IDs from duplicate/smart images into a Set for default collapse.
  */
 export function collectAllGroupIds(items) {
   const ids = new Set();
   if (!Array.isArray(items)) return ids;
   for (const item of items) {
     if (item) {
-      ids.add(item.duplicateGroup ?? 'ungrouped');
+      ids.add(getDuplicateGroupKey(item));
     }
   }
   return ids;
@@ -189,26 +321,27 @@ export function resolveDuplicateSelectionPreset(displayedItems, selectedPaths) {
 
   let validCount = 0;
   let selectedCount = 0;
-  let copyCount = 0;
-  let selectedCopyCount = 0;
-  let selectedOriginalCount = 0;
+  let suggestedCount = 0;
+  let selectedSuggestedCount = 0;
+  let selectedKeepCount = 0;
 
   for (const item of items) {
     if (!item?.fullPath) continue;
     validCount += 1;
     const isSel = selectedSet.has(item.fullPath);
     if (isSel) selectedCount += 1;
-    if (item.isOriginal) {
-      if (isSel) selectedOriginalCount += 1;
-    } else {
-      copyCount += 1;
-      if (isSel) selectedCopyCount += 1;
+    const isSuggested = Boolean(item.isSuggestedForTrash) || !item.isOriginal;
+    if (isSuggested) {
+      suggestedCount += 1;
+      if (isSel) selectedSuggestedCount += 1;
+    } else if (isSel) {
+      selectedKeepCount += 1;
     }
   }
 
   if (validCount === 0 || selectedCount === 0) return 'none';
   if (selectedCount === validCount) return 'all';
-  if (copyCount > 0 && selectedCopyCount === copyCount && selectedOriginalCount === 0) {
+  if (suggestedCount > 0 && selectedSuggestedCount === suggestedCount && selectedKeepCount === 0) {
     return 'copies';
   }
   return 'custom';

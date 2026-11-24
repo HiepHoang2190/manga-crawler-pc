@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { formatBytes } from './duplicateUtils';
+import { formatBytes, resolveSmartCategoryBadgeMeta } from './duplicateUtils';
 
 /**
  * Theme-aware studio preview modal matching PipelinePreviewModal & desktop theme tokens.
@@ -89,17 +89,40 @@ export default function DuplicatePreviewModal({
               </div>
             )}
 
-            {hasScanned && item.isDuplicate && (
-              <span
-                className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-bold border ${
-                  item.isOriginal
-                    ? 'border-cyan-500/35 bg-cyan-500/12 text-cyan-600 dark:text-cyan-400'
-                    : 'border-rose-500/35 bg-rose-500/12 text-rose-600 dark:text-rose-400'
-                }`}
-              >
-                {item.isOriginal ? t('duplicateTab.originalBadge') : t('duplicateTab.duplicateBadge')}
-              </span>
-            )}
+            {(() => {
+              const smartMeta = hasScanned ? resolveSmartCategoryBadgeMeta(item, t) : null;
+              if (smartMeta) {
+                return (
+                  <span
+                    data-tooltip={smartMeta.tooltip}
+                    className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-bold border ${smartMeta.badgeClass}`}
+                  >
+                    {smartMeta.label}
+                  </span>
+                );
+              }
+              if (hasScanned && item.isDuplicate) {
+                return (
+                  <>
+                    {item.matchType === 'fuzzy' && (
+                      <span className="shrink-0 rounded-md px-2 py-0.5 text-[11px] font-semibold border border-primary/30 bg-primary/10 text-primary">
+                        {t('duplicateTab.badgeFuzzy')}
+                      </span>
+                    )}
+                    <span
+                      className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-bold border ${
+                        item.isOriginal
+                          ? 'border-cyan-500/35 bg-cyan-500/12 text-cyan-600 dark:text-cyan-400'
+                          : 'border-rose-500/35 bg-rose-500/12 text-rose-600 dark:text-rose-400'
+                      }`}
+                    >
+                      {item.isOriginal ? t('duplicateTab.originalBadge') : t('duplicateTab.duplicateBadge')}
+                    </span>
+                  </>
+                );
+              }
+              return null;
+            })()}
 
             {hasScanned && item.duplicateGroup != null && (
               <span className="hidden sm:inline-flex shrink-0 rounded-md border border-primary/25 bg-primary/10 px-2 py-0.5 text-[11px] font-bold text-primary">
