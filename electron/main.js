@@ -57,6 +57,7 @@ const {
   normalizeChapterFolderFormat,
 } = require('./lib/shared/mangaUtils');
 const { resolveMangaDir } = require('./lib/download/connector/connectorPathUtils');
+const { clampZoomFactor, stepZoomFactor } = require('./lib/windowZoomUtils');
 const { registerAllIpc } = require('./ipc');
 
 /**
@@ -402,8 +403,37 @@ function createWindow() {
     }, 1500);
   });
 
+  const savedZoom = clampZoomFactor(readSettings()?.zoomFactor);
+
+  mainWindow.webContents.once('dom-ready', () => {
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+      mainWindow.webContents.setZoomFactor(savedZoom);
+    }
+  });
+
   mainWindow.webContents.once('did-finish-load', () => {
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+      mainWindow.webContents.setZoomFactor(savedZoom);
+      mainWindow.webContents.send('window:zoomChanged', { zoomFactor: savedZoom, source: 'init' });
+    }
     setTimeout(() => runMembershipValidationAndNotify(), 4000);
+  });
+
+  mainWindow.webContents.on('zoom-changed', (_event, zoomDirection) => {
+    if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.webContents || mainWindow.webContents.isDestroyed()) {
+      return;
+    }
+    const next = stepZoomFactor(
+      mainWindow.webContents.getZoomFactor(),
+      zoomDirection === 'in' ? 'in' : 'out'
+    );
+    mainWindow.webContents.setZoomFactor(next);
+    try {
+      writeSettings({ zoomFactor: next });
+    } catch {
+      /* ignore */
+    }
+    mainWindow.webContents.send('window:zoomChanged', { zoomFactor: next, source: 'wheel' });
   });
 
   if (isDev) {

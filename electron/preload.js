@@ -1,9 +1,28 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webFrame } = require('electron');
 
 const api = {
   minimize: () => ipcRenderer.send('window:minimize'),
   maximize: () => ipcRenderer.send('window:maximize'),
   close: () => ipcRenderer.send('window:close'),
+  getZoomFactorSync: () => {
+    try {
+      return webFrame.getZoomFactor();
+    } catch {
+      return 1.0;
+    }
+  },
+  getZoomFactor: () => ipcRenderer.invoke('window:getZoomFactor'),
+  setZoomFactor: (zoomFactor, source = 'ui') =>
+    ipcRenderer.invoke('window:setZoomFactor', { zoomFactor, source }),
+  stepZoom: (direction, source = 'ui') =>
+    ipcRenderer.invoke('window:stepZoom', { direction, source }),
+  resetZoom: (source = 'ui') => ipcRenderer.invoke('window:resetZoom', { source }),
+  onZoomChanged: (callback) => {
+    if (typeof callback !== 'function') return () => {};
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('window:zoomChanged', listener);
+    return () => ipcRenderer.removeListener('window:zoomChanged', listener);
+  },
   setTaskbarProgress: (progress, mode) => ipcRenderer.send('window:setProgressBar', { progress, mode }),
   showDesktopNotification: (payload) => ipcRenderer.invoke('app:notify', payload),
   readClipboardText: () => ipcRenderer.invoke('clipboard:readText'),

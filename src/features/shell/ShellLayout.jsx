@@ -4,9 +4,16 @@ import TitleBar from './TitleBar.jsx';
 import MenuBar, { VIEWS } from './MenuBar.jsx';
 import ConsolePanel from './ConsolePanel.jsx';
 import StatusBar from './StatusBar.jsx';
+import ZoomHudToast from './ZoomHudToast.jsx';
 import CommandPaletteModal from './CommandPaletteModal.jsx';
 import ClipboardUrlBanner from './ClipboardUrlBanner.jsx';
 import { formatShortcutHint, getVisibleOrderedViews, isEditableEventTarget } from './commandPaletteUtils.mjs';
+import {
+  DEFAULT_ZOOM_FACTOR,
+  clampZoomFactor,
+  stepZoomFactor,
+  detectAppZoomShortcut,
+} from './zoomUtils.mjs';
 import {
   computeQueueTaskbarProgress,
   summarizeQueueCompletion,
@@ -302,6 +309,21 @@ export default function ShellLayout() {
   const [menuHelpTabId, setMenuHelpTabId] = useState(null);
   /** Global Command Palette (⌘K / Ctrl+K) */
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  /** App Zoom level indicator & transient HUD */
+  const [zoomFactor, setZoomFactorState] = useState(() => {
+    try {
+      return clampZoomFactor(window.electronAPI?.getZoomFactorSync?.());
+    } catch {
+      return DEFAULT_ZOOM_FACTOR;
+    }
+  });
+  const zoomFactorRef = useRef(zoomFactor);
+  zoomFactorRef.current = zoomFactor;
+  const zoomSeqRef = useRef(0);
+  const zoomHydratedRef = useRef(false);
+  const [zoomHudVisible, setZoomHudVisible] = useState(false);
+  const zoomHudTimerRef = useRef(null);
+  const zoomHudHoveredRef = useRef(false);
   /** Smart Clipboard URL Banner */
   const [clipboardCandidate, setClipboardCandidate] = useState(null);
   const dismissedClipboardUrlsRef = useRef(new Set());
@@ -363,9 +385,163 @@ export default function ShellLayout() {
     [hiddenMenuIds, menuOrder]
   );
 
+  const scheduleZoomHudHide = useCallback(() => {
+    if (zoomHudTimerRef.current) clearTimeout(zoomHudTimerRef.current);
+    zoomHudTimerRef.current = setTimeout(() => {
+      zoomHudTimerRef.current = null;
+      if (!zoomHudHoveredRef.current) {
+        setZoomHudVisible(false);
+      }
+    }, 1800);
+  }, []);
+
+  const showZoomHud = useCallback(() => {
+    setZoomHudVisible(true);
+    scheduleZoomHudHide();
+  }, [scheduleZoomHudHide]);
+
+  useEffect(
+    () => () => {
+      if (zoomHudTimerRef.current) clearTimeout(zoomHudTimerRef.current);
+    },
+    []
+  );
+
+  const commitLocalZoom = useCallback(
+    (nextFactor, showHud = true) => {
+      const next = clampZoomFactor(nextFactor);
+      zoomFactorRef.current = next;
+      setZoomFactorState(next);
+      if (showHud) showZoomHud();
+      return next;
+    },
+    [showZoomHud]
+  );
+
+  const handleSetZoomFactor = useCallback(
+    async (nextFactor, showHud = true) => {
+      zoomHydratedRef.current = true;
+      const seq = ++zoomSeqRef.current;
+      const clamped = clampZoomFactor(nextFactor);
+      commitLocalZoom(clamped, showHud);
+      try {
+        const res = await window.electronAPI?.setZoomFactor?.(clamped, 'ui');
+        if (seq === zoomSeqRef.current && res?.ok && Number.isFinite(res.zoomFactor)) {
+          commitLocalZoom(res.zoomFactor, showHud);
+        }
+      } catch {
+        /* non-Electron fallback keeps local state */
+      }
+    },
+    [commitLocalZoom]
+  );
+
+  const handleStepZoom = useCallback(
+    async (direction, source = 'ui') => {
+      zoomHydratedRef.current = true;
+      const seq = ++zoomSeqRef.current;
+      const optimistic = stepZoomFactor(zoomFactorRef.current, direction);
+      commitLocalZoom(optimistic, true);
+      try {
+        const res = await window.electronAPI?.stepZoom?.(direction, source);
+        if (seq === zoomSeqRef.current && res?.ok && Number.isFinite(res.zoomFactor)) {
+          commitLocalZoom(res.zoomFactor, true);
+        }
+      } catch {
+        /* non-Electron fallback keeps local state */
+      }
+    },
+    [commitLocalZoom]
+  );
+
+  const handleZoomIn = useCallback(() => void handleStepZoom('in', 'ui'), [handleStepZoom]);
+  const handleZoomOut = useCallback(() => void handleStepZoom('out', 'ui'), [handleStepZoom]);
+  const handleResetZoom = useCallback(
+    async (source = 'ui') => {
+      zoomHydratedRef.current = true;
+      zoomHudHoveredRef.current = false;
+      const seq = ++zoomSeqRef.current;
+      commitLocalZoom(DEFAULT_ZOOM_FACTOR, true);
+      try {
+        const res = await window.electronAPI?.resetZoom?.(source);
+        if (seq === zoomSeqRef.current && res?.ok && Number.isFinite(res.zoomFactor)) {
+          commitLocalZoom(res.zoomFactor, true);
+        }
+      } catch {
+        /* non-Electron fallback keeps local state */
+      }
+    },
+    [commitLocalZoom]
+  );
+
+  useEffect(() => {
+    const api = typeof window !== 'undefined' ? window.electronAPI : null;
+    let mounted = true;
+    const hydrateTimer = setTimeout(() => {
+      zoomHydratedRef.current = true;
+    }, 1500);
+    if (api?.getZoomFactor) {
+      api
+        .getZoomFactor()
+        .then((res) => {
+          if (mounted && res?.ok && Number.isFinite(res.zoomFactor)) {
+            zoomHydratedRef.current = true;
+            commitLocalZoom(res.zoomFactor, false);
+          }
+        })
+        .catch(() => {
+          zoomHydratedRef.current = true;
+        });
+    } else {
+      zoomHydratedRef.current = true;
+    }
+    const unsubscribe = api?.onZoomChanged?.((payload) => {
+      if (!mounted || !Number.isFinite(payload?.zoomFactor)) return;
+      zoomHydratedRef.current = true;
+      zoomSeqRef.current += 1;
+      const isInit = payload?.source === 'init';
+      commitLocalZoom(payload.zoomFactor, !isInit);
+    });
+    const handleResizeForNativeZoom = () => {
+      if (!zoomHydratedRef.current) return;
+      const raw = api?.getZoomFactorSync?.();
+      if (!Number.isFinite(raw)) return;
+      const next = clampZoomFactor(raw);
+      if (Math.abs(next - zoomFactorRef.current) >= 0.005) {
+        zoomSeqRef.current += 1;
+        commitLocalZoom(next, true);
+        void api?.setZoomFactor?.(next, 'native');
+      }
+    };
+    window.addEventListener('resize', handleResizeForNativeZoom);
+    return () => {
+      mounted = false;
+      clearTimeout(hydrateTimer);
+      unsubscribe?.();
+      window.removeEventListener('resize', handleResizeForNativeZoom);
+    };
+  }, [commitLocalZoom]);
+
+  useEffect(() => {
+    const handleZoomKeyDown = (e) => {
+      if (e.defaultPrevented) return;
+      if (readerOpen) return;
+      const action = detectAppZoomShortcut(e);
+      if (!action) return;
+      if (action === 'reset' && menuView === 'translate') return;
+      e.preventDefault();
+      if (action === 'in') void handleStepZoom('in', 'shortcut');
+      else if (action === 'out') void handleStepZoom('out', 'shortcut');
+      else if (action === 'reset') void handleResetZoom('shortcut');
+    };
+    window.addEventListener('keydown', handleZoomKeyDown);
+    return () => window.removeEventListener('keydown', handleZoomKeyDown);
+  }, [readerOpen, menuView, handleStepZoom, handleResetZoom]);
+
   useEffect(() => {
     if (!authBootstrapped || !isSignedIn) return undefined;
     const handleGlobalKeyDown = (e) => {
+      if (e.defaultPrevented || readerOpen) return;
       if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
       const key = String(e.key || '').toLowerCase();
       if (key === 'k') {
@@ -379,6 +555,7 @@ export default function ShellLayout() {
         return;
       }
       if (/^[1-9]$/.test(key) && !isEditableEventTarget(e.target)) {
+        if (menuView === 'translate' && key === '1') return;
         const idx = Number(key) - 1;
         const targetTab = visibleOrderedViews[idx];
         if (targetTab) {
@@ -389,7 +566,7 @@ export default function ShellLayout() {
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [authBootstrapped, isSignedIn, toggleLogFooter, visibleOrderedViews, setMenuView]);
+  }, [authBootstrapped, isSignedIn, readerOpen, menuView, toggleLogFooter, visibleOrderedViews, setMenuView]);
 
   const commandPaletteItems = useMemo(() => {
     const tabGroupLabel = t('commandPalette.group.tabs');
@@ -430,6 +607,33 @@ export default function ShellLayout() {
         keywords: 'help guide huong dan tro giup',
         icon: 'help',
         onSelect: () => setMenuHelpTabId(normalizedTabKey),
+      },
+      {
+        id: 'action:zoom-in',
+        group: actionGroupLabel,
+        label: t('commandPalette.action.zoomIn'),
+        keywords: 'zoom in phong to scale ui',
+        icon: 'zoom_in',
+        shortcut: formatShortcutHint('+'),
+        onSelect: handleZoomIn,
+      },
+      {
+        id: 'action:zoom-out',
+        group: actionGroupLabel,
+        label: t('commandPalette.action.zoomOut'),
+        keywords: 'zoom out thu nho scale ui',
+        icon: 'zoom_out',
+        shortcut: formatShortcutHint('-'),
+        onSelect: handleZoomOut,
+      },
+      {
+        id: 'action:zoom-reset',
+        group: actionGroupLabel,
+        label: t('commandPalette.action.zoomReset'),
+        keywords: 'zoom reset 100% mac dinh binh thuong',
+        icon: 'restart_alt',
+        shortcut: formatShortcutHint('0'),
+        onSelect: () => void handleResetZoom('palette'),
       },
     );
 
@@ -490,6 +694,9 @@ export default function ShellLayout() {
     favorites,
     favoriteSyncById,
     fetchMangaFromFavorite,
+    handleZoomIn,
+    handleZoomOut,
+    handleResetZoom,
   ]);
 
   const queueProgressSummary = useMemo(
@@ -1600,6 +1807,11 @@ export default function ShellLayout() {
         unreadErrorCount={unreadErrorCount}
         logFooterVisible={logFooterVisible}
         onToggleLogFooter={toggleLogFooter}
+        zoomFactor={zoomFactor}
+        onZoomIn={handleZoomIn}
+        onZoomOut={handleZoomOut}
+        onSetZoomFactor={(next) => void handleSetZoomFactor(next)}
+        onResetZoom={() => void handleResetZoom('ui')}
       />
 
         </div>
@@ -1640,6 +1852,23 @@ export default function ShellLayout() {
       <ExtrasInstallModal
         isOpen={showStartupExtrasModal}
         onClose={() => setShowStartupExtrasModal(false)}
+      />
+
+      <ZoomHudToast
+        visible={zoomHudVisible}
+        zoomFactor={zoomFactor}
+        onResetZoom={() => void handleResetZoom('hud')}
+        onMouseEnter={() => {
+          zoomHudHoveredRef.current = true;
+          if (zoomHudTimerRef.current) {
+            clearTimeout(zoomHudTimerRef.current);
+            zoomHudTimerRef.current = null;
+          }
+        }}
+        onMouseLeave={() => {
+          zoomHudHoveredRef.current = false;
+          scheduleZoomHudHide();
+        }}
       />
 
       <GlobalTooltip />

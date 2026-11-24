@@ -136,22 +136,6 @@ export default function ExplorePanel({
       <button
         type="button"
         role="tab"
-        data-testid="subtab-followed"
-        aria-selected={activeSubtab === 'followed'}
-        onClick={() => handleSelectSubtab('followed')}
-        data-tooltip={t('explore.subtab.followedTooltip')}
-        className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium transition-all cursor-pointer select-none whitespace-nowrap shrink-0 ${
-          activeSubtab === 'followed'
-            ? 'bg-primary text-on-primary font-semibold shadow-xs'
-            : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/60'
-        }`}
-      >
-        <span className="material-symbols-outlined text-[16px] leading-none">bookmarks</span>
-        <span>{t('explore.subtab.followed')}</span>
-      </button>
-      <button
-        type="button"
-        role="tab"
         data-testid="subtab-bulk"
         aria-selected={activeSubtab === 'bulk'}
         onClick={() => handleSelectSubtab('bulk')}
@@ -164,6 +148,22 @@ export default function ExplorePanel({
       >
         <span className="material-symbols-outlined text-[16px] leading-none">document_scanner</span>
         <span>{t('explore.subtab.bulk')}</span>
+      </button>
+      <button
+        type="button"
+        role="tab"
+        data-testid="subtab-followed"
+        aria-selected={activeSubtab === 'followed'}
+        onClick={() => handleSelectSubtab('followed')}
+        data-tooltip={t('explore.subtab.followedTooltip')}
+        className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium transition-all cursor-pointer select-none whitespace-nowrap shrink-0 ${
+          activeSubtab === 'followed'
+            ? 'bg-primary text-on-primary font-semibold shadow-xs'
+            : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/60'
+        }`}
+      >
+        <span className="material-symbols-outlined text-[16px] leading-none">bookmarks</span>
+        <span>{t('explore.subtab.followed')}</span>
       </button>
     </div>
   );
@@ -192,6 +192,27 @@ export default function ExplorePanel({
           />
         </KeepAliveSubtab>
       ) : null}
+      {visitedSubtabs.has('bulk') ? (
+        <KeepAliveSubtab active={activeSubtab === 'bulk'}>
+          <BulkScanPanel
+            connectors={connectors}
+            onEnqueueLoadedManga={onEnqueueLoadedManga}
+            savePath={savePath}
+            mangaLoadOpts={mangaLoadOpts}
+            subtabsSlot={subtabsSlot}
+            queue={queue}
+            favorites={favorites}
+            onToggleFavorite={onToggleFavorite}
+            prepareDrawerMangaForRead={prepareDrawerMangaForRead}
+            onOpenReaderForDrawerChapter={onOpenReaderForDrawerChapter}
+            onReadChapterOnlineForDrawerChapter={onReadChapterOnlineForDrawerChapter}
+            onAddQueuedFromLatest={onAddQueuedFromLatest}
+            onDownloadMangadexCovers={onDownloadMangadexCovers}
+            viewMode={viewMode}
+            onViewModeChange={handleViewModeChange}
+          />
+        </KeepAliveSubtab>
+      ) : null}
       {visitedSubtabs.has('followed') ? (
         <KeepAliveSubtab active={activeSubtab === 'followed'}>
           <FollowedMangaPanel
@@ -211,27 +232,6 @@ export default function ExplorePanel({
             downloadProgress={downloadProgress}
             onStartQueue={onStartQueue}
             onStopQueue={onStopQueue}
-            onAddQueuedFromLatest={onAddQueuedFromLatest}
-            onDownloadMangadexCovers={onDownloadMangadexCovers}
-            viewMode={viewMode}
-            onViewModeChange={handleViewModeChange}
-          />
-        </KeepAliveSubtab>
-      ) : null}
-      {visitedSubtabs.has('bulk') ? (
-        <KeepAliveSubtab active={activeSubtab === 'bulk'}>
-          <BulkScanPanel
-            connectors={connectors}
-            onEnqueueLoadedManga={onEnqueueLoadedManga}
-            savePath={savePath}
-            mangaLoadOpts={mangaLoadOpts}
-            subtabsSlot={subtabsSlot}
-            queue={queue}
-            favorites={favorites}
-            onToggleFavorite={onToggleFavorite}
-            prepareDrawerMangaForRead={prepareDrawerMangaForRead}
-            onOpenReaderForDrawerChapter={onOpenReaderForDrawerChapter}
-            onReadChapterOnlineForDrawerChapter={onReadChapterOnlineForDrawerChapter}
             onAddQueuedFromLatest={onAddQueuedFromLatest}
             onDownloadMangadexCovers={onDownloadMangadexCovers}
             viewMode={viewMode}

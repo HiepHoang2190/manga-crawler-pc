@@ -1,5 +1,6 @@
 import { useI18n } from '../../context/I18nContext';
 import SystemResourceBadge from './SystemResourceBadge.jsx';
+import ZoomControlBadge from './ZoomControlBadge.jsx';
 
 export default function StatusBar({
   savePath = '',
@@ -10,6 +11,11 @@ export default function StatusBar({
   unreadErrorCount = 0,
   logFooterVisible = true,
   onToggleLogFooter,
+  zoomFactor = 1.0,
+  onZoomIn,
+  onZoomOut,
+  onSetZoomFactor,
+  onResetZoom,
 }) {
   const { t } = useI18n();
   const dp = downloadProgress;
@@ -39,6 +45,16 @@ export default function StatusBar({
       <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 max-w-[65%] justify-end min-w-0">
         {/* CPU & RAM metrics badge kiểu Koharu */}
         <SystemResourceBadge className="mr-0.5" />
+
+        {typeof onSetZoomFactor === 'function' || typeof onResetZoom === 'function' ? (
+          <ZoomControlBadge
+            zoomFactor={zoomFactor}
+            onZoomIn={onZoomIn}
+            onZoomOut={onZoomOut}
+            onSetZoomFactor={onSetZoomFactor}
+            onResetZoom={onResetZoom}
+          />
+        ) : null}
 
         {!logFooterVisible && unreadErrorCount > 0 && typeof onToggleLogFooter === 'function' ? (
           <button

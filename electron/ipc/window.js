@@ -1,8 +1,33 @@
 const fs = require('fs');
 const { ipcMain, shell, clipboard, Notification } = require('electron');
 const { resolveMangaDir, resolveChapterDir } = require('../lib/download/connector/connectorPathUtils');
+const {
+  DEFAULT_ZOOM_FACTOR,
+  clampZoomFactor,
+  stepZoomFactor,
+} = require('../lib/windowZoomUtils');
 
 const ALLOWED_PROGRESS_MODES = new Set(['none', 'normal', 'indeterminate', 'error', 'paused']);
+
+function applyAndBroadcastZoom(mainWindow, ipc_context, nextFactor, source = 'ui') {
+  const clamped = clampZoomFactor(nextFactor);
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+    const wc = mainWindow.webContents;
+    if (Math.abs(wc.getZoomFactor() - clamped) >= 0.005) {
+      wc.setZoomFactor(clamped);
+    }
+    try {
+      const prevSaved = clampZoomFactor(ipc_context.readSettings?.()?.zoomFactor);
+      if (Math.abs(prevSaved - clamped) >= 0.005) {
+        ipc_context.writeSettings?.({ zoomFactor: clamped });
+      }
+    } catch {
+      /* ignore settings write errors */
+    }
+    wc.send('window:zoomChanged', { zoomFactor: clamped, source });
+  }
+  return { ok: true, zoomFactor: clamped };
+}
 
 function registerWindowIpc(ipc_context) {
   ipcMain.handle('clipboard:readText', () => {
@@ -24,6 +49,42 @@ function registerWindowIpc(ipc_context) {
     }
   });
   ipcMain.on('window:close', () => ipc_context.getMainWindow()?.close());
+
+  ipcMain.handle('window:getZoomFactor', () => {
+    const main_window = ipc_context.getMainWindow();
+    if (main_window && !main_window.isDestroyed() && main_window.webContents && !main_window.webContents.isDestroyed()) {
+      return { ok: true, zoomFactor: clampZoomFactor(main_window.webContents.getZoomFactor()) };
+    }
+    const saved = ipc_context.readSettings?.()?.zoomFactor;
+    return { ok: true, zoomFactor: clampZoomFactor(saved) };
+  });
+
+  ipcMain.handle('window:setZoomFactor', (_event, payload = {}) => {
+    const main_window = ipc_context.getMainWindow();
+    const source = String(payload?.source || 'ui');
+    return applyAndBroadcastZoom(main_window, ipc_context, payload?.zoomFactor, source);
+  });
+
+  ipcMain.handle('window:stepZoom', (_event, payload = {}) => {
+    const main_window = ipc_context.getMainWindow();
+    const dir = payload?.direction === 'out' ? 'out' : 'in';
+    const current =
+      main_window && !main_window.isDestroyed() && main_window.webContents && !main_window.webContents.isDestroyed()
+        ? main_window.webContents.getZoomFactor()
+        : ipc_context.readSettings?.()?.zoomFactor;
+    const next = stepZoomFactor(current, dir);
+    return applyAndBroadcastZoom(main_window, ipc_context, next, String(payload?.source || 'ui'));
+  });
+
+  ipcMain.handle('window:resetZoom', (_event, payload = {}) => {
+    const main_window = ipc_context.getMainWindow();
+    return applyAndBroadcastZoom(
+      main_window,
+      ipc_context,
+      DEFAULT_ZOOM_FACTOR,
+      String(payload?.source || 'ui')
+    );
+  });
 
   ipcMain.on('window:setProgressBar', (_event, payload = {}) => {
     const main_window = ipc_context.getMainWindow();

@@ -118,10 +118,24 @@ describe('Explore Subtabs Layout Consistency Standards', () => {
     const explorePanelPath = path.resolve(process.cwd(), 'src/features/explore/ExplorePanel.jsx');
     const content = fs.readFileSync(explorePanelPath, 'utf8');
     expect(content).toContain('p-0.5 rounded-xl');
-    for (const testId of ['subtab-latest', 'subtab-followed', 'subtab-bulk']) {
+    for (const testId of ['subtab-latest', 'subtab-bulk', 'subtab-followed']) {
       const match = content.match(new RegExp(`data-testid="${testId}"[\\s\\S]{0,400}className=\\{[^}]*h-8 px-3`));
       expect(match).not.toBeNull();
     }
     expect(content).not.toMatch(/data-testid="subtab-[\s\S]{0,400}\bh-7\b/);
+  });
+
+  test('ExplorePanel orders subtabs as Latest Updates -> Bulk Scan -> Followed inside role="tablist"', () => {
+    const explorePanelPath = path.resolve(process.cwd(), 'src/features/explore/ExplorePanel.jsx');
+    const content = fs.readFileSync(explorePanelPath, 'utf8');
+    const tablistMatch = content.match(/<div\s+role="tablist"[\s\S]*?>([\s\S]*?)<\/div>/);
+    expect(tablistMatch).not.toBeNull();
+    const tablistCode = tablistMatch[1];
+    const latestIdx = tablistCode.indexOf('data-testid="subtab-latest"');
+    const bulkIdx = tablistCode.indexOf('data-testid="subtab-bulk"');
+    const followedIdx = tablistCode.indexOf('data-testid="subtab-followed"');
+    expect(latestIdx).toBeGreaterThan(-1);
+    expect(bulkIdx).toBeGreaterThan(latestIdx);
+    expect(followedIdx).toBeGreaterThan(bulkIdx);
   });
 });
