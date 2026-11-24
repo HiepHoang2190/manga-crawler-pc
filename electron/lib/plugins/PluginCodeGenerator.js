@@ -1,8 +1,11 @@
 /**
  * PluginCodeGenerator - Generates plugin JavaScript source code from analysis results
  *
- * Takes heuristic analysis output and produces a complete, valid plugin .js file
- * that can be imported by JsPluginManager.
+ * Produces validated, connector-grade plugin source code supporting:
+ * - Lazy image attributes & relative / protocol-relative URL resolution
+ * - Referer headers & automatic Chromium fallback in JsPluginConnector
+ * - Nav-shortcut chapter filtering & smart chapter ordering (asc vs desc)
+ * - Optional Madara /ajax/chapters/ POST fallback, MangaStream ts_reader JSON, and fetchLatestUpdates
  */
 
 class PluginCodeGenerator {
@@ -10,35 +13,115 @@ class PluginCodeGenerator {
    * Generate plugin source code from analysis results.
    * @param {Object} params
    * @param {Object} params.siteInfo - { id, name, baseUrl, hostname, domains }
-   * @param {Object} params.detected - { titleSelector, coverSelector, chapterSelector, imageSelector, imageContainerSelector }
+   * @param {Object} params.detected - Selector and feature metadata from PluginAutoGenerator
+   * @param {boolean} [params.includeLatestUpdates=true]
    * @returns {string} Plugin source code
    */
-  generate({ siteInfo, detected }) {
+  generate({ siteInfo, detected = {}, includeLatestUpdates = true }) {
     const id = this._sanitizeId(siteInfo.id);
     const name = this._escapeString(siteInfo.name);
-    const baseUrl = siteInfo.baseUrl;
-    const domains = siteInfo.domains || [siteInfo.hostname];
+    const baseUrl = String(siteInfo.baseUrl || '');
+    const domains = Array.isArray(siteInfo.domains) && siteInfo.domains.length > 0
+      ? siteInfo.domains
+      : [siteInfo.hostname];
+
     const titleSelector = detected.titleSelector || 'h1';
+    const coverSelector = detected.coverSelector || 'meta[property="og:image"]';
+    const authorSelector = detected.authorSelector || null;
+    const descriptionSelector = detected.descriptionSelector || null;
     const chapterSelector = detected.chapterSelector || 'a[href*="chapter"]';
+    const chapterOrder = detected.chapterOrder === 'asc' ? 'asc' : 'desc';
+    const madaraAjaxChapters = Boolean(detected.madaraAjaxChapters);
+    const chapterStrategy = detected.chapterStrategy || 'html';
+    const chapterPagination = detected.chapterPagination || null;
+    const embeddedChapterConfig = detected.embeddedChapterConfig || null;
+    const chapterApi = detected.chapterApi || null;
     const imageContainerSelector = detected.imageContainerSelector || null;
     const imageSelector = detected.imageSelector || 'img';
-    const coverSelector = detected.coverSelector || 'meta[property="og:image"]';
+    const usesTsReader = Boolean(detected.usesTsReader);
+    const imageStrategy = detected.imageStrategy || (usesTsReader ? 'ts-reader' : 'html');
+    const embeddedImageConfig = detected.embeddedImageConfig || null;
+    const imageApi = detected.imageApi || null;
+    const latestUpdates = includeLatestUpdates !== false && detected.latestUpdates?.detected
+      ? detected.latestUpdates
+      : null;
 
-    const domainsStr = domains.map(d => `    '${this._escapeString(d)}'`).join(',\n');
+    const domainsStr = domains.map((d) => `    '${this._escapeString(d)}'`).join(',\n');
+    const rawBaseUrl = /^https:\/\//i.test(baseUrl) ? baseUrl : baseUrl.replace(/^http:\/\//i, 'https://');
+    const safeBaseUrl = this._escapeString(rawBaseUrl.replace(/\/+$/, ''));
+    const commentName = this._escapeComment(siteInfo.name);
+    const commentBaseUrl = this._escapeComment(rawBaseUrl.replace(/\/+$/, ''));
 
-    const fetchMangaFn = this._buildFetchManga(titleSelector, coverSelector, chapterSelector);
-    const fetchChapterImagesFn = this._buildFetchChapterImages(imageContainerSelector, imageSelector);
+    const fetchMangaFn = this._buildFetchManga({
+      titleSelector,
+      coverSelector,
+      authorSelector,
+      descriptionSelector,
+      chapterSelector,
+      chapterOrder,
+      madaraAjaxChapters,
+      chapterStrategy,
+      chapterPagination,
+      embeddedChapterConfig,
+      chapterApi,
+    });
+    const fetchChapterImagesFn = this._buildFetchChapterImages({
+      containerSelector: imageContainerSelector,
+      imageSelector,
+      usesTsReader,
+      imageStrategy,
+      embeddedImageConfig,
+      imageApi,
+    });
+    const fetchLatestUpdatesFn = latestUpdates
+      ? `\n\n  // ── fetchLatestUpdates ──\n\n${this._buildFetchLatestUpdates(latestUpdates)}`
+      : '';
 
-    // Ensure baseUrl starts with https://
-    const safeBaseUrl = baseUrl.startsWith('https://') ? baseUrl : baseUrl.replace('http://', 'https://');
+    const tsReaderHelper = usesTsReader
+      ? `
+  _extractTsReaderImages: function(htmlBody) {
+    var src = String(htmlBody || '');
+    var marker = /ts_reader\\.run\\s*\\(\\s*(\\{)/i.exec(src);
+    if (!marker) return [];
+    var startIdx = marker.index + marker[0].length - 1;
+    var depth = 0;
+    var inStr = false;
+    var escaped = false;
+    var endIdx = -1;
+    for (var i = startIdx; i < src.length; i++) {
+      var ch = src.charAt(i);
+      if (inStr) {
+        if (escaped) escaped = false;
+        else if (ch === '\\\\') escaped = true;
+        else if (ch === '"') inStr = false;
+        continue;
+      }
+      if (ch === '"') inStr = true;
+      else if (ch === '{') depth++;
+      else if (ch === '}') {
+        depth--;
+        if (depth === 0) { endIdx = i; break; }
+      }
+    }
+    if (endIdx === -1) return [];
+    try {
+      var parsed = json.parse(src.slice(startIdx, endIdx + 1));
+      var sources = parsed && parsed.sources ? parsed.sources : [];
+      for (var s = 0; s < sources.length; s++) {
+        if (sources[s] && sources[s].images && sources[s].images.length > 0) {
+          return sources[s].images;
+        }
+      }
+    } catch (e) {}
+    return [];
+  },`
+      : '';
 
     return `/**
- * ${name} Plugin
+ * ${commentName} Plugin
  *
- * Auto-generated plugin for ${safeBaseUrl}
+ * Auto-generated plugin for ${commentBaseUrl}
  * Generated by Plugin Auto-Generator
- *
- * STATUS: Auto-generated — may need manual adjustments
  */
 
 var plugin = {
@@ -64,35 +147,72 @@ ${domainsStr}
   // ── Helpers ──
 
   _getImageSrc: function(img) {
-    var src = (img.attr('src') || '').trim();
-    var dataSrc = (img.attr('data-src') || '').trim();
-    var dataOriginal = (img.attr('data-original') || '').trim();
-    var dataCdn = (img.attr('data-cdn') || '').trim();
-    var dataSv1 = (img.attr('data-sv1') || '').trim();
-    var dataSv2 = (img.attr('data-sv2') || '').trim();
-
-    if (dataSrc && dataSrc.indexOf('http') === 0) return dataSrc;
-    if (dataSv1 && dataSv1.indexOf('http') === 0) return dataSv1;
-    if (dataSv2 && dataSv2.indexOf('http') === 0) return dataSv2;
-    if (dataOriginal && dataOriginal.indexOf('http') === 0) return dataOriginal;
-    if (dataCdn && dataCdn.indexOf('http') === 0) return dataCdn;
-    if (src && src.indexOf('http') === 0 && src.indexOf('data:') !== 0) return src;
-    return dataSrc || dataSv1 || dataSv2 || dataOriginal || dataCdn || src;
+    if (!img) return '';
+    var attrs = ['data-lazy-src', 'data-original-src', 'data-original', 'data-src', 'data-sv1', 'data-sv2', 'data-cdn', 'data-url', 'src'];
+    for (var i = 0; i < attrs.length; i++) {
+      var val = (img.attr(attrs[i]) || '').trim();
+      if (val && val.toLowerCase().indexOf('data:') !== 0) return val;
+    }
+    return '';
   },
 
   _isChapterImage: function(url) {
     if (!url) return false;
-    var lower = url.toLowerCase();
-    if (lower.indexOf('/icon') !== -1) return false;
-    if (lower.indexOf('/logo') !== -1) return false;
-    if (lower.indexOf('/avatar') !== -1) return false;
-    if (lower.indexOf('loading.') !== -1) return false;
-    if (lower.indexOf('noavatar') !== -1) return false;
-    if (lower.indexOf('/template/') !== -1) return false;
-    if (lower.indexOf('favicon') !== -1) return false;
-    if (lower.indexOf('/ads/') !== -1) return false;
+    var lower = String(url).toLowerCase();
+    var blocked = ['/icon', '/logo', '/avatar', 'avatar.', 'loading.', 'noavatar', '/template/', 'favicon', '/ads/', '/ad/', 'advertisement', 'blogspot.com', 'bp.blogspot'];
+    for (var i = 0; i < blocked.length; i++) {
+      if (lower.indexOf(blocked[i]) !== -1) return false;
+    }
     return true;
   },
+
+  _isNavShortcut: function(text) {
+    var clean = String(text || '').replace(/\\s+/g, ' ').trim();
+    if (!clean) return true;
+    if (/^(chapter|chap|chương)\\s*\\d+/i.test(clean)) return false;
+    return /^(đọc\\s*(từ\\s*đầu|mới\\s*nhất|tiếp)|doc\\s*(tu\\s*dau|moi\\s*nhat|tiep)|read\\s*(first|latest|now)(\\s*chapter)?|start\\s*reading)\\b/i.test(clean) ||
+      /đọc\\s*từ\\s*đầu|đọc\\s*mới\\s*nhất|đọc\\s*tiếp/i.test(clean);
+  },
+
+  _getByPath: function(obj, pathStr) {
+    if (!obj || typeof obj !== 'object' || !pathStr) return undefined;
+    var parts = String(pathStr).split('.');
+    var blockedProto = '__pro' + 'to__';
+    var blockedCtor = 'const' + 'ructor';
+    var cur = obj;
+    for (var i = 0; i < parts.length; i++) {
+      var key = parts[i];
+      if (cur == null || typeof cur !== 'object') return undefined;
+      if (key === blockedProto || key === blockedCtor || key === 'prototype') return undefined;
+      if (!Object.prototype.hasOwnProperty.call(cur, key)) return undefined;
+      cur = cur[key];
+    }
+    return cur;
+  },
+
+  _extractUrlTokens: function(srcUrl) {
+    var clean = String(srcUrl || '').split('#')[0].split('?')[0].replace(/\\/+$/, '');
+    var pathOnly = clean.replace(/^https?:\\/\\/[^/]+/i, '');
+    var parts = pathOnly.split('/');
+    var slug = '';
+    var id = '';
+    for (var i = parts.length - 1; i >= 0; i--) {
+      var seg = parts[i];
+      if (!seg) continue;
+      if (!id && /^\\d+$/.test(seg)) {
+        id = seg;
+        continue;
+      }
+      if (!slug && !/^(manga|truyen|truyen-tranh|comic|comics|series|title|read|chapter)$/i.test(seg)) {
+        slug = seg.replace(/\\.(?:html?|php|aspx?)$/i, '') || seg;
+      }
+    }
+    if (!id && slug) {
+      var tail = /-(\\d+)$/.exec(slug);
+      if (tail) id = tail[1];
+    }
+    return { slug: slug || id, id: id || slug };
+  },${tsReaderHelper}
 
   // ── fetchManga ──
 
@@ -100,7 +220,7 @@ ${fetchMangaFn}
 
   // ── fetchChapterImages ──
 
-${fetchChapterImagesFn}
+${fetchChapterImagesFn}${fetchLatestUpdatesFn}
 };
 
 // Export plugin object (required for validation)
@@ -108,25 +228,243 @@ plugin;
 `;
   }
 
-  _buildFetchManga(titleSelector, coverSelector, chapterSelector) {
-    const coverLogic = coverSelector === 'meta[property="og:image"]'
-      ? `    var coverMeta = doc.querySelector('meta[property="og:image"]');
+  _buildFetchManga({
+    titleSelector,
+    coverSelector,
+    authorSelector,
+    descriptionSelector,
+    chapterSelector,
+    chapterOrder,
+    madaraAjaxChapters,
+    chapterStrategy,
+    chapterPagination,
+    embeddedChapterConfig,
+    chapterApi,
+  }) {
+    const coverLogic =
+      coverSelector === 'meta[property="og:image"]'
+        ? `    var coverMeta = doc.querySelector('meta[property="og:image"]');
     var coverUrl = coverMeta ? coverMeta.attr('content') : null;
     if (coverUrl) coverUrl = utils.resolveUrl(url, coverUrl);`
-      : `    var coverUrl = null;
+        : `    var coverUrl = null;
     var coverImg = doc.querySelector('${this._escapeSelector(coverSelector)}');
     if (coverImg) {
       var coverSrc = plugin._getImageSrc(coverImg);
       if (coverSrc) coverUrl = utils.resolveUrl(url, coverSrc);
     }`;
 
+    const authorLogic = authorSelector
+      ? `    var authorEl = doc.querySelector('${this._escapeSelector(authorSelector)}');
+    var author = authorEl ? authorEl.text().replace(/\\s+/g, ' ').trim() : '';`
+      : `    var author = '';`;
+
+    const descLogic = descriptionSelector
+      ? descriptionSelector.startsWith('meta[')
+        ? `    var descEl = doc.querySelector('${this._escapeSelector(descriptionSelector)}');
+    var description = descEl ? (descEl.attr('content') || '').trim() : '';`
+        : `    var descEl = doc.querySelector('${this._escapeSelector(descriptionSelector)}');
+    var description = descEl ? descEl.text().replace(/\\s+/g, ' ').trim() : '';`
+      : `    var description = '';`;
+
+    const htmlPageLoop =
+      chapterStrategy === 'html-paginated' && (chapterPagination?.runtimeSuffixTemplate || chapterPagination?.pageUrlTemplate)
+        ? `
+    var pagMaxPages = ${Math.min(50, Math.max(2, Number(chapterPagination.maxPagesDetected) || 20))};
+    var pagBaseUrl = url.split('#')[0].split('?')[0].replace(/\\/+$/, '');
+    for (var pg = 2; pg <= pagMaxPages; pg++) {
+      var nextPageUrl = ${
+        chapterPagination.runtimeSuffixTemplate
+          ? `pagBaseUrl + '${this._escapeString(chapterPagination.runtimeSuffixTemplate)}'.replace('{page}', String(pg));`
+          : `'${this._escapeString(chapterPagination.pageUrlTemplate)}'.replace('{page}', String(pg));`
+      }
+      try {
+        var pgRes = await http.get(nextPageUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Referer': url
+          }
+        });
+        if (!pgRes || pgRes.status !== 200 || !pgRes.body) break;
+        var pgDoc = html.parse(pgRes.body);
+        var pgLinks = pgDoc.querySelectorAll('${this._escapeSelector(chapterSelector)}');
+        var addedInPage = 0;
+        for (var k = 0; k < pgLinks.length; k++) {
+          var pLink = pgLinks[k];
+          var pHref = (pLink.attr('href') || '').trim();
+          var pTitle = (pLink.text() || '').replace(/\\s+/g, ' ').trim();
+          if (!pHref || pHref.charAt(0) === '#' || pHref.toLowerCase().indexOf('javascript:') === 0) continue;
+          if (!pTitle || plugin._isNavShortcut(pTitle)) continue;
+          var pFull = utils.resolveUrl(nextPageUrl, pHref);
+          if (!pFull || (pFull.indexOf('http://') !== 0 && pFull.indexOf('https://') !== 0)) continue;
+          if (seenUrls[pFull]) continue;
+          seenUrls[pFull] = true;
+          chapters.push({ title: pTitle, url: pFull });
+          addedInPage++;
+        }
+        if (addedInPage === 0) break;
+      } catch (e) {
+        break;
+      }
+    }`
+        : '';
+
+    const ajaxFallback = madaraAjaxChapters
+      ? `
+    if (chapters.length === 0) {
+      try {
+        var cleanMangaUrl = url.split('#')[0].split('?')[0].replace(/\\/+$/, '');
+        var ajaxUrl = cleanMangaUrl + '/ajax/chapters/';
+        console.log('[PLUGIN DEBUG] Trying Madara AJAX chapters:', ajaxUrl);
+        var ajaxRes = await http.post(ajaxUrl, '', {
+          headers: {
+            'Referer': url,
+            'X-Requested-With': 'XMLHttpRequest'
+          }
+        });
+        if (ajaxRes && ajaxRes.body) {
+          var ajaxDoc = html.parse(ajaxRes.body);
+          var ajaxLinks = ajaxDoc.querySelectorAll('${this._escapeSelector(chapterSelector)}');
+          for (var j = 0; j < ajaxLinks.length; j++) {
+            var aLink = ajaxLinks[j];
+            var aHref = (aLink.attr('href') || '').trim();
+            var aTitle = (aLink.text() || '').replace(/\\s+/g, ' ').trim();
+            if (!aHref || aHref.charAt(0) === '#' || aHref.toLowerCase().indexOf('javascript:') === 0) continue;
+            if (!aTitle || plugin._isNavShortcut(aTitle)) continue;
+            var aFull = utils.resolveUrl(url, aHref);
+            if (!aFull || (aFull.indexOf('http://') !== 0 && aFull.indexOf('https://') !== 0)) continue;
+            if (seenUrls[aFull]) continue;
+            seenUrls[aFull] = true;
+            chapters.push({ title: aTitle, url: aFull });
+          }
+        }
+      } catch (e) {
+        console.log('[PLUGIN DEBUG] Madara AJAX fallback failed:', e.message);
+      }
+    }`
+      : '';
+
+    const buildJsonItemMapper = (cfg) => {
+      const arrayPathEsc = this._escapeString(cfg.arrayPath || '');
+      const urlFieldEsc = this._escapeString(cfg.urlField || '');
+      const titleFieldEsc = this._escapeString(cfg.titleField || '');
+      const numberFieldEsc = this._escapeString(cfg.numberField || '');
+      const slugFieldEsc = this._escapeString(cfg.slugField || '');
+      const idFieldEsc = this._escapeString(cfg.idField || '');
+      const chTplEsc = this._escapeString(cfg.chapterUrlTemplate || '');
+      return `{
+          var rawArr = plugin._getByPath(jsonData, '${arrayPathEsc}');
+          if (Array.isArray(rawArr)) {
+            var tokens = plugin._extractUrlTokens(url);
+            var addedJson = 0;
+            for (var x = 0; x < rawArr.length; x++) {
+              var item = rawArr[x];
+              if (!item || typeof item !== 'object') continue;
+              var rawChUrl = '${urlFieldEsc}' && item['${urlFieldEsc}'] != null ? String(item['${urlFieldEsc}']).trim() : '';
+              if (!rawChUrl && '${chTplEsc}') {
+                rawChUrl = '${chTplEsc}'
+                  .replace(/\\{mangaSlug\\}/g, tokens.slug)
+                  .replace(/\\{mangaId\\}/g, tokens.id)
+                  .replace(/\\{chapterSlug\\}/g, '${slugFieldEsc}' && item['${slugFieldEsc}'] != null ? String(item['${slugFieldEsc}']).trim() : '')
+                  .replace(/\\{chapterId\\}/g, '${idFieldEsc}' && item['${idFieldEsc}'] != null ? String(item['${idFieldEsc}']).trim() : '');
+              }
+              if (!rawChUrl || rawChUrl.charAt(0) === '#' || rawChUrl.toLowerCase().indexOf('javascript:') === 0) continue;
+              var fullChUrl = utils.resolveUrl(url, rawChUrl);
+              if (!fullChUrl || (fullChUrl.indexOf('http://') !== 0 && fullChUrl.indexOf('https://') !== 0) || seenUrls[fullChUrl]) continue;
+              var chTitleVal = '${titleFieldEsc}' && item['${titleFieldEsc}'] != null ? String(item['${titleFieldEsc}']).replace(/\\s+/g, ' ').trim() : '';
+              if (!chTitleVal && '${numberFieldEsc}' && item['${numberFieldEsc}'] != null) {
+                chTitleVal = 'Chapter ' + item['${numberFieldEsc}'];
+              }
+              if (!chTitleVal) chTitleVal = 'Chapter ' + (chapters.length + 1);
+              if (plugin._isNavShortcut(chTitleVal)) continue;
+              seenUrls[fullChUrl] = true;
+              chapters.push({ title: chTitleVal, url: fullChUrl });
+              addedJson++;
+            }
+          }
+        }`;
+    };
+
+    let chapterExtractionBlock;
+    if (chapterStrategy === 'embedded-json' && embeddedChapterConfig) {
+      const selEsc = this._escapeSelector(embeddedChapterConfig.selector || 'script#__NEXT_DATA__');
+      chapterExtractionBlock = `    var scriptEl = doc.querySelector('${selEsc}');
+    if (scriptEl) {
+      try {
+        var jsonData = json.parse(scriptEl.text() || scriptEl.html() || '');
+        ${buildJsonItemMapper(embeddedChapterConfig)}
+      } catch (e) {
+        console.log('[PLUGIN DEBUG] Embedded JSON parse error:', e.message);
+      }
+    }`;
+    } else if (chapterStrategy === 'api-json' && chapterApi?.urlTemplate) {
+      const apiTplEsc = this._escapeString(chapterApi.urlTemplate);
+      const maxApiPages = chapterApi.paginated ? 50 : 1;
+      const rawOffsetStep = Number(chapterApi.offsetStep);
+      const offsetStep = Number.isFinite(rawOffsetStep) && rawOffsetStep > 0 ? Math.floor(rawOffsetStep) : 50;
+      const totalPagesPathEsc = this._escapeString(chapterApi.totalPagesPath || '');
+      chapterExtractionBlock = `    var apiTokens = plugin._extractUrlTokens(url);
+    var maxApiPages = ${maxApiPages};
+    for (var ap = 1; ap <= maxApiPages; ap++) {
+      var apiUrl = '${apiTplEsc}'
+        .replace(/\\{mangaSlug\\}/g, apiTokens.slug)
+        .replace(/\\{mangaId\\}/g, apiTokens.id)
+        .replace(/\\{page\\}/g, String(ap))
+        .replace(/\\{offset\\}/g, String((ap - 1) * ${offsetStep}));
+      try {
+        var apiRes = await http.get(apiUrl, {
+          headers: {
+            'Accept': 'application/json, text/plain, */*',
+            'Referer': url
+          }
+        });
+        if (!apiRes || apiRes.status !== 200 || !apiRes.body) break;
+        var jsonData = json.parse(apiRes.body);
+        var beforeCount = chapters.length;
+        ${buildJsonItemMapper(chapterApi)}
+        var totalFromApi = '${totalPagesPathEsc}' ? parseInt(plugin._getByPath(jsonData, '${totalPagesPathEsc}'), 10) : 0;
+        if (totalFromApi > 0 && ap >= totalFromApi) break;
+        if (chapters.length === beforeCount) break;
+      } catch (e) {
+        console.log('[PLUGIN DEBUG] API chapter page fetch failed:', e.message);
+        break;
+      }
+    }`;
+    } else {
+      chapterExtractionBlock = `    console.log('[PLUGIN DEBUG] Testing Chapter selector:', '${this._escapeSelector(chapterSelector)}');
+    var chapterLinks = doc.querySelectorAll('${this._escapeSelector(chapterSelector)}');
+    console.log('[PLUGIN DEBUG] Total raw chapter links matched:', chapterLinks.length);
+
+    for (var i = 0; i < chapterLinks.length; i++) {
+      var link = chapterLinks[i];
+      var href = (link.attr('href') || '').trim();
+      var chTitle = (link.text() || '').replace(/\\s+/g, ' ').trim();
+      if (!href || href.charAt(0) === '#' || href.toLowerCase().indexOf('javascript:') === 0) continue;
+      if (!chTitle || plugin._isNavShortcut(chTitle)) continue;
+
+      var fullUrl = utils.resolveUrl(url, href);
+      if (!fullUrl || (fullUrl.indexOf('http://') !== 0 && fullUrl.indexOf('https://') !== 0)) continue;
+      if (seenUrls[fullUrl]) continue;
+      seenUrls[fullUrl] = true;
+
+      chapters.push({ title: chTitle, url: fullUrl });
+    }${ajaxFallback}${htmlPageLoop}`;
+    }
+
+    const reverseBlock =
+      chapterOrder === 'asc'
+        ? `    // Ascending order detected — preserve natural chapter order`
+        : `    // Reverse newest-first chapter list to ascending order
+    chapters.reverse();`;
+
     return `  fetchManga: async function(url) {
     console.log('[PLUGIN DEBUG] fetchManga -> url:', url);
 
     var response = await http.get(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Referer': plugin.baseUrl
       }
     });
 
@@ -140,7 +478,7 @@ plugin;
     // Title
     console.log('[PLUGIN DEBUG] Testing Title selector:', '${this._escapeSelector(titleSelector)}');
     var titleEl = doc.querySelector('${this._escapeSelector(titleSelector)}');
-    var title = titleEl ? titleEl.text().trim() : 'Unknown';
+    var title = titleEl ? titleEl.text().replace(/\\s+/g, ' ').trim() : 'Unknown';
     if (!title) title = 'Unknown';
     console.log('[PLUGIN DEBUG] Found Title:', title);
 
@@ -149,28 +487,15 @@ plugin;
 ${coverLogic}
     console.log('[PLUGIN DEBUG] Found Cover URL:', coverUrl);
 
-    // Chapters
-    console.log('[PLUGIN DEBUG] Testing Chapter selector:', '${this._escapeSelector(chapterSelector)}');
-    var chapterLinks = doc.querySelectorAll('${this._escapeSelector(chapterSelector)}');
-    console.log('[PLUGIN DEBUG] Total raw chapter links matched:', chapterLinks.length);
+${authorLogic}
+${descLogic}
+
+    // Chapters (${this._escapeComment(chapterStrategy || 'html')})
     var chapters = [];
     var seenUrls = {};
+${chapterExtractionBlock}
 
-    for (var i = 0; i < chapterLinks.length; i++) {
-      var link = chapterLinks[i];
-      var href = link.attr('href') || '';
-      var chTitle = (link.text() || '').trim();
-      if (!href || !chTitle) continue;
-
-      var fullUrl = utils.resolveUrl(url, href);
-      if (seenUrls[fullUrl]) continue;
-      seenUrls[fullUrl] = true;
-
-      chapters.push({ title: chTitle, url: fullUrl });
-    }
-
-    // Reverse if newest-first (common pattern)
-    chapters.reverse();
+${reverseBlock}
 
     console.log('[PLUGIN DEBUG] Filtered valid chapters count:', chapters.length);
     if (chapters.length > 0) {
@@ -180,24 +505,127 @@ ${coverLogic}
     return {
       title: title,
       coverUrl: coverUrl || null,
-      author: '',
+      author: author || '',
+      description: description || '',
       chapters: chapters
     };
   },`;
   }
 
-  _buildFetchChapterImages(containerSelector, imageSelector) {
-    const imgQuery = containerSelector
-      ? `${containerSelector} img`
-      : imageSelector;
+  _buildFetchChapterImages({
+    containerSelector,
+    imageSelector,
+    usesTsReader,
+    imageStrategy,
+    embeddedImageConfig,
+    imageApi,
+  }) {
+    const buildJsonImagesMapper = (cfg) => {
+      const arrayPathEsc = this._escapeString(cfg.arrayPath || '');
+      const imgFieldEsc = this._escapeString(cfg.imageField || '');
+      const prefixPathEsc = this._escapeString(cfg.prefixPath || '');
+      return `    var rawImgs = plugin._getByPath(imgJson, '${arrayPathEsc}');
+    var imgPrefix = '${prefixPathEsc}' ? String(plugin._getByPath(imgJson, '${prefixPathEsc}') || '').replace(/\\/+$/, '') : '';
+    if (Array.isArray(rawImgs)) {
+      for (var m = 0; m < rawImgs.length; m++) {
+        var entry = rawImgs[m];
+        var rawSrc = '${imgFieldEsc}' && entry && typeof entry === 'object' ? String(entry['${imgFieldEsc}'] || '').trim() : String(entry || '').trim();
+        if (!rawSrc) continue;
+        var candidate = (imgPrefix && rawSrc.indexOf('http') !== 0 && rawSrc.indexOf('//') !== 0)
+          ? imgPrefix + (rawSrc.charAt(0) === '/' ? '' : '/') + rawSrc
+          : rawSrc;
+        var resolvedImg = utils.resolveUrl(url, candidate);
+        if (!resolvedImg || (resolvedImg.indexOf('http://') !== 0 && resolvedImg.indexOf('https://') !== 0)) continue;
+        if (!plugin._isChapterImage(resolvedImg) || seenUrls[resolvedImg]) continue;
+        seenUrls[resolvedImg] = true;
+        images.push(resolvedImg);
+      }
+    }`;
+    };
+
+    if (imageStrategy === 'api-json' && imageApi?.urlTemplate) {
+      const apiTplEsc = this._escapeString(imageApi.urlTemplate);
+      return `  fetchChapterImages: async function(url) {
+    console.log('[PLUGIN DEBUG] fetchChapterImages (api-json) -> url:', url);
+    var chTokens = plugin._extractUrlTokens(url);
+    var apiUrl = '${apiTplEsc}'
+      .replace(/\\{chapterSlug\\}/g, chTokens.slug)
+      .replace(/\\{chapterId\\}/g, chTokens.id);
+    var response = await http.get(apiUrl, {
+      headers: {
+        'Accept': 'application/json, text/plain, */*',
+        'Referer': url
+      }
+    });
+    if (response.status !== 200) {
+      throw new Error('HTTP ' + response.status);
+    }
+    var imgJson = json.parse(response.body);
+    var images = [];
+    var seenUrls = {};
+${buildJsonImagesMapper(imageApi)}
+    if (images.length === 0) {
+      throw new Error('Không tìm thấy ảnh trong chapter');
+    }
+    return images;
+  },`;
+    }
+
+    if (imageStrategy === 'embedded-json' && embeddedImageConfig) {
+      const selEsc = this._escapeSelector(embeddedImageConfig.selector || 'script#__NEXT_DATA__');
+      return `  fetchChapterImages: async function(url) {
+    console.log('[PLUGIN DEBUG] fetchChapterImages (embedded-json) -> url:', url);
+    var response = await http.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Referer': plugin.baseUrl
+      }
+    });
+    if (response.status !== 200) {
+      throw new Error('HTTP ' + response.status);
+    }
+    var doc = html.parse(response.body);
+    var images = [];
+    var seenUrls = {};
+    var scriptEl = doc.querySelector('${selEsc}');
+    if (scriptEl) {
+      var imgJson = json.parse(scriptEl.text() || scriptEl.html() || '');
+${buildJsonImagesMapper(embeddedImageConfig)}
+    }
+    if (images.length === 0) {
+      throw new Error('Không tìm thấy ảnh trong chapter');
+    }
+    return images;
+  },`;
+    }
+
+    const imgQuery =
+      imageSelector ||
+      (containerSelector ? `${containerSelector} img` : 'img');
+
+    const tsReaderFallback = usesTsReader
+      ? `
+    if (images.length === 0 && typeof plugin._extractTsReaderImages === 'function') {
+      var tsImgs = plugin._extractTsReaderImages(response.body);
+      for (var t = 0; t < tsImgs.length; t++) {
+        var resolvedTs = utils.resolveUrl(url, tsImgs[t]);
+        if (!resolvedTs || (resolvedTs.indexOf('http://') !== 0 && resolvedTs.indexOf('https://') !== 0)) continue;
+        if (!plugin._isChapterImage(resolvedTs) || seenUrls[resolvedTs]) continue;
+        seenUrls[resolvedTs] = true;
+        images.push(resolvedTs);
+      }
+    }`
+      : '';
 
     return `  fetchChapterImages: async function(url) {
     console.log('[PLUGIN DEBUG] fetchChapterImages -> url:', url);
 
     var response = await http.get(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Referer': plugin.baseUrl
       }
     });
 
@@ -216,15 +644,16 @@ ${coverLogic}
     for (var i = 0; i < imgs.length; i++) {
       var img = imgs[i];
       var src = plugin._getImageSrc(img);
-      if (!src || src.indexOf('http') !== 0) continue;
+      if (!src) continue;
 
       var fullUrl = utils.resolveUrl(url, src);
+      if (!fullUrl || (fullUrl.indexOf('http://') !== 0 && fullUrl.indexOf('https://') !== 0)) continue;
       if (!plugin._isChapterImage(fullUrl)) continue;
       if (seenUrls[fullUrl]) continue;
       seenUrls[fullUrl] = true;
 
       images.push(fullUrl);
-    }
+    }${tsReaderFallback}
 
     if (images.length === 0) {
       console.log('[PLUGIN DEBUG] ERROR: No valid images found after filtering!');
@@ -240,23 +669,108 @@ ${coverLogic}
   },`;
   }
 
+  _buildFetchLatestUpdates(latestUpdates) {
+    const itemSel = this._escapeSelector(latestUpdates.itemSelector || '.items .item');
+    const linkSel = this._escapeSelector(latestUpdates.linkSelector || 'h3 a, a');
+    const titleSel = this._escapeSelector(latestUpdates.titleSelector || 'h3 a, a');
+    const coverSel = this._escapeSelector(latestUpdates.coverSelector || 'img');
+    const chapSel = this._escapeSelector(latestUpdates.chapterSelector || '');
+    const tplUrl = this._escapeString(latestUpdates.pageUrlTemplate || '{baseUrl}/?page={page}');
+
+    return `  fetchLatestUpdates: async function(page) {
+    var pageNum = Math.max(1, parseInt(page, 10) || 1);
+    var baseClean = String(plugin.baseUrl || '').replace(/\\/+$/, '');
+    var listUrl = '${tplUrl}'.replace('{baseUrl}', baseClean).replace('{page}', String(pageNum));
+    var response = await http.get(listUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Referer': plugin.baseUrl
+      }
+    });
+    if (response.status !== 200) {
+      throw new Error('HTTP ' + response.status);
+    }
+
+    var doc = html.parse(response.body);
+    var cards = doc.querySelectorAll('${itemSel}');
+    var items = [];
+    var seen = {};
+
+    for (var i = 0; i < cards.length; i++) {
+      var card = cards[i];
+      var linkEl = card.querySelector('${linkSel}');
+      if (!linkEl) continue;
+      var href = (linkEl.attr('href') || '').trim();
+      if (!href || href.charAt(0) === '#' || href.toLowerCase().indexOf('javascript:') === 0) continue;
+
+      var mangaUrl = utils.resolveUrl(listUrl, href);
+      if (!mangaUrl || (mangaUrl.indexOf('http://') !== 0 && mangaUrl.indexOf('https://') !== 0) || seen[mangaUrl]) continue;
+
+      var titleEl = card.querySelector('${titleSel}') || linkEl;
+      var cleanTitleText = (titleEl.text() || '').replace(/\\s+/g, ' ').trim();
+      var title = cleanTitleText || (linkEl.attr('title') || '').replace(/\\s+/g, ' ').trim();
+      if (!title) continue;
+      seen[mangaUrl] = true;
+
+      var coverUrl = '';
+      var imgEl = card.querySelector('${coverSel}');
+      if (imgEl) {
+        var rawCover = plugin._getImageSrc(imgEl);
+        if (rawCover) coverUrl = utils.resolveUrl(listUrl, rawCover);
+      }
+
+      var latestChapterLabel = '';
+      ${chapSel ? `var chapEl = card.querySelector('${chapSel}'); if (chapEl) latestChapterLabel = (chapEl.text() || '').replace(/\\s+/g, ' ').trim();` : ''}
+
+      items.push({
+        title: title,
+        mangaUrl: mangaUrl,
+        coverUrl: coverUrl,
+        latestChapterLabel: latestChapterLabel
+      });
+    }
+
+    return {
+      ok: true,
+      page: pageNum,
+      totalPages: items.length > 0 ? pageNum + 1 : pageNum,
+      items: items
+    };
+  }`;
+  }
+
   // ── Sanitizers ──
 
   _sanitizeId(id) {
-    return String(id || 'unknown')
-      .toLowerCase()
-      .replace(/[^a-z0-9_-]/g, '')
-      .replace(/-+/g, '-')
-      .replace(/^-+|-+$/g, '') || 'unknown';
+    return (
+      String(id || 'unknown')
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]/g, '')
+        .replace(/-+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'unknown'
+    );
   }
 
   _escapeString(str) {
-    return String(str || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    return String(str || '')
+      .replace(/\\/g, '\\\\')
+      .replace(/'/g, "\\'")
+      .replace(/\r/g, '\\r')
+      .replace(/\n/g, '\\n')
+      .replace(/\t/g, '\\t')
+      .replace(/\u2028/g, '\\u2028')
+      .replace(/\u2029/g, '\\u2029');
   }
 
   _escapeSelector(sel) {
-    // Escape single quotes in CSS selectors for JS string embedding
-    return String(sel || '').replace(/'/g, "\\'");
+    return this._escapeString(sel);
+  }
+
+  _escapeComment(str) {
+    return String(str || '')
+      .replace(/\*\//g, '* /')
+      .replace(/[\r\n\u2028\u2029]/g, ' ');
   }
 }
 

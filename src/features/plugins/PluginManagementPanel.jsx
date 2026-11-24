@@ -1,6 +1,15 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useI18n } from '../../context/I18nContext';
 import { StudioLayout, useStudioLayout, EmptyState, SectionTitle } from '../../shared';
+import AnalysisProgressMatrix from './AnalysisProgressMatrix';
+import {
+  createInitialAnalysisMatrix,
+  prepareChapterRetryMatrix,
+  applyAnalysisProgressEvent,
+  completeAnalysisMatrix,
+  sanitizePluginId,
+  extractPluginIdFromSource,
+} from './analysisProgressState.mjs';
 
 const BTN_ROW =
   'inline-flex items-center justify-center gap-2 min-h-9 px-3.5 rounded-lg text-xs font-semibold transition-all active:scale-[0.98] disabled:opacity-45 disabled:pointer-events-none cursor-pointer select-none';
@@ -22,6 +31,44 @@ const PLUGIN_DEVELOPER_GUIDE_GIST_URL =
 
 function openGistUrl(url) {
   window.electronAPI?.openExternal?.(url);
+}
+
+function buildEffectiveDetected(
+  autoGenData,
+  autoGenChapterData,
+  autoGenSelectors,
+  autoGenDetectedChapterSel,
+  autoGenDetectedImageSel,
+) {
+  const customChapSel = autoGenSelectors.chapterSelector.trim();
+  const chapOverridden = Boolean(customChapSel && customChapSel !== autoGenDetectedChapterSel);
+  const customImgSel = autoGenSelectors.imageSelector.trim();
+  const imgOverridden = Boolean(customImgSel && customImgSel !== autoGenDetectedImageSel);
+  return {
+    ...autoGenData.detected,
+    ...(autoGenChapterData
+      ? {
+          imageSelector: autoGenChapterData.imageSelector,
+          imageContainerSelector: autoGenChapterData.imageContainerSelector,
+          usesTsReader: Boolean(autoGenChapterData.usesTsReader),
+          imageStrategy: autoGenChapterData.imageStrategy,
+          embeddedImageConfig: autoGenChapterData.embeddedImageConfig || null,
+          imageApi: autoGenChapterData.imageApi || null,
+        }
+      : {}),
+    ...(autoGenSelectors.titleSelector.trim() ? { titleSelector: autoGenSelectors.titleSelector.trim() } : {}),
+    ...(autoGenSelectors.coverSelector.trim() ? { coverSelector: autoGenSelectors.coverSelector.trim() } : {}),
+    ...(customChapSel ? { chapterSelector: customChapSel } : {}),
+    ...(chapOverridden ? { chapterStrategy: 'html' } : {}),
+    ...(imgOverridden
+      ? {
+          imageSelector: customImgSel,
+          imageContainerSelector: null,
+          imageStrategy: 'html',
+          usesTsReader: false,
+        }
+      : {}),
+  };
 }
 
 /**
@@ -47,6 +94,21 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'enabled' | 'disabled' | 'url'
   const [message, setMessage] = useState(null);
+  const [isToastHovered, setIsToastHovered] = useState(false);
+
+  const showMessage = useCallback((type, text) => {
+    setIsToastHovered(false);
+    setMessage(text ? { id: `${Date.now()}-${Math.random()}`, type, text } : null);
+  }, []);
+
+  useEffect(() => {
+    if (!message?.text || isToastHovered) return undefined;
+    const duration = message.type === 'error' ? 6000 : 3500;
+    const timer = setTimeout(() => {
+      setMessage(null);
+    }, duration);
+    return () => clearTimeout(timer);
+  }, [message?.id, message?.text, message?.type, isToastHovered]);
 
   // Import from URL state
   const [importUrl, setImportUrl] = useState('');
@@ -76,8 +138,48 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
   const [autoGenError, setAutoGenError] = useState(null);
   const [autoGenEditName, setAutoGenEditName] = useState('');
   const [autoGenEditId, setAutoGenEditId] = useState('');
+  const [autoGenSelectors, setAutoGenSelectors] = useState({
+    titleSelector: '',
+    coverSelector: '',
+    chapterSelector: '',
+    imageSelector: '',
+  });
+  const [autoGenDetectedChapterSel, setAutoGenDetectedChapterSel] = useState('');
+  const [autoGenDetectedImageSel, setAutoGenDetectedImageSel] = useState('');
+  const [autoGenIncludeLatest, setAutoGenIncludeLatest] = useState(true);
   const [autoGenSource, setAutoGenSource] = useState('');
+  const [autoGenManualEdit, setAutoGenManualEdit] = useState(false);
+  const [autoGenTestRunning, setAutoGenTestRunning] = useState(false);
+  const [autoGenTestResult, setAutoGenTestResult] = useState(null);
   const [copiedAutoGenSource, setCopiedAutoGenSource] = useState(false);
+  const [analysisMatrix, setAnalysisMatrix] = useState(null);
+  const [analysisElapsedMs, setAnalysisElapsedMs] = useState(0);
+  const activeAnalyzeRunIdRef = useRef('');
+
+  useEffect(() => {
+    if (typeof window.electronAPI?.subscribePluginAnalyzeProgress !== 'function') return undefined;
+    return window.electronAPI.subscribePluginAnalyzeProgress((ev) => {
+      if (!ev || !activeAnalyzeRunIdRef.current) return;
+      if (ev.runId !== activeAnalyzeRunIdRef.current) return;
+      setAnalysisMatrix((prev) => (prev ? applyAnalysisProgressEvent(prev, ev) : prev));
+    });
+  }, []);
+
+  useEffect(() => {
+    const isRunning = autoGenPhase === 'analyzing' || autoGenPhase === 'analyzingChapter';
+    if (!analysisMatrix?.startedAt) return undefined;
+    if (!isRunning) {
+      if (analysisMatrix.finishedAt) {
+        setAnalysisElapsedMs(Math.max(0, analysisMatrix.finishedAt - analysisMatrix.startedAt));
+      }
+      return undefined;
+    }
+    setAnalysisElapsedMs(Date.now() - analysisMatrix.startedAt);
+    const timer = setInterval(() => {
+      setAnalysisElapsedMs(Date.now() - analysisMatrix.startedAt);
+    }, 100);
+    return () => clearInterval(timer);
+  }, [autoGenPhase, analysisMatrix?.startedAt, analysisMatrix?.finishedAt]);
 
   const handleCopyAutoGenSource = async () => {
     try {
@@ -88,29 +190,44 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
   };
 
   useEffect(() => {
-    if (autoGenPhase === 'review' && autoGenData) {
-      const siteInfo = {
-        ...autoGenData.siteInfo,
-        name: autoGenEditName || autoGenData.siteInfo.name,
-        id: autoGenEditId || autoGenData.siteInfo.id,
-      };
-      const detected = {
-        ...autoGenData.detected,
-        ...(autoGenChapterData
-          ? {
-              imageSelector: autoGenChapterData.imageSelector,
-              imageContainerSelector: autoGenChapterData.imageContainerSelector,
-            }
-          : {}),
-      };
-      window.electronAPI
-        ?.generatePluginSource?.(siteInfo, detected)
-        .then((res) => {
-          if (res?.ok) setAutoGenSource(res.source || '');
-        })
-        .catch(() => {});
-    }
-  }, [autoGenPhase, autoGenData, autoGenChapterData, autoGenEditName, autoGenEditId]);
+    if (autoGenPhase !== 'review' || !autoGenData || autoGenManualEdit) return undefined;
+    let cancelled = false;
+    const siteInfo = {
+      ...autoGenData.siteInfo,
+      name: autoGenEditName || autoGenData.siteInfo.name,
+      id: autoGenEditId || autoGenData.siteInfo.id,
+    };
+    const detected = buildEffectiveDetected(
+      autoGenData,
+      autoGenChapterData,
+      autoGenSelectors,
+      autoGenDetectedChapterSel,
+      autoGenDetectedImageSel,
+    );
+    window.electronAPI
+      ?.generatePluginSource?.(siteInfo, detected, { includeLatestUpdates: autoGenIncludeLatest })
+      .then((res) => {
+        if (!cancelled && res?.ok) {
+          setAutoGenSource(res.source || '');
+          setAutoGenTestResult(null);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    autoGenPhase,
+    autoGenData,
+    autoGenChapterData,
+    autoGenEditName,
+    autoGenEditId,
+    autoGenSelectors,
+    autoGenDetectedChapterSel,
+    autoGenDetectedImageSel,
+    autoGenIncludeLatest,
+    autoGenManualEdit,
+  ]);
 
   const handleSavePluginSource = async (pluginId, editedSource) => {
     const res = await window.electronAPI.updatePlugin(pluginId, editedSource);
@@ -141,7 +258,7 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
   // --- Handlers: Import from File with React Modal ---
   async function handleImportFromFile() {
     setLoading(true);
-    setMessage(null);
+    showMessage(null, null);
     try {
       const result = await window.electronAPI.importPluginFromFile();
       if (!result) return;
@@ -156,24 +273,24 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
           onConfirm: async () => {
             const confirmResult = await window.electronAPI.confirmPluginReplacement(result.metadata.id);
             if (confirmResult?.success) {
-              setMessage({ type: 'success', text: t('plugins.msg.updated', { name: result.metadata.name }) });
+              showMessage('success', t('plugins.msg.updated', { name: result.metadata.name }));
               await loadPlugins();
               notifyConnectorListChanged();
             } else {
-              setMessage({ type: 'error', text: confirmResult?.errorMessage || t('plugins.msg.updateFailed') });
+              showMessage('error', confirmResult?.errorMessage || t('plugins.msg.updateFailed'));
             }
           },
         });
       } else if (result.success) {
-        setMessage({ type: 'success', text: t('plugins.msg.imported', { name: result.metadata.name }) });
+        showMessage('success', t('plugins.msg.imported', { name: result.metadata.name }));
         await loadPlugins();
         notifyConnectorListChanged();
         setActiveSubtab('installed');
       } else if (result.errorMessage) {
-        setMessage({ type: 'error', text: result.errorMessage });
+        showMessage('error', result.errorMessage);
       }
     } catch (e) {
-      setMessage({ type: 'error', text: e.message });
+      showMessage('error', e.message);
     } finally {
       setLoading(false);
     }
@@ -182,12 +299,12 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
   // --- Handlers: Import from URL with React Modal ---
   async function handleImportFromUrl() {
     if (!importUrl.trim()) {
-      setMessage({ type: 'error', text: t('plugins.urlEmpty') });
+      showMessage('error', t('plugins.urlEmpty'));
       return;
     }
 
     setLoading(true);
-    setMessage(null);
+    showMessage(null, null);
     try {
       const result = await window.electronAPI.importPluginFromUrl(importUrl.trim());
       if (!result) return;
@@ -202,26 +319,26 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
           onConfirm: async () => {
             const confirmResult = await window.electronAPI.confirmPluginReplacement(result.metadata.id);
             if (confirmResult?.success) {
-              setMessage({ type: 'success', text: t('plugins.msg.updated', { name: result.metadata.name }) });
+              showMessage('success', t('plugins.msg.updated', { name: result.metadata.name }));
               setImportUrl('');
               await loadPlugins();
               notifyConnectorListChanged();
             } else {
-              setMessage({ type: 'error', text: confirmResult?.errorMessage || t('plugins.msg.updateFailed') });
+              showMessage('error', confirmResult?.errorMessage || t('plugins.msg.updateFailed'));
             }
           },
         });
       } else if (result.success) {
-        setMessage({ type: 'success', text: t('plugins.msg.imported', { name: result.metadata.name }) });
+        showMessage('success', t('plugins.msg.imported', { name: result.metadata.name }));
         setImportUrl('');
         await loadPlugins();
         notifyConnectorListChanged();
         setActiveSubtab('installed');
       } else if (result.errorMessage) {
-        setMessage({ type: 'error', text: result.errorMessage });
+        showMessage('error', result.errorMessage);
       }
     } catch (e) {
-      setMessage({ type: 'error', text: e.message });
+      showMessage('error', e.message);
     } finally {
       setLoading(false);
     }
@@ -230,19 +347,19 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
   // --- Toggle Plugin ---
   async function handleTogglePlugin(pluginId, currentlyEnabled) {
     setLoading(true);
-    setMessage(null);
+    showMessage(null, null);
     try {
       if (currentlyEnabled) {
         await window.electronAPI.disablePlugin(pluginId);
-        setMessage({ type: 'success', text: t('plugins.msg.toggledOff') });
+        showMessage('success', t('plugins.msg.toggledOff'));
       } else {
         await window.electronAPI.enablePlugin(pluginId);
-        setMessage({ type: 'success', text: t('plugins.msg.toggledOn') });
+        showMessage('success', t('plugins.msg.toggledOn'));
       }
       await loadPlugins();
       notifyConnectorListChanged();
     } catch (e) {
-      setMessage({ type: 'error', text: e.message });
+      showMessage('error', e.message);
     } finally {
       setLoading(false);
     }
@@ -252,16 +369,16 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
     const targets = plugins.filter((p) => !p.isEnabled);
     if (targets.length === 0) return;
     setLoading(true);
-    setMessage(null);
+    showMessage(null, null);
     try {
       for (const p of targets) {
         await window.electronAPI.enablePlugin(p.metadata.id);
       }
-      setMessage({ type: 'success', text: t('plugins.msg.enableAllOk', { count: targets.length }) });
+      showMessage('success', t('plugins.msg.enableAllOk', { count: targets.length }));
       await loadPlugins();
       notifyConnectorListChanged();
     } catch (e) {
-      setMessage({ type: 'error', text: e.message });
+      showMessage('error', e.message);
       await loadPlugins();
       notifyConnectorListChanged();
     } finally {
@@ -273,16 +390,16 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
     const targets = plugins.filter((p) => p.isEnabled);
     if (targets.length === 0) return;
     setLoading(true);
-    setMessage(null);
+    showMessage(null, null);
     try {
       for (const p of targets) {
         await window.electronAPI.disablePlugin(p.metadata.id);
       }
-      setMessage({ type: 'success', text: t('plugins.msg.disableAllOk', { count: targets.length }) });
+      showMessage('success', t('plugins.msg.disableAllOk', { count: targets.length }));
       await loadPlugins();
       notifyConnectorListChanged();
     } catch (e) {
-      setMessage({ type: 'error', text: e.message });
+      showMessage('error', e.message);
       await loadPlugins();
       notifyConnectorListChanged();
     } finally {
@@ -301,14 +418,14 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
     setDeleteConfirmTarget(null);
 
     setLoading(true);
-    setMessage(null);
+    showMessage(null, null);
     try {
       await window.electronAPI.deletePlugin(id);
-      setMessage({ type: 'success', text: t('plugins.msg.deleted', { name }) });
+      showMessage('success', t('plugins.msg.deleted', { name }));
       await loadPlugins();
       notifyConnectorListChanged();
     } catch (e) {
-      setMessage({ type: 'error', text: e.message });
+      showMessage('error', e.message);
     } finally {
       setLoading(false);
     }
@@ -316,32 +433,32 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
 
   async function handleReloadPlugin(pluginId, sourceUrl) {
     if (!sourceUrl) {
-      setMessage({ type: 'error', text: t('plugins.msg.noUrlReload') });
+      showMessage('error', t('plugins.msg.noUrlReload'));
       return;
     }
 
     setLoading(true);
-    setMessage(null);
+    showMessage(null, null);
     try {
       const result = await window.electronAPI.importPluginFromUrl(sourceUrl);
       if (result.requiresConfirmation) {
         const confirmResult = await window.electronAPI.confirmPluginReplacement(pluginId);
         if (confirmResult?.success) {
-          setMessage({ type: 'success', text: t('plugins.msg.reloadOk') });
+          showMessage('success', t('plugins.msg.reloadOk'));
           await loadPlugins();
           notifyConnectorListChanged();
         } else {
-          setMessage({ type: 'error', text: confirmResult?.errorMessage || t('plugins.msg.reloadFailed') });
+          showMessage('error', confirmResult?.errorMessage || t('plugins.msg.reloadFailed'));
         }
       } else if (result.success) {
-        setMessage({ type: 'success', text: t('plugins.msg.reloadOk') });
+        showMessage('success', t('plugins.msg.reloadOk'));
         await loadPlugins();
         notifyConnectorListChanged();
       } else {
-        setMessage({ type: 'error', text: result.errorMessage });
+        showMessage('error', result.errorMessage);
       }
     } catch (e) {
-      setMessage({ type: 'error', text: e.message });
+      showMessage('error', e.message);
     } finally {
       setLoading(false);
     }
@@ -355,7 +472,7 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
   async function handleReloadAllUrlPlugins() {
     if (reloadablePlugins.length === 0 || loading) return;
     setLoading(true);
-    setMessage(null);
+    showMessage(null, null);
     let okCount = 0;
     let failCount = 0;
 
@@ -380,10 +497,10 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
       }
       await loadPlugins();
       notifyConnectorListChanged();
-      setMessage({
-        type: failCount > 0 && okCount === 0 ? 'error' : 'success',
-        text: t('plugins.msg.reloadAllResult', { ok: okCount, fail: failCount }),
-      });
+      showMessage(
+        failCount > 0 && okCount === 0 ? 'error' : 'success',
+        t('plugins.msg.reloadAllResult', { ok: okCount, fail: failCount }),
+      );
     } finally {
       setLoading(false);
     }
@@ -401,6 +518,21 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
     setAutoGenEditName('');
     setAutoGenEditId('');
     setAutoGenSource('');
+    setAutoGenTestResult(null);
+    setAutoGenTestRunning(false);
+    setAutoGenManualEdit(false);
+    setAutoGenDetectedChapterSel('');
+    setAutoGenDetectedImageSel('');
+    setAutoGenIncludeLatest(true);
+    activeAnalyzeRunIdRef.current = '';
+    setAnalysisMatrix(null);
+    setAnalysisElapsedMs(0);
+    setAutoGenSelectors({
+      titleSelector: '',
+      coverSelector: '',
+      chapterSelector: '',
+      imageSelector: '',
+    });
   }
 
   function handleCancelAutoGen() {
@@ -409,45 +541,109 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
     setAutoGenChapterData(null);
     setAutoGenError(null);
     setAutoGenSource('');
+    setAutoGenManualEdit(false);
+    setAutoGenDetectedChapterSel('');
+    setAutoGenDetectedImageSel('');
+    setAutoGenTestResult(null);
+    setAutoGenTestRunning(false);
+    activeAnalyzeRunIdRef.current = '';
+    setAnalysisMatrix(null);
+    setAnalysisElapsedMs(0);
+    setAutoGenSelectors({
+      titleSelector: '',
+      coverSelector: '',
+      chapterSelector: '',
+      imageSelector: '',
+    });
   }
 
   async function handleAnalyzeMangaPage() {
     if (!autoGenUrl.trim()) return;
+    const runId = `analyze-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    activeAnalyzeRunIdRef.current = runId;
+    setAnalysisElapsedMs(0);
+    setAnalysisMatrix(createInitialAnalysisMatrix(autoGenUrl.trim(), 'manga', runId));
     setAutoGenPhase('analyzing');
+    setAutoGenChapterData(null);
     setAutoGenError(null);
+    setAutoGenTestResult(null);
+    setAutoGenManualEdit(false);
     try {
-      const result = await window.electronAPI.analyzeMangaPage(autoGenUrl.trim());
-      if (!result.ok) {
-        setAutoGenError(result.error);
+      const rawResult = await window.electronAPI.analyzeMangaPage(autoGenUrl.trim(), { runId });
+      if (activeAnalyzeRunIdRef.current !== runId) return;
+      if (!rawResult.ok) {
+        setAnalysisMatrix((prev) => completeAnalysisMatrix(prev, { status: 'error', detail: rawResult.error }));
+        setAutoGenError(rawResult.error);
         setAutoGenPhase('input');
         return;
       }
-      setAutoGenData(result);
-      setAutoGenEditName(result.siteInfo.name);
-      setAutoGenEditId(result.siteInfo.id);
+      let nextData = rawResult;
+      setAutoGenData(nextData);
+      setAutoGenEditName(nextData.siteInfo.name);
+      setAutoGenEditId(nextData.siteInfo.id);
+      setAutoGenIncludeLatest(Boolean(nextData.detected?.latestUpdates?.detected));
+      setAutoGenDetectedChapterSel(nextData.detected?.chapterSelector || '');
+      setAutoGenDetectedImageSel('');
+      setAutoGenSelectors({
+        titleSelector: nextData.detected?.titleSelector || '',
+        coverSelector: nextData.detected?.coverSelector || '',
+        chapterSelector: nextData.detected?.chapterSelector || '',
+        imageSelector: '',
+      });
 
-      if (result.needsChapterUrl) {
+      if (nextData.needsChapterUrl) {
         setAutoGenPhase('needChapter');
       } else {
-        const chapterUrl = result.detected.chapterFirstUrl;
+        const chapterUrl = nextData.detected.chapterFirstUrl;
         if (chapterUrl) {
           setAutoGenPhase('analyzingChapter');
           try {
-            const chResult = await window.electronAPI.analyzeChapterPage(chapterUrl, result.siteInfo.baseUrl);
+            const chResult = await window.electronAPI.analyzeChapterPage(chapterUrl, nextData.siteInfo.baseUrl, { runId });
+            if (activeAnalyzeRunIdRef.current !== runId) return;
             if (chResult?.ok) {
               setAutoGenChapterData(chResult);
+              setAutoGenDetectedImageSel(chResult.imageSelector || '');
+              setAutoGenSelectors((prev) => ({
+                ...prev,
+                imageSelector: chResult.imageSelector || '',
+              }));
               if (chResult.extraDomains && chResult.extraDomains.length > 0) {
-                const merged = new Set([...result.siteInfo.domains, ...chResult.extraDomains]);
-                result.siteInfo.domains = [...merged].slice(0, 15);
+                const merged = new Set([...nextData.siteInfo.domains, ...chResult.extraDomains]);
+                nextData = {
+                  ...nextData,
+                  siteInfo: { ...nextData.siteInfo, domains: [...merged].slice(0, 15) },
+                };
+                setAutoGenData(nextData);
               }
+            } else {
+              setAnalysisMatrix((prev) =>
+                applyAnalysisProgressEvent(prev, {
+                  step: 'chapter_images',
+                  status: 'warn',
+                  progress: 94,
+                  detail: chResult?.error || '',
+                }),
+              );
             }
           } catch (e) {
+            if (activeAnalyzeRunIdRef.current !== runId) return;
             console.warn('Chapter analysis failed:', e);
+            setAnalysisMatrix((prev) =>
+              applyAnalysisProgressEvent(prev, {
+                step: 'chapter_images',
+                status: 'warn',
+                progress: 94,
+                detail: e.message || '',
+              }),
+            );
           }
         }
+        setAnalysisMatrix((prev) => completeAnalysisMatrix(prev, { status: 'done', percent: 100 }));
         setAutoGenPhase('review');
       }
     } catch (e) {
+      if (activeAnalyzeRunIdRef.current !== runId) return;
+      setAnalysisMatrix((prev) => completeAnalysisMatrix(prev, { status: 'error', detail: e.message }));
       setAutoGenError(e.message);
       setAutoGenPhase('input');
     }
@@ -455,31 +651,85 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
 
   async function handleAnalyzeChapterPage() {
     if (!autoGenChapterUrl.trim()) return;
+    const runId = `analyze-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    activeAnalyzeRunIdRef.current = runId;
+    setAnalysisMatrix((prev) => prepareChapterRetryMatrix(prev, autoGenChapterUrl.trim(), runId));
     setAutoGenPhase('analyzingChapter');
     setAutoGenError(null);
+    setAutoGenTestResult(null);
     try {
       const chResult = await window.electronAPI.analyzeChapterPage(
         autoGenChapterUrl.trim(),
-        autoGenData?.siteInfo?.baseUrl || autoGenUrl
+        autoGenData?.siteInfo?.baseUrl || autoGenUrl,
+        { runId },
       );
+      if (activeAnalyzeRunIdRef.current !== runId) return;
       if (!chResult.ok) {
+        setAnalysisMatrix((prev) =>
+          completeAnalysisMatrix(prev, { status: 'error', stepId: 'chapter_images', detail: chResult.error }),
+        );
         setAutoGenError(chResult.error);
         setAutoGenPhase('needChapter');
         return;
       }
       setAutoGenChapterData(chResult);
+      setAutoGenDetectedImageSel(chResult.imageSelector || '');
+      setAutoGenSelectors((prev) => ({
+        ...prev,
+        imageSelector: chResult.imageSelector || prev.imageSelector,
+      }));
       if (autoGenData && chResult.extraDomains) {
-        const merged = new Set([...autoGenData.siteInfo.domains, ...chResult.extraDomains]);
-        autoGenData.siteInfo.domains = [...merged].slice(0, 15);
+        setAutoGenData((prev) => {
+          if (!prev) return prev;
+          const merged = new Set([...(prev.siteInfo?.domains || []), ...chResult.extraDomains]);
+          return {
+            ...prev,
+            siteInfo: { ...prev.siteInfo, domains: [...merged].slice(0, 15) },
+          };
+        });
       }
+      setAnalysisMatrix((prev) => completeAnalysisMatrix(prev, { status: 'done', percent: 100 }));
       setAutoGenPhase('review');
     } catch (e) {
+      if (activeAnalyzeRunIdRef.current !== runId) return;
+      setAnalysisMatrix((prev) =>
+        completeAnalysisMatrix(prev, { status: 'error', stepId: 'chapter_images', detail: e.message }),
+      );
       setAutoGenError(e.message);
       setAutoGenPhase('needChapter');
     }
   }
 
-  async function handleGeneratePlugin() {
+  async function handleTestGeneratedPlugin() {
+    if (!autoGenSource || autoGenTestRunning) return;
+    setAutoGenTestRunning(true);
+    setAutoGenError(null);
+    try {
+      const chapterUrlToTest =
+        autoGenChapterUrl.trim() || autoGenData?.detected?.chapterFirstUrl || '';
+      const res = await window.electronAPI.testGeneratedPlugin({
+        source: autoGenSource,
+        mangaUrl: autoGenUrl.trim(),
+        chapterUrl: chapterUrlToTest,
+        testLatest: autoGenIncludeLatest && Boolean(autoGenData?.detected?.latestUpdates?.detected),
+      });
+      setAutoGenTestResult(res || { ok: false, error: t('plugins.autoGen.testNoResult') });
+    } catch (e) {
+      setAutoGenTestResult({ ok: false, error: e.message || String(e), durationMs: 0 });
+    } finally {
+      setAutoGenTestRunning(false);
+    }
+  }
+
+  const existingMatchedPlugin = useMemo(() => {
+    if (!autoGenData) return null;
+    const sourceId = autoGenManualEdit ? extractPluginIdFromSource(autoGenSource) : '';
+    const targetId = sourceId || sanitizePluginId(autoGenEditId || autoGenData.siteInfo?.id);
+    if (!targetId) return null;
+    return plugins.find((p) => String(p.metadata?.id || p.id || '').toLowerCase() === targetId) || null;
+  }, [autoGenData, autoGenEditId, autoGenManualEdit, autoGenSource, plugins]);
+
+  async function executeGeneratePlugin(confirmOverwrite = false) {
     if (!autoGenData) return;
     setAutoGenPhase('generating');
     setAutoGenError(null);
@@ -489,21 +739,37 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
         name: autoGenEditName || autoGenData.siteInfo.name,
         id: autoGenEditId || autoGenData.siteInfo.id,
       };
-      const detected = {
-        ...autoGenData.detected,
-        ...(autoGenChapterData
-          ? {
-              imageSelector: autoGenChapterData.imageSelector,
-              imageContainerSelector: autoGenChapterData.imageContainerSelector,
-            }
-          : {}),
-      };
-      const result = await window.electronAPI.generateAndInstallPlugin(siteInfo, detected, autoGenSource || null);
-      if (result.ok) {
-        setMessage({ type: 'success', text: t('plugins.autoGen.success', { name: siteInfo.name }) });
+      const detected = buildEffectiveDetected(
+        autoGenData,
+        autoGenChapterData,
+        autoGenSelectors,
+        autoGenDetectedChapterSel,
+        autoGenDetectedImageSel,
+      );
+      const result = await window.electronAPI.generateAndInstallPlugin(
+        siteInfo,
+        detected,
+        autoGenSource || null,
+        { includeLatestUpdates: autoGenIncludeLatest, confirmOverwrite },
+      );
+      if (result.requiresConfirmation) {
+        setAutoGenPhase('review');
+        setReplaceConfirmTarget({
+          name: result.existingMetadata?.name || siteInfo.name,
+          id: result.existingMetadata?.id || sanitizePluginId(siteInfo.id),
+          oldVersion: result.existingMetadata?.version || t('plugins.unknownVersion'),
+          newVersion: '1.0.0',
+          onConfirm: () => executeGeneratePlugin(true),
+        });
+      } else if (result.ok) {
+        showMessage('success', t('plugins.autoGen.success', { name: siteInfo.name }));
         setAutoGenPhase('idle');
         setAutoGenData(null);
         setAutoGenChapterData(null);
+        setAutoGenTestResult(null);
+        activeAnalyzeRunIdRef.current = '';
+        setAnalysisMatrix(null);
+        setAnalysisElapsedMs(0);
         await loadPlugins();
         notifyConnectorListChanged();
         setActiveSubtab('installed');
@@ -515,6 +781,22 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
       setAutoGenError(e.message);
       setAutoGenPhase('review');
     }
+  }
+
+  function handleGeneratePlugin() {
+    if (!autoGenData) return;
+    const targetId = sanitizePluginId(autoGenEditId || autoGenData.siteInfo.id);
+    if (existingMatchedPlugin) {
+      setReplaceConfirmTarget({
+        name: existingMatchedPlugin.metadata?.name || autoGenEditName || autoGenData.siteInfo.name,
+        id: existingMatchedPlugin.metadata?.id || targetId,
+        oldVersion: existingMatchedPlugin.metadata?.version || t('plugins.unknownVersion'),
+        newVersion: '1.0.0',
+        onConfirm: () => executeGeneratePlugin(true),
+      });
+      return;
+    }
+    executeGeneratePlugin(false);
   }
 
   // Statistics calculation
@@ -837,35 +1119,6 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
         {/* Central Content Area */}
         <StudioLayout.Content className="overflow-y-auto custom-scrollbar p-5 sm:p-7">
           <div className="max-w-4xl mx-auto w-full space-y-5">
-            {/* Status Alert Banner */}
-            {message ? (
-              <div
-                role="status"
-                className={`rounded-xl px-4 py-3 text-xs sm:text-sm flex items-start gap-3 border shadow-sm ${
-                  message.type === 'error'
-                    ? 'bg-error-container/90 text-on-error-container border-error/20'
-                    : 'bg-surface-container-high text-on-surface border-outline-variant/15'
-                }`}
-              >
-                <span
-                  className="material-symbols-outlined text-[20px] leading-none shrink-0 mt-px"
-                  aria-hidden
-                >
-                  {message.type === 'error' ? 'error' : 'check_circle'}
-                </span>
-                <p className="flex-1 min-w-0 whitespace-pre-wrap leading-snug">{message.text}</p>
-                <button
-                  type="button"
-                  onClick={() => setMessage(null)}
-                  className="shrink-0 -m-1 p-1.5 rounded-lg text-current opacity-70 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer"
-                  aria-label={t('plugins.msg.dismissAria')}
-                  data-tooltip={t('plugins.msg.dismissAria')}
-                >
-                  <span className="material-symbols-outlined text-[18px] leading-none">close</span>
-                </button>
-              </div>
-            ) : null}
-
             {/* Subtab: Installed Plugins */}
             {activeSubtab === 'installed' && (
               <section className="space-y-4">
@@ -1036,10 +1289,23 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
                 onEditNameChange={setAutoGenEditName}
                 editId={autoGenEditId}
                 onEditIdChange={setAutoGenEditId}
+                selectors={autoGenSelectors}
+                onSelectorsChange={setAutoGenSelectors}
+                includeLatest={autoGenIncludeLatest}
+                onIncludeLatestChange={setAutoGenIncludeLatest}
                 autoGenSource={autoGenSource}
-                onAutoGenSourceChange={setAutoGenSource}
+                onAutoGenSourceChange={(val) => {
+                  setAutoGenManualEdit(true);
+                  setAutoGenSource(val);
+                  setAutoGenTestResult(null);
+                }}
+                manualEdit={autoGenManualEdit}
+                onRegenerateSource={() => setAutoGenManualEdit(false)}
                 copiedAutoGenSource={copiedAutoGenSource}
                 onCopyAutoGenSource={handleCopyAutoGenSource}
+                testRunning={autoGenTestRunning}
+                testResult={autoGenTestResult}
+                onTest={handleTestGeneratedPlugin}
                 onAnalyze={handleAnalyzeMangaPage}
                 onAnalyzeChapter={handleAnalyzeChapterPage}
                 onGenerate={handleGeneratePlugin}
@@ -1048,11 +1314,51 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
                   setActiveSubtab('installed');
                 }}
                 onClearError={() => setAutoGenError(null)}
+                analysisMatrix={analysisMatrix}
+                analysisElapsedMs={analysisElapsedMs}
+                existingMatchedPlugin={existingMatchedPlugin}
               />
             )}
           </div>
         </StudioLayout.Content>
       </StudioLayout.Body>
+
+      {/* Auto-Dismiss Floating Toast Notification */}
+      {message ? (
+        <div
+          role="status"
+          aria-live="polite"
+          onMouseEnter={() => setIsToastHovered(true)}
+          onMouseLeave={() => setIsToastHovered(false)}
+          className={`fixed bottom-12 left-1/2 -translate-x-1/2 z-[150] flex items-center gap-2.5 px-4 py-2.5 rounded-2xl border shadow-xl backdrop-blur-md text-xs sm:text-sm font-medium w-max max-w-[min(36rem,calc(100vw-2rem))] animate-in fade-in duration-150 pointer-events-auto ${
+            message.type === 'error'
+              ? 'bg-error-container/95 text-on-error-container border-error/30'
+              : 'bg-surface-container-lowest/95 text-on-surface border-outline-variant/25'
+          }`}
+        >
+          <span
+            className={`material-symbols-outlined text-[18px] leading-none shrink-0 ${
+              message.type === 'error' ? 'text-error' : 'text-emerald-500'
+            }`}
+            aria-hidden
+          >
+            {message.type === 'error' ? 'error' : 'check_circle'}
+          </span>
+          <p className="flex-1 min-w-0 whitespace-pre-wrap leading-snug">{message.text}</p>
+          <button
+            type="button"
+            onClick={() => {
+              setIsToastHovered(false);
+              setMessage(null);
+            }}
+            className="shrink-0 -m-1 p-1 rounded-lg text-current opacity-65 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer transition-opacity"
+            aria-label={t('plugins.msg.dismissAria')}
+            data-tooltip={t('plugins.msg.dismissAria')}
+          >
+            <span className="material-symbols-outlined text-[16px] leading-none">close</span>
+          </button>
+        </div>
+      ) : null}
 
       {/* Modal: View & Edit Plugin Source */}
       <PluginSourceModal
@@ -1545,15 +1851,27 @@ function AutoGeneratorWizard({
   onEditNameChange,
   editId,
   onEditIdChange,
+  selectors,
+  onSelectorsChange,
+  includeLatest,
+  onIncludeLatestChange,
   autoGenSource,
   onAutoGenSourceChange,
+  manualEdit,
+  onRegenerateSource,
   copiedAutoGenSource,
   onCopyAutoGenSource,
+  testRunning,
+  testResult,
+  onTest,
   onAnalyze,
   onAnalyzeChapter,
   onGenerate,
   onCancel,
   onClearError,
+  analysisMatrix,
+  analysisElapsedMs,
+  existingMatchedPlugin,
 }) {
   const isLoading = phase === 'analyzing' || phase === 'analyzingChapter' || phase === 'generating';
 
@@ -1582,7 +1900,7 @@ function AutoGeneratorWizard({
           type="button"
           onClick={onCancel}
           disabled={isLoading}
-          className="shrink-0 p-1.5 -m-1.5 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors cursor-pointer"
+          className="shrink-0 p-1.5 -m-1.5 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors cursor-pointer disabled:opacity-45 disabled:pointer-events-none"
           aria-label={t('plugins.autoGen.cancel')}
         >
           <span className="material-symbols-outlined text-[20px] leading-none">close</span>
@@ -1609,14 +1927,20 @@ function AutoGeneratorWizard({
           </div>
         ) : null}
 
-        {/* Loading spinner */}
-        {isLoading ? (
+        {/* Real-time Diagnostic Matrix or Generating Spinner */}
+        {(phase === 'analyzing' || phase === 'analyzingChapter') && analysisMatrix ? (
+          <AnalysisProgressMatrix matrix={analysisMatrix} elapsedMs={analysisElapsedMs} t={t} />
+        ) : isLoading ? (
           <div className="flex items-center gap-3 py-6 justify-center">
             <span className="material-symbols-outlined text-[24px] text-primary animate-spin">
               progress_activity
             </span>
             <span className="text-xs sm:text-sm text-on-surface-variant font-medium">{statusLabel}</span>
           </div>
+        ) : null}
+
+        {!isLoading && error && analysisMatrix && (phase === 'input' || phase === 'needChapter') ? (
+          <AnalysisProgressMatrix matrix={analysisMatrix} elapsedMs={analysisElapsedMs} t={t} />
         ) : null}
 
         {/* Phase: Input — URL entry */}
@@ -1640,7 +1964,7 @@ function AutoGeneratorWizard({
                 type="button"
                 onClick={onAnalyze}
                 disabled={isLoading || !url.trim()}
-                className={`${BTN_PRIMARY} sm:w-auto sm:min-w-[8rem] h-10`}
+                className={`${BTN_PRIMARY} sm:w-auto sm:min-w-[8rem] h-10 rounded-xl`}
               >
                 <span className="material-symbols-outlined text-[18px] leading-none">search</span>
                 <span>{t('plugins.autoGen.analyze')}</span>
@@ -1672,7 +1996,7 @@ function AutoGeneratorWizard({
                 type="button"
                 onClick={onAnalyzeChapter}
                 disabled={isLoading || !chapterUrl.trim()}
-                className={`${BTN_PRIMARY} sm:w-auto sm:min-w-[8rem] h-10`}
+                className={`${BTN_PRIMARY} sm:w-auto sm:min-w-[8rem] h-10 rounded-xl`}
               >
                 <span className="material-symbols-outlined text-[18px] leading-none">search</span>
                 <span>{t('plugins.autoGen.analyzeChapter')}</span>
@@ -1687,9 +2011,59 @@ function AutoGeneratorWizard({
         {/* Phase: Review results */}
         {phase === 'review' && data ? (
           <div className="space-y-4">
-            <SectionTitle as="h3">
-              {t('plugins.autoGen.resultTitle')}
-            </SectionTitle>
+            {analysisMatrix ? (
+              <AnalysisProgressMatrix matrix={analysisMatrix} elapsedMs={analysisElapsedMs} collapsible t={t} />
+            ) : null}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <SectionTitle as="h3">
+                {t('plugins.autoGen.resultTitle')}
+              </SectionTitle>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {data.template?.label && (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/25">
+                    <span className="material-symbols-outlined text-[13px]">hub</span>
+                    <span>{t('plugins.autoGen.template')}: {data.template.label}</span>
+                  </span>
+                )}
+                {(data.usedChromiumFallback || chapterData?.usedChromiumFallback) && (
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/25">
+                    {t('plugins.autoGen.chromiumUsed')}
+                  </span>
+                )}
+                {(data.browserSnifferUsed || chapterData?.browserSnifferUsed) && (
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/25">
+                    {t('plugins.autoGen.browserSnifferUsed')}
+                  </span>
+                )}
+                {(data.detected?.chapterStrategy === 'api-json' || chapterData?.imageStrategy === 'api-json') && (
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
+                    {t('plugins.autoGen.strategyApiJson')}
+                  </span>
+                )}
+                {(data.detected?.chapterStrategy === 'embedded-json' || chapterData?.imageStrategy === 'embedded-json') && (
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-teal-500/15 text-teal-600 dark:text-teal-400 border border-teal-500/25">
+                    {t('plugins.autoGen.strategyEmbeddedJson')}
+                  </span>
+                )}
+                {data.detected?.chapterStrategy === 'html-paginated' && (
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/25">
+                    {t('plugins.autoGen.strategyHtmlPaginated', {
+                      pages: data.detected?.chapterPagination?.maxPagesDetected || 2,
+                    })}
+                  </span>
+                )}
+                {data.detected?.madaraAjaxChapters && (
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border border-cyan-500/25">
+                    {t('plugins.autoGen.madaraAjax')}
+                  </span>
+                )}
+                {chapterData?.usesTsReader && (
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-600 dark:text-violet-400 border border-violet-500/25">
+                    {t('plugins.autoGen.tsReaderDetected')}
+                  </span>
+                )}
+              </div>
+            </div>
 
             {/* Editable site name and ID */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1717,6 +2091,21 @@ function AutoGeneratorWizard({
               </div>
             </div>
 
+            {existingMatchedPlugin ? (
+              <div className="rounded-lg px-3.5 py-2.5 text-xs flex items-center gap-2.5 bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/25">
+                <span className="material-symbols-outlined text-[18px] shrink-0" aria-hidden>
+                  published_with_changes
+                </span>
+                <p className="flex-1 min-w-0 leading-snug">
+                  {t('plugins.autoGen.existingPluginNotice', {
+                    name: existingMatchedPlugin.metadata?.name || existingMatchedPlugin.id,
+                    id: existingMatchedPlugin.metadata?.id || existingMatchedPlugin.id,
+                    version: existingMatchedPlugin.metadata?.version || t('plugins.unknownVersion'),
+                  })}
+                </p>
+              </div>
+            ) : null}
+
             {/* Detection results table */}
             <div className="rounded-xl border border-outline-variant/15 bg-surface-container-highest/50 divide-y divide-outline-variant/10 overflow-hidden">
               {/* Base URL */}
@@ -1735,25 +2124,47 @@ function AutoGeneratorWizard({
                 <span className="text-xs sm:text-sm text-on-surface truncate">{data.detected.title || '—'}</span>
               </div>
 
-              {/* Chapters */}
-              <div className="flex items-center gap-3 px-4 py-2.5">
-                <SectionTitle as="span" className="w-28 shrink-0">
-                  {t('plugins.autoGen.chaptersOk')}
-                </SectionTitle>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`material-symbols-outlined text-[18px] ${
-                      data.detected.chapterCount > 0 ? 'text-green-500' : 'text-on-surface-variant/50'
-                    }`}
-                  >
-                    {data.detected.chapterCount > 0 ? 'check_circle' : 'help'}
-                  </span>
-                  <span className="text-xs sm:text-sm text-on-surface">
-                    {data.detected.chapterCount > 0
-                      ? t('plugins.autoGen.detectedChapters', { count: data.detected.chapterCount })
-                      : t('plugins.autoGen.notDetected')}
-                  </span>
+              {/* Detected author */}
+              {data.detected.author ? (
+                <div className="flex items-center gap-3 px-4 py-2.5">
+                  <SectionTitle as="span" className="w-28 shrink-0">
+                    {t('plugins.autoGen.author')}
+                  </SectionTitle>
+                  <span className="text-xs sm:text-sm text-on-surface truncate">{data.detected.author}</span>
                 </div>
+              ) : null}
+
+              {/* Chapters */}
+              <div className="flex items-center justify-between gap-3 px-4 py-2.5 flex-wrap">
+                <div className="flex items-center gap-3">
+                  <SectionTitle as="span" className="w-28 shrink-0">
+                    {t('plugins.autoGen.chaptersOk')}
+                  </SectionTitle>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`material-symbols-outlined text-[18px] ${
+                        data.detected.chapterCount > 0 ? 'text-green-500' : 'text-on-surface-variant/50'
+                      }`}
+                    >
+                      {data.detected.chapterCount > 0 ? 'check_circle' : 'help'}
+                    </span>
+                    <span className="text-xs sm:text-sm text-on-surface">
+                      {data.detected.chapterCount > 0
+                        ? t('plugins.autoGen.detectedChapters', { count: data.detected.chapterCount })
+                        : t('plugins.autoGen.notDetected')}
+                    </span>
+                  </div>
+                </div>
+                {data.detected.chapterCount > 0 && (
+                  <span className="text-[11px] font-medium text-on-surface-variant">
+                    {t('plugins.autoGen.chapterOrder')}:{' '}
+                    <strong className="text-on-surface">
+                      {data.detected.chapterOrder === 'asc'
+                        ? t('plugins.autoGen.orderAsc')
+                        : t('plugins.autoGen.orderDesc')}
+                    </strong>
+                  </span>
+                )}
               </div>
 
               {/* Images */}
@@ -1777,6 +2188,57 @@ function AutoGeneratorWizard({
                 </div>
               </div>
 
+              {/* Latest Updates */}
+              <div className="flex items-center justify-between gap-3 px-4 py-2.5 flex-wrap">
+                <div className="flex items-center gap-3">
+                  <SectionTitle as="span" className="w-28 shrink-0">
+                    {t('plugins.autoGen.latestUpdatesOk')}
+                  </SectionTitle>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`material-symbols-outlined text-[18px] ${
+                        data.detected?.latestUpdates?.detected ? 'text-green-500' : 'text-on-surface-variant/50'
+                      }`}
+                    >
+                      {data.detected?.latestUpdates?.detected ? 'check_circle' : 'remove_circle_outline'}
+                    </span>
+                    <span className="text-xs sm:text-sm text-on-surface">
+                      {data.detected?.latestUpdates?.detected
+                        ? t('plugins.autoGen.detectedLatestItems', { count: data.detected.latestUpdates.sampleCount })
+                        : t('plugins.autoGen.notDetected')}
+                    </span>
+                  </div>
+                </div>
+                {data.detected?.latestUpdates?.detected && (
+                  <label className="inline-flex items-center gap-2 text-xs text-on-surface-variant cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(includeLatest)}
+                      onChange={(e) => onIncludeLatestChange(e.target.checked)}
+                      className="rounded border-outline-variant/40 text-primary focus:ring-primary"
+                    />
+                    <span>{t('plugins.autoGen.includeLatestUpdates')}</span>
+                  </label>
+                )}
+              </div>
+
+              {/* API Endpoint (if SPA api-json detected) */}
+              {(data.detected?.chapterApi?.urlTemplate || chapterData?.imageApi?.urlTemplate) ? (
+                <div className="flex items-start gap-3 px-4 py-2.5">
+                  <SectionTitle as="span" className="w-28 shrink-0 pt-0.5">
+                    {t('plugins.autoGen.apiEndpointDetected')}
+                  </SectionTitle>
+                  <div className="min-w-0 flex-1 space-y-1 text-[11px] font-mono text-on-surface-variant">
+                    {data.detected?.chapterApi?.urlTemplate ? (
+                      <div className="truncate">{data.detected.chapterApi.urlTemplate}</div>
+                    ) : null}
+                    {chapterData?.imageApi?.urlTemplate ? (
+                      <div className="truncate">{chapterData.imageApi.urlTemplate}</div>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+
               {/* Domains */}
               <div className="flex items-start gap-3 px-4 py-2.5">
                 <SectionTitle as="span" className="w-28 shrink-0 pt-0.5">
@@ -1795,6 +2257,16 @@ function AutoGeneratorWizard({
               </div>
             </div>
 
+            {/* Warning if SPA renders DOM only without replayable JSON API */}
+            {(data.detected?.spaRenderWarning || chapterData?.spaRenderWarning) ? (
+              <div className="rounded-lg px-3.5 py-2.5 text-xs sm:text-sm flex items-start gap-2.5 bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/25">
+                <span className="material-symbols-outlined text-[18px] shrink-0 mt-0.5" aria-hidden>
+                  warning
+                </span>
+                <p className="flex-1 min-w-0 leading-snug">{t('plugins.autoGen.spaRenderWarning')}</p>
+              </div>
+            ) : null}
+
             {/* Warning if no images detected */}
             {!chapterData?.imageCount ? (
               <div className="rounded-lg px-3.5 py-2.5 text-xs sm:text-sm flex items-start gap-2.5 bg-surface-container-high/80 text-on-surface-variant border border-outline-variant/15">
@@ -1802,6 +2274,89 @@ function AutoGeneratorWizard({
                   info
                 </span>
                 <p className="flex-1 min-w-0 leading-snug">{t('plugins.autoGen.noImages')}</p>
+              </div>
+            ) : null}
+
+            {/* Advanced CSS Selector Overrides */}
+            <details className="group rounded-xl border border-outline-variant/15 bg-surface-container-highest/50 p-3">
+              <summary className="cursor-pointer hover:text-on-surface transition-colors flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[16px] transition-transform group-open:rotate-90">
+                  chevron_right
+                </span>
+                <SectionTitle as="span">
+                  {t('plugins.autoGen.advancedSelectors')}
+                </SectionTitle>
+              </summary>
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {[
+                  ['titleSelector', t('plugins.autoGen.titleSelector')],
+                  ['coverSelector', t('plugins.autoGen.coverSelector')],
+                  ['chapterSelector', t('plugins.autoGen.chapterSelector')],
+                  ['imageSelector', t('plugins.autoGen.imageSelector')],
+                ].map(([fieldKey, labelText]) => (
+                  <label key={fieldKey} className="space-y-1 block">
+                    <SectionTitle as="span" className="block">
+                      {labelText}
+                    </SectionTitle>
+                    <input
+                      type="text"
+                      value={selectors?.[fieldKey] || ''}
+                      onChange={(e) =>
+                        onSelectorsChange((prev) => ({ ...prev, [fieldKey]: e.target.value }))
+                      }
+                      className="w-full bg-surface-container-highest border border-outline-variant/15 rounded-xl text-xs font-mono h-10 px-3.5 text-on-surface focus:ring-2 focus:ring-primary/40 focus:border-transparent outline-none"
+                    />
+                  </label>
+                ))}
+              </div>
+            </details>
+
+            {/* Live Dry-Run Result */}
+            {testResult ? (
+              <div
+                data-testid="autogen-test-result"
+                className={`rounded-xl border px-3.5 py-3 text-xs space-y-1.5 ${
+                  testResult.ok
+                    ? 'border-emerald-500/30 bg-emerald-500/10 text-on-surface'
+                    : 'border-error/30 bg-error-container/50 text-on-error-container'
+                }`}
+              >
+                <div className="flex items-center gap-2 font-semibold">
+                  <span className={`material-symbols-outlined text-[17px] ${testResult.ok ? 'text-emerald-500' : 'text-error'}`}>
+                    {testResult.ok ? 'verified' : 'error'}
+                  </span>
+                  <span>
+                    {testResult.ok
+                      ? t('plugins.autoGen.testPassed', { ms: testResult.durationMs || 0 })
+                      : t('plugins.autoGen.testFailed', { ms: testResult.durationMs || 0 })}
+                  </span>
+                </div>
+                {testResult.error ? (
+                  <p className="text-[11px] leading-snug">{testResult.error}</p>
+                ) : (
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-on-surface-variant">
+                    <span>
+                      fetchManga:{' '}
+                      {testResult.manga?.ok
+                        ? t('plugins.autoGen.detectedChapters', { count: testResult.manga.chapterCount })
+                        : testResult.manga?.error || t('plugins.autoGen.testStepFail')}
+                    </span>
+                    <span>
+                      fetchChapterImages:{' '}
+                      {testResult.chapter?.ok
+                        ? t('plugins.autoGen.detectedImages', { count: testResult.chapter.imageCount })
+                        : testResult.chapter?.error || t('plugins.autoGen.testStepFail')}
+                    </span>
+                    {testResult.latest?.supported && (
+                      <span>
+                        fetchLatestUpdates:{' '}
+                        {testResult.latest?.ok
+                          ? t('plugins.autoGen.detectedLatestItems', { count: testResult.latest.itemCount })
+                          : testResult.latest?.error || t('plugins.autoGen.testStepFail')}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             ) : null}
 
@@ -1815,19 +2370,34 @@ function AutoGeneratorWizard({
                     </span>
                     <span>{t('plugins.autoGen.viewSourceHint')}</span>
                   </SectionTitle>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      onCopyAutoGenSource();
-                    }}
-                    className={BTN_SURFACE}
-                  >
-                    <span className="material-symbols-outlined text-[14px]">
-                      {copiedAutoGenSource ? 'check' : 'content_copy'}
-                    </span>
-                    <span>{copiedAutoGenSource ? t('plugins.codeCopied') : t('plugins.copyCode')}</span>
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    {manualEdit && onRegenerateSource && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          onRegenerateSource();
+                        }}
+                        className={BTN_SURFACE}
+                      >
+                        <span className="material-symbols-outlined text-[14px]">refresh</span>
+                        <span>{t('plugins.autoGen.regenerateSource')}</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        onCopyAutoGenSource();
+                      }}
+                      className={BTN_SURFACE}
+                    >
+                      <span className="material-symbols-outlined text-[14px]">
+                        {copiedAutoGenSource ? 'check' : 'content_copy'}
+                      </span>
+                      <span>{copiedAutoGenSource ? t('plugins.codeCopied') : t('plugins.copyCode')}</span>
+                    </button>
+                  </div>
                 </summary>
                 <div className="mt-3 space-y-2">
                   <textarea
@@ -1844,14 +2414,25 @@ function AutoGeneratorWizard({
             <div className="flex flex-wrap gap-2 pt-1">
               <button
                 type="button"
+                onClick={onTest}
+                disabled={isLoading || testRunning || !autoGenSource}
+                className={BTN_SURFACE}
+              >
+                <span className={`material-symbols-outlined text-[18px] leading-none ${testRunning ? 'animate-spin' : 'text-primary'}`}>
+                  {testRunning ? 'progress_activity' : 'play_arrow'}
+                </span>
+                <span>{testRunning ? t('plugins.autoGen.testingPlugin') : t('plugins.autoGen.testPlugin')}</span>
+              </button>
+              <button
+                type="button"
                 onClick={onGenerate}
-                disabled={isLoading}
+                disabled={isLoading || testRunning}
                 className={BTN_PRIMARY}
               >
                 <span className="material-symbols-outlined text-[18px] leading-none">auto_fix_high</span>
                 <span>{t('plugins.autoGen.generate')}</span>
               </button>
-              <button type="button" onClick={onCancel} disabled={isLoading} className={BTN_SURFACE}>
+              <button type="button" onClick={onCancel} disabled={isLoading || testRunning} className={BTN_SURFACE}>
                 {t('plugins.autoGen.cancel')}
               </button>
             </div>

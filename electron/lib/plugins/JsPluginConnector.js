@@ -10,10 +10,12 @@ const cheerio = require('cheerio');
 const axios = require('axios');
 const logger = require('../shared/logger');
 const { BaseConnectorService } = require('../platform/connectors/base/BaseConnectorService');
+const { fetchHtml } = require('../download/connector/htmlConnectorUtils');
+const { isLikelyCloudflareOrBlocked, validatePublicHttpUrl } = require('./pluginTemplates');
 const { emitPluginConsole, formatPluginConsoleArgs } = require('./pluginConsoleBridge');
 
 class JsPluginConnector extends BaseConnectorService {
-  constructor({ metadata, source, pluginId }) {
+  constructor({ metadata, source, pluginId, fetchHtmlImpl = null }) {
     super({
       domain: metadata.baseUrl,
       label: metadata.name,
@@ -25,6 +27,7 @@ class JsPluginConnector extends BaseConnectorService {
     this.metadata = metadata;
     this.source = source;
     this.pluginId = pluginId;
+    this.fetchHtmlImpl = typeof fetchHtmlImpl === 'function' ? fetchHtmlImpl : null;
     this.consecutiveErrors = 0;
     this.icon = metadata.icon || null;
     this.imageReferer = metadata.baseUrl;
@@ -45,8 +48,8 @@ class JsPluginConnector extends BaseConnectorService {
     this.sandbox = {
       plugin: null,
       
-      // Console API — main process logger + renderer strip (Latest updates / plugin debug)
-      console: {
+      // Console API — frozen wrapper; V8 codeGeneration.strings=false blocks constructor escapes
+      console: Object.freeze({
         log: (...args) => {
           emitPluginConsole(this.pluginId, 'info', args);
           logger.info(`[Plugin:${this.pluginId}] ${formatPluginConsoleArgs(args)}`);
@@ -59,47 +62,16 @@ class JsPluginConnector extends BaseConnectorService {
           emitPluginConsole(this.pluginId, 'error', args);
           logger.error(`[Plugin:${this.pluginId}] ${formatPluginConsoleArgs(args)}`);
         },
-      },
+      }),
       
-      // HTTP API
-      http: {
-        get: async (url, options = {}) => {
-          try {
-            const response = await axios.get(url, {
-              headers: options.headers || {},
-              timeout: options.timeout || 30000
-            });
-            return {
-              status: response.status,
-              statusText: response.statusText,
-              headers: response.headers,
-              body: this._normalizeHttpBody(response.data),
-            };
-          } catch (e) {
-            throw new Error(`HTTP GET failed: ${e.message}`);
-          }
-        },
-        
-        post: async (url, data, options = {}) => {
-          try {
-            const response = await axios.post(url, data, {
-              headers: options.headers || {},
-              timeout: options.timeout || 30000
-            });
-            return {
-              status: response.status,
-              statusText: response.statusText,
-              headers: response.headers,
-              body: this._normalizeHttpBody(response.data),
-            };
-          } catch (e) {
-            throw new Error(`HTTP POST failed: ${e.message}`);
-          }
-        }
-      },
+      // HTTP API — validates public URLs, injects default Referer & automatic Chromium TLS fallback
+      http: Object.freeze({
+        get: (url, options = {}) => this._sandboxHttpRequest('GET', url, null, options),
+        post: (url, data, options = {}) => this._sandboxHttpRequest('POST', url, data, options),
+      }),
       
       // HTML parsing API
-      html: {
+      html: Object.freeze({
         parse: (htmlString) => {
           const $ = cheerio.load(htmlString);
           
@@ -121,10 +93,10 @@ class JsPluginConnector extends BaseConnectorService {
             },
           };
         }
-      },
+      }),
       
       // JSON API — http responses often return body already parsed (object); accept that too
-      json: {
+      json: Object.freeze({
         parse: (input) => {
           if (input === null || input === undefined) {
             throw new Error('json.parse: input is null or undefined');
@@ -141,10 +113,10 @@ class JsPluginConnector extends BaseConnectorService {
           throw new Error(`json.parse: expected string or object, got ${typeof input}`);
         },
         stringify: (obj) => JSON.stringify(obj),
-      },
+      }),
       
       // Utils API
-      utils: {
+      utils: Object.freeze({
         resolveUrl: (base, relative) => {
           try {
             return new URL(relative, base).href;
@@ -155,18 +127,111 @@ class JsPluginConnector extends BaseConnectorService {
         
         encodeUri: (str) => encodeURIComponent(str),
         decodeUri: (str) => decodeURIComponent(str)
-      },
+      }),
       
       // Storage API (stub for now)
-      storage: {
+      storage: Object.freeze({
         get: async (key) => null,
         set: async (key, value) => {},
         remove: async (key) => {},
         clear: async () => {}
-      }
+      })
     };
     
-    this.context = vm.createContext(this.sandbox);
+    this.context = vm.createContext(this.sandbox, {
+      codeGeneration: { strings: false, wasm: false },
+    });
+  }
+
+  async _sandboxHttpRequest(method, url, data = null, options = {}) {
+    const urlCheck = validatePublicHttpUrl(url);
+    if (!urlCheck.ok) {
+      throw new Error(`HTTP ${method} blocked: ${urlCheck.error}`);
+    }
+
+    const reqHeaders = { ...(options?.headers || {}) };
+    const hasReferer = Object.keys(reqHeaders).some((k) => k.toLowerCase() === 'referer');
+    if (!hasReferer && this.domain) {
+      reqHeaders.Referer = this.domain;
+    }
+
+    if (this.fetchHtmlImpl) {
+      const reqOpts = {
+        method,
+        referer: reqHeaders.Referer || reqHeaders.referer || this.domain,
+        headers: reqHeaders,
+        ...(data != null ? { body: typeof data === 'string' ? data : JSON.stringify(data) } : {}),
+      };
+      const first = await this.fetchHtmlImpl(url, { ...reqOpts, preferChromiumNet: false });
+      if (first?.ok && !isLikelyCloudflareOrBlocked('', first.html)) {
+        return { status: 200, statusText: 'OK', headers: {}, body: this._normalizeHttpBody(first.html) };
+      }
+      const retry = await this.fetchHtmlImpl(url, { ...reqOpts, preferChromiumNet: true });
+      if (retry?.ok && !isLikelyCloudflareOrBlocked('', retry.html)) {
+        return { status: 200, statusText: 'OK', headers: {}, body: this._normalizeHttpBody(retry.html) };
+      }
+      throw new Error(`HTTP ${method} failed: ${retry?.error || first?.error || 'Request failed'}`);
+    }
+
+    try {
+      const response =
+        method === 'POST'
+          ? await axios.post(url, data, {
+              headers: reqHeaders,
+              timeout: options.timeout || 30000,
+              maxRedirects: 5,
+            })
+          : await axios.get(url, {
+              headers: reqHeaders,
+              timeout: options.timeout || 30000,
+              maxRedirects: 5,
+            });
+      const finalUrl = response?.request?.res?.responseUrl;
+      if (finalUrl && !validatePublicHttpUrl(finalUrl).ok) {
+        throw new Error('HTTP redirect to internal address blocked');
+      }
+      const body = this._normalizeHttpBody(response.data);
+      if (isLikelyCloudflareOrBlocked('', body)) {
+        throw new Error('HTTP 403 Cloudflare challenge');
+      }
+      return {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+        body,
+      };
+    } catch (e) {
+      const status = e?.response?.status;
+      const shouldFallback =
+        status === 403 ||
+        status === 429 ||
+        status === 503 ||
+        status === 520 ||
+        status === 521 ||
+        /Cloudflare|ECONNRESET|CERT_|TLS|socket hang up/i.test(String(e?.message || ''));
+
+      if (shouldFallback) {
+        const res = await fetchHtml(url, {
+          method,
+          headers: reqHeaders,
+          referer: reqHeaders.Referer || reqHeaders.referer || this.domain,
+          ...(data != null ? { body: typeof data === 'string' ? data : JSON.stringify(data) } : {}),
+          preferChromiumNet: true,
+        });
+        if (res?.ok && !isLikelyCloudflareOrBlocked('', res.html)) {
+          if (res.finalUrl && !validatePublicHttpUrl(res.finalUrl).ok) {
+            throw new Error('HTTP redirect to internal address blocked');
+          }
+          return {
+            status: 200,
+            statusText: 'OK',
+            headers: {},
+            body: this._normalizeHttpBody(res.html),
+          };
+        }
+      }
+      throw new Error(`HTTP ${method} failed: ${e.message}`);
+    }
   }
 
   /**

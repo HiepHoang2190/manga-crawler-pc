@@ -62,12 +62,29 @@ function registerPluginsIpc(ipc_context) {
   const PluginAutoGenerator = require('../lib/plugins/PluginAutoGenerator');
   const PluginCodeGenerator = require('../lib/plugins/PluginCodeGenerator');
 
-  ipcMain.handle('plugin:analyzeMangaPage', async (_event, { url }) => {
-    return PluginAutoGenerator.analyzeMangaPage(url);
+  ipcMain.handle('plugin:analyzeMangaPage', async (event, payload = {}) => {
+    const runId = typeof payload?.runId === 'string' ? payload.runId : null;
+    return PluginAutoGenerator.analyzeMangaPage(payload?.url, {
+      cookie: payload?.cookie,
+      skipLatestProbe: Boolean(payload?.skipLatestProbe),
+      onProgress: (ev) => {
+        if (event?.sender && !event.sender.isDestroyed()) {
+          event.sender.send('plugin:analyzeProgress', { runId, ...ev });
+        }
+      },
+    });
   });
 
-  ipcMain.handle('plugin:analyzeChapterPage', async (_event, { chapterUrl, baseUrl }) => {
-    return PluginAutoGenerator.analyzeChapterPage(chapterUrl, baseUrl);
+  ipcMain.handle('plugin:analyzeChapterPage', async (event, payload = {}) => {
+    const runId = typeof payload?.runId === 'string' ? payload.runId : null;
+    return PluginAutoGenerator.analyzeChapterPage(payload?.chapterUrl, payload?.baseUrl, {
+      cookie: payload?.cookie,
+      onProgress: (ev) => {
+        if (event?.sender && !event.sender.isDestroyed()) {
+          event.sender.send('plugin:analyzeProgress', { runId, ...ev });
+        }
+      },
+    });
   });
 
   ipcMain.handle('plugin:getSource', async (_event, { pluginId }) => {
@@ -79,18 +96,41 @@ function registerPluginsIpc(ipc_context) {
     }
   });
 
-  ipcMain.handle('plugin:generateSource', async (_event, { siteInfo, detected }) => {
+  ipcMain.handle('plugin:generateSource', async (_event, payload = {}) => {
     try {
-      const source = PluginCodeGenerator.generate({ siteInfo, detected });
+      const source = PluginCodeGenerator.generate({
+        siteInfo: payload?.siteInfo,
+        detected: payload?.detected,
+        includeLatestUpdates: payload?.includeLatestUpdates !== false,
+      });
       return { ok: true, source };
     } catch (e) {
       return { ok: false, error: e.message };
     }
   });
 
-  ipcMain.handle('plugin:generateAndInstall', async (_event, { siteInfo, detected, customSource }) => {
+  ipcMain.handle('plugin:testGeneratedSource', async (_event, payload = {}) => {
     try {
-      const source = customSource || PluginCodeGenerator.generate({ siteInfo, detected });
+      return await PluginAutoGenerator.testGeneratedPlugin({
+        source: payload?.source,
+        mangaUrl: payload?.mangaUrl,
+        chapterUrl: payload?.chapterUrl,
+        testLatest: payload?.testLatest !== false,
+      });
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle('plugin:generateAndInstall', async (_event, payload = {}) => {
+    try {
+      const source =
+        payload?.customSource ||
+        PluginCodeGenerator.generate({
+          siteInfo: payload?.siteInfo,
+          detected: payload?.detected,
+          includeLatestUpdates: payload?.includeLatestUpdates !== false,
+        });
 
       // Validate generated code
       const PluginValidator = require('../lib/plugins/PluginValidator');
@@ -106,7 +146,15 @@ function registerPluginsIpc(ipc_context) {
       if (result.success) {
         return { ok: true, metadata: result.metadata, source };
       } else if (result.requiresConfirmation) {
-        // Plugin with same ID exists — auto-confirm replacement
+        if (payload?.confirmOverwrite === false) {
+          return {
+            ok: false,
+            requiresConfirmation: true,
+            existingMetadata: result.metadata,
+            source,
+          };
+        }
+        // Plugin with same ID exists — confirmed replacement
         const confirmResult = await JsPluginManager.confirmPendingReplacement(result.metadata.id);
         return { ok: confirmResult.success, metadata: result.metadata, source, wasReplacement: true };
       } else {

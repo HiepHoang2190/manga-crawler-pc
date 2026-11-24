@@ -143,6 +143,7 @@ const CHANNEL_MAP = {
     'plugin:analyzeChapterPage',
     'plugin:getSource',
     'plugin:generateSource',
+    'plugin:testGeneratedSource',
     'plugin:generateAndInstall',
   ],
   'auth.js': [

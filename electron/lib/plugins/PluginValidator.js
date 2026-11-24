@@ -33,7 +33,7 @@ class PluginValidator {
       return this._fail('Plugin source must be a non-empty string.');
     }
 
-    // Check for dangerous patterns
+    // Check for dangerous patterns & prototype sandbox escape vectors
     const dangerousPatterns = [
       /require\s*\(/,
       /process\./,
@@ -42,7 +42,13 @@ class PluginValidator {
       /eval\s*\(/,
       /Function\s*\(/,
       /__dirname/,
-      /__filename/
+      /__filename/,
+      /\.constructor\b/,
+      /\bconstructor\s*\[/,
+      /__proto__/,
+      /\bglobalThis\b/,
+      /\bReflect\b/,
+      /\bimport\s*\(/,
     ];
 
     for (const pattern of dangerousPatterns) {
@@ -64,19 +70,21 @@ class PluginValidator {
    * Extract and validate plugin metadata
    */
   _extractMetadata(source) {
-    // Create a safe sandbox to evaluate the plugin
+    // Create a safe sandbox with string code generation disabled at V8 level
     const sandbox = {
       plugin: null,
-      console: {
+      console: Object.freeze({
         log: () => {},
         warn: () => {},
         error: () => {}
-      }
+      })
     };
 
     // Evaluate the plugin source in the sandbox
     const script = new vm.Script(source);
-    const context = vm.createContext(sandbox);
+    const context = vm.createContext(sandbox, {
+      codeGeneration: { strings: false, wasm: false },
+    });
     script.runInContext(context, { timeout: 1000 });
 
     // Top-level `const`/`let plugin = {...}` does not assign `sandbox.plugin` in vm

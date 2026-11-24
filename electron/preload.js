@@ -371,10 +371,22 @@ const api = {
   getPluginSource: (pluginId) => ipcRenderer.invoke('plugin:getSource', { pluginId }),
 
   // Plugin Auto-Generator
-  analyzeMangaPage: (url) => ipcRenderer.invoke('plugin:analyzeMangaPage', { url }),
-  analyzeChapterPage: (chapterUrl, baseUrl) => ipcRenderer.invoke('plugin:analyzeChapterPage', { chapterUrl, baseUrl }),
-  generatePluginSource: (siteInfo, detected) => ipcRenderer.invoke('plugin:generateSource', { siteInfo, detected }),
-  generateAndInstallPlugin: (siteInfo, detected, customSource) => ipcRenderer.invoke('plugin:generateAndInstall', { siteInfo, detected, customSource }),
+  analyzeMangaPage: (url, opts) =>
+    ipcRenderer.invoke('plugin:analyzeMangaPage', { url, ...(opts && typeof opts === 'object' ? opts : {}) }),
+  analyzeChapterPage: (chapterUrl, baseUrl, opts) =>
+    ipcRenderer.invoke('plugin:analyzeChapterPage', { chapterUrl, baseUrl, ...(opts && typeof opts === 'object' ? opts : {}) }),
+  subscribePluginAnalyzeProgress: (callback) => {
+    if (typeof callback !== 'function') return () => {};
+    const listener = (_event, data) => callback(data);
+    ipcRenderer.on('plugin:analyzeProgress', listener);
+    return () => ipcRenderer.removeListener('plugin:analyzeProgress', listener);
+  },
+  generatePluginSource: (siteInfo, detected, opts) =>
+    ipcRenderer.invoke('plugin:generateSource', { siteInfo, detected, ...(opts && typeof opts === 'object' ? opts : {}) }),
+  testGeneratedPlugin: (payload) =>
+    ipcRenderer.invoke('plugin:testGeneratedSource', payload || {}),
+  generateAndInstallPlugin: (siteInfo, detected, customSource, opts) =>
+    ipcRenderer.invoke('plugin:generateAndInstall', { siteInfo, detected, customSource, ...(opts && typeof opts === 'object' ? opts : {}) }),
 
   // Send to Kindle (Amazon web-upload)
   sendToKindleIsLoggedIn: () => ipcRenderer.invoke('kindle:isLoggedIn'),

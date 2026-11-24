@@ -6,7 +6,6 @@ import ConsolePanel from './ConsolePanel.jsx';
 import StatusBar from './StatusBar.jsx';
 import ZoomHudToast from './ZoomHudToast.jsx';
 import CommandPaletteModal from './CommandPaletteModal.jsx';
-import ClipboardUrlBanner from './ClipboardUrlBanner.jsx';
 import { formatShortcutHint, getVisibleOrderedViews, isEditableEventTarget } from './commandPaletteUtils.mjs';
 import {
   DEFAULT_ZOOM_FACTOR,
@@ -19,7 +18,6 @@ import {
   summarizeQueueCompletion,
   shouldNotifyQueueCompletion,
 } from './downloadProgressUtils.mjs';
-import { extractCandidateHttpUrl, shouldOfferClipboardUrl } from './clipboardUrlUtils.mjs';
 import { countUnreadErrorsSince } from './consoleLogUtils.mjs';
 import { useTheme } from '../../context/ThemeContext';
 import { useSettings, SettingsPanel, UpdateBadge, AppUpdateModal } from '../settings';
@@ -326,9 +324,6 @@ export default function ShellLayout() {
   const [zoomHudVisible, setZoomHudVisible] = useState(false);
   const zoomHudTimerRef = useRef(null);
   const zoomHudHoveredRef = useRef(false);
-  /** Smart Clipboard URL Banner */
-  const [clipboardCandidate, setClipboardCandidate] = useState(null);
-  const dismissedClipboardUrlsRef = useRef(new Set());
   /** Unread error timestamp threshold while Console drawer is collapsed */
   const [lastSeenErrorTime, setLastSeenErrorTime] = useState(() => Date.now());
   /** Previous queueProcessing state + snapshot for desktop completion notification */
@@ -769,75 +764,6 @@ export default function ShellLayout() {
   const unreadErrorCount = useMemo(
     () => (logFooterVisible ? 0 : countUnreadErrorsSince(logs, lastSeenErrorTime)),
     [logFooterVisible, logs, lastSeenErrorTime]
-  );
-
-  useEffect(() => {
-    if (!authBootstrapped || !isSignedIn) return undefined;
-    const api = typeof window !== 'undefined' ? window.electronAPI : null;
-    if (!api?.readClipboardText || !api?.detectSiteFromUrl) return undefined;
-
-    let timerId = null;
-    let cancelled = false;
-
-    const inspectClipboard = async () => {
-      try {
-        const raw = await api.readClipboardText();
-        const candidateUrl = extractCandidateHttpUrl(raw);
-        if (!candidateUrl || cancelled) return;
-        const detectedSiteId = await api.detectSiteFromUrl(candidateUrl);
-        if (cancelled) return;
-        const ok = shouldOfferClipboardUrl({
-          url: candidateUrl,
-          siteId: detectedSiteId,
-          currentSourceUrl: sourceUrl,
-          dismissedUrls: dismissedClipboardUrlsRef.current,
-        });
-        if (!ok) return;
-        const matchedConnector = connectorList.find((c) => c.id === detectedSiteId);
-        setClipboardCandidate({
-          url: candidateUrl,
-          siteId: detectedSiteId,
-          siteName: matchedConnector?.name || detectedSiteId,
-        });
-      } catch {
-        /* ignore clipboard probe errors */
-      }
-    };
-
-    const onWindowFocus = () => {
-      if (timerId) clearTimeout(timerId);
-      timerId = setTimeout(() => {
-        timerId = null;
-        void inspectClipboard();
-      }, 250);
-    };
-
-    window.addEventListener('focus', onWindowFocus);
-    return () => {
-      cancelled = true;
-      if (timerId) clearTimeout(timerId);
-      window.removeEventListener('focus', onWindowFocus);
-    };
-  }, [authBootstrapped, isSignedIn, sourceUrl, connectorList]);
-
-  const handleDismissClipboardUrl = useCallback((candidate) => {
-    if (candidate?.url) {
-      dismissedClipboardUrlsRef.current.add(candidate.url);
-    }
-    setClipboardCandidate(null);
-  }, []);
-
-  const handleFetchClipboardUrl = useCallback(
-    async (candidate) => {
-      if (!candidate?.url || !candidate?.siteId) return;
-      dismissedClipboardUrlsRef.current.add(candidate.url);
-      setClipboardCandidate(null);
-      setMenuView('home');
-      setSite(candidate.siteId);
-      setSourceUrl(candidate.url);
-      await loadMangaWithParams(candidate.siteId, candidate.url, { force: true });
-    },
-    [setMenuView, setSite, setSourceUrl, loadMangaWithParams]
   );
 
   const handleLogFooterResizePointerDown = useCallback((e) => {
@@ -1824,12 +1750,6 @@ export default function ShellLayout() {
 
         </div>
       ) : null}
-
-      <ClipboardUrlBanner
-        candidate={clipboardCandidate}
-        onFetch={handleFetchClipboardUrl}
-        onDismiss={handleDismissClipboardUrl}
-      />
 
       {authBootstrapped && isSignedIn && pendingRestoreQueue ? (
         <QueueRestoreModal
