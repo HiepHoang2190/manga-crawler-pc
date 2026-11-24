@@ -151,12 +151,12 @@ export default function QueueWorkflowSelector({
           type="button"
           disabled={disabled}
           onClick={() => setIsOpen((prev) => !prev)}
-          className={`cursor-pointer rounded p-1.5 transition-colors flex items-center justify-center ${
+          className={`cursor-pointer h-8 w-8 rounded-lg border border-outline-variant/20 bg-surface-container-highest transition-colors flex items-center justify-center ${
             isCustomized && !isNone
-              ? 'text-primary bg-primary/10 hover:bg-primary/20'
+              ? 'text-primary border-primary/35 bg-primary/10 hover:bg-primary/20'
               : isNone
-                ? 'text-on-surface-variant/50 hover:bg-surface-container-high hover:text-on-surface'
-                : 'text-primary hover:bg-surface-container-high'
+                ? 'text-on-surface-variant/60 hover:border-outline-variant/45 hover:text-on-surface'
+                : 'text-primary hover:border-primary/40 hover:bg-primary/10'
           } disabled:opacity-40 disabled:cursor-not-allowed`}
           data-tooltip={`${t('queue.rowWorkflowTooltip') || 'Quy trình'}: ${activeLabel}`}
           aria-label={`${t('queue.rowWorkflowTooltip') || 'Quy trình'}: ${activeLabel}`}
@@ -283,7 +283,7 @@ export default function QueueWorkflowSelector({
         type="button"
         disabled={disabled}
         onClick={() => setIsOpen((prev) => !prev)}
-        className="h-11 px-3 rounded-xl border border-outline-variant/25 bg-surface-container-highest text-on-surface text-xs font-medium hover:border-outline-variant/50 transition-colors cursor-pointer flex items-center gap-2 shrink-0 select-none disabled:opacity-40 disabled:cursor-not-allowed max-w-[260px]"
+        className="h-10 px-3 rounded-xl border border-outline-variant/25 bg-surface-container-highest text-on-surface text-xs font-medium hover:border-outline-variant/50 transition-colors cursor-pointer flex items-center gap-2 shrink-0 select-none disabled:opacity-40 disabled:cursor-not-allowed max-w-[260px]"
         data-tooltip={`${t('queue.workflowSelectorLabel') || 'Quy trình sau tải'}: ${activeLabel}`}
         aria-label={`${t('queue.workflowSelectorLabel') || 'Quy trình sau tải'}: ${activeLabel}`}
       >

@@ -2,6 +2,9 @@ import React from 'react';
 import { FavoriteNotifyBell } from './FavoriteNotifyBell';
 import { isKindleEligible, isExtractedTempRow, FAV_MS_ICON_18 } from './offlineLibraryUtils';
 
+const ROW_ACTION_BTN =
+  'inline-flex items-center justify-center h-8 w-8 rounded-lg border border-outline-variant/20 bg-surface-container-highest shrink-0 transition-colors cursor-pointer';
+
 export function OfflineListActions({
   row,
   t,
@@ -37,7 +40,7 @@ export function OfflineListActions({
       <button
         type="button"
         onClick={handleRead}
-        className="inline-flex items-center justify-center w-9 h-9 shrink-0 rounded-full bg-surface-container-high text-primary border border-outline-variant/30 shadow-sm hover:brightness-110 transition-[filter] cursor-pointer"
+        className={`${ROW_ACTION_BTN} text-primary hover:border-primary/40 hover:bg-primary/10`}
         data-tooltip={
           isCbzPin
             ? row.archiveKind === 'archive'
@@ -63,10 +66,10 @@ export function OfflineListActions({
             e.stopPropagation();
             onToggleFavorite(row);
           }}
-          className={`inline-flex items-center justify-center w-9 h-9 shrink-0 rounded-full border shadow-sm transition-[filter,color,background-color] cursor-pointer ${
+          className={`inline-flex items-center justify-center h-8 w-8 shrink-0 rounded-lg border transition-colors cursor-pointer ${
             row.isFavorite
-              ? 'bg-rose-500/20 text-rose-500 border-rose-500/40 ring-1 ring-rose-500/20 hover:bg-rose-500 hover:text-white'
-              : 'bg-surface-container-high text-on-surface-variant border-outline-variant/30 hover:text-rose-500 hover:brightness-110'
+              ? 'bg-rose-500/15 text-rose-500 border-rose-500/35 hover:bg-rose-500 hover:text-white'
+              : 'bg-surface-container-highest text-on-surface-variant border-outline-variant/20 hover:text-rose-500 hover:border-rose-500/35 hover:bg-rose-500/10'
           }`}
           data-tooltip={row.isFavorite ? t('mangaInfo.favoriteRemove') : t('mangaInfo.favoriteAdd')}
           aria-label={row.isFavorite ? t('mangaInfo.favoriteRemove') : t('mangaInfo.favoriteAdd')}
@@ -99,7 +102,7 @@ export function OfflineListActions({
         <button
           type="button"
           onClick={() => onSendToKindle(row)}
-          className="inline-flex items-center justify-center w-9 h-9 shrink-0 rounded-full bg-surface-container-high text-primary border border-outline-variant/30 shadow-sm hover:brightness-110 transition-[filter] cursor-pointer"
+          className={`${ROW_ACTION_BTN} text-primary hover:border-primary/40 hover:bg-primary/10`}
           data-tooltip={t('sendToKindle.menuButton')}
           aria-label={t('sendToKindle.menuButton')}
         >
@@ -117,8 +120,9 @@ export function OfflineListActions({
                 : row.absolutePath;
             onOpenFolder?.(folder_path);
           }}
-          className="inline-flex items-center justify-center w-9 h-9 shrink-0 rounded-full bg-surface-container-high text-primary border border-outline-variant/30 shadow-sm hover:brightness-110 transition-[filter] cursor-pointer"
+          className={`${ROW_ACTION_BTN} text-primary hover:border-primary/40 hover:bg-primary/10`}
           data-tooltip={t('favorites.openFolderTitle')}
+          aria-label={t('favorites.openFolderTitle')}
         >
           <span className={FAV_MS_ICON_18}>folder_open</span>
         </button>
@@ -128,7 +132,7 @@ export function OfflineListActions({
         <button
           type="button"
           onClick={() => onRemoveFromList(row)}
-          className="inline-flex items-center justify-center w-9 h-9 shrink-0 rounded-full bg-error/10 text-error hover:bg-error hover:text-on-error transition-colors cursor-pointer"
+          className={`${ROW_ACTION_BTN} text-error hover:border-error/30 hover:bg-error/10 hover:text-error`}
           data-tooltip={
             row.source === 'favorite'
               ? t('mangaInfo.favoriteRemove')
@@ -152,4 +156,3 @@ export function OfflineListActions({
 }
 
 export default OfflineListActions;
-

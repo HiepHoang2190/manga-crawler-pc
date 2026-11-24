@@ -1630,6 +1630,7 @@ export const en = {
 
   'mangaInfo.source': 'Source:',
   'mangaInfo.chapterCount': 'Chapters:',
+  'mangaInfo.chapterSuffix': 'chapters',
   'mangaInfo.author': 'Author:',
   'mangaInfo.rating': 'Rating:',
   'mangaInfo.genres': 'Genres:',
@@ -2551,6 +2552,7 @@ export const en = {
   'history.alreadyInQueue': '{chapter} ({manga}) is already in the queue',
   'history.bulkAddedToQueue': 'Added {count} chapter(s) to queue ({manga} series)',
   'history.bulkAllAlreadyInQueue': 'All error chapters are already in the queue',
+  'history.totalRecords': '{count} records',
 
   'favorites.searchPlaceholder': 'Search your library…',
   'favorites.chaptersLine': '{count} chapters',

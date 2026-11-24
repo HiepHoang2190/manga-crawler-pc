@@ -1631,6 +1631,7 @@ export const vi = {
 
   'mangaInfo.source': 'Nguồn:',
   'mangaInfo.chapterCount': 'Số chương:',
+  'mangaInfo.chapterSuffix': 'chương',
   'mangaInfo.author': 'Tác giả:',
   'mangaInfo.rating': 'Đánh giá:',
   'mangaInfo.genres': 'Thể loại:',
@@ -2551,6 +2552,7 @@ export const vi = {
   'history.alreadyInQueue': '{chapter} ({manga}) đã có trong hàng đợi',
   'history.bulkAddedToQueue': 'Đã thêm {count} chương vào hàng đợi ({manga} truyện)',
   'history.bulkAllAlreadyInQueue': 'Tất cả chapter lỗi đã có trong hàng đợi',
+  'history.totalRecords': '{count} bản ghi',
 
   'favorites.searchPlaceholder': 'Tìm trong thư viện…',
   'favorites.chaptersLine': '{count} chương',

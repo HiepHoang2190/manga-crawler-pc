@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { useI18n } from '../../context/I18nContext';
-import { useAppLog, ResizeSplitter, StudioLayout, useStudioLayout } from '../../shared';
+import {
+  useAppLog,
+  ResizeSplitter,
+  StudioLayout,
+  StudioToolbarSlotProvider,
+  useStudioLayout,
+} from '../../shared';
 import { isHomePrimaryTabBusy } from './homePrimaryTabBusy';
 import { useAuth } from '../../auth';
 import { useSettings } from '../settings';
@@ -508,68 +514,85 @@ export default function HomeWorkspace({
     }
   }
 
-  return (
-    <StudioLayout>
-      <StudioLayout.Toolbar
-        showLeftSidebar={showLeftSidebar}
-        onToggleLeftSidebar={toggleLeftSidebar}
-        leftSidebarTooltip={showLeftSidebar ? t('sidebar.hidePanel') : t('sidebar.showPanel')}
-        leftSlot={
-          <div className="flex items-center gap-2 min-w-0 overflow-x-auto no-scrollbar">
-            <div
-              role="tablist"
-              aria-label={t('menu.home')}
-              className="inline-flex items-center gap-0.5 p-0.5 rounded-xl bg-surface-container-high/70 border border-outline-variant/25 overflow-x-auto no-scrollbar shrink-0"
-            >
-              {primaryTabs.map((tab) => {
-                const isActive = tab.id === activeTab;
-                const isBusy = isHomePrimaryTabBusy(tab.id, {
-                  fetchAllFavoritesBusy,
-                  tabBusyMap,
-                });
-                return (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={isActive}
-                    data-testid={`queue-tab-${tab.id}`}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`group/qtab relative inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium transition-all cursor-pointer select-none whitespace-nowrap shrink-0 ${
-                      isActive
-                        ? 'bg-primary text-on-primary font-semibold shadow-xs'
-                        : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/60'
-                    }`}
-                  >
-                    {isBusy ? (
-                      <span className="relative flex items-center justify-center shrink-0">
-                        <span className="material-symbols-outlined text-[15px] leading-none text-cyan-400 animate-spin shrink-0">
-                          progress_activity
-                        </span>
-                      </span>
-                    ) : (
-                      <span className="material-symbols-outlined text-[16px] leading-none shrink-0">{tab.icon}</span>
-                    )}
-                    <span className="whitespace-nowrap">{t(`queue.tab.${tab.id}`)}</span>
-                    {isBusy && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping ml-0.5" />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+  const [primaryActionEl, setPrimaryActionEl] = useState(null);
+  const [rightToolbarEl, setRightToolbarEl] = useState(null);
 
-            {toolsTabs.length > 0 && (
-              <HomeToolsDropdown
-                tools={toolsTabs}
-                activeTab={activeTab}
-                onSelectTab={setActiveTab}
-                tabBusyMap={tabBusyMap}
+  return (
+    <StudioToolbarSlotProvider primaryEl={primaryActionEl} rightEl={rightToolbarEl}>
+      <StudioLayout>
+        <StudioLayout.Toolbar
+          showLeftSidebar={showLeftSidebar}
+          onToggleLeftSidebar={toggleLeftSidebar}
+          leftSidebarTooltip={showLeftSidebar ? t('sidebar.hidePanel') : t('sidebar.showPanel')}
+          leftSlot={
+            <div className="flex items-center gap-2 min-w-0 overflow-x-auto no-scrollbar">
+              <div
+                role="tablist"
+                aria-label={t('menu.home')}
+                className="inline-flex items-center gap-0.5 p-0.5 rounded-xl bg-surface-container-high/70 border border-outline-variant/25 overflow-x-auto no-scrollbar shrink-0"
+              >
+                {primaryTabs.map((tab) => {
+                  const isActive = tab.id === activeTab;
+                  const isBusy = isHomePrimaryTabBusy(tab.id, {
+                    fetchAllFavoritesBusy,
+                    tabBusyMap,
+                  });
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={isActive}
+                      data-testid={`queue-tab-${tab.id}`}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`group/qtab relative inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium transition-all cursor-pointer select-none whitespace-nowrap shrink-0 ${
+                        isActive
+                          ? 'bg-primary text-on-primary font-semibold shadow-xs'
+                          : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/60'
+                      }`}
+                    >
+                      {isBusy ? (
+                        <span className="relative flex items-center justify-center shrink-0">
+                          <span className="material-symbols-outlined text-[15px] leading-none text-cyan-400 animate-spin shrink-0">
+                            progress_activity
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="material-symbols-outlined text-[16px] leading-none shrink-0">{tab.icon}</span>
+                      )}
+                      <span className="whitespace-nowrap">{t(`queue.tab.${tab.id}`)}</span>
+                      {isBusy && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping ml-0.5" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {toolsTabs.length > 0 && (
+                <HomeToolsDropdown
+                  tools={toolsTabs}
+                  activeTab={activeTab}
+                  onSelectTab={setActiveTab}
+                  tabBusyMap={tabBusyMap}
+                />
+              )}
+
+              <div
+                ref={setPrimaryActionEl}
+                data-testid="home-primary-action-slot"
+                className="flex items-center gap-2 shrink-0 empty:hidden pl-2.5 border-l border-outline-variant/25 ml-1"
               />
-            )}
-          </div>
-        }
-      />
+            </div>
+          }
+          rightSlot={
+            <div
+              ref={setRightToolbarEl}
+              data-testid="home-right-toolbar-slot"
+              className="flex items-center gap-2 shrink-0 empty:hidden"
+            />
+          }
+        />
 
       <StudioLayout.Body>
         <StudioLayout.LeftSidebar
@@ -751,5 +774,6 @@ export default function HomeWorkspace({
         />
       ) : null}
     </StudioLayout>
+    </StudioToolbarSlotProvider>
   );
 }

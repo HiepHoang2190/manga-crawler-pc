@@ -8,7 +8,14 @@ import ProgressPanel from './ProgressPanel';
 import QueueCoverThumb from './QueueCoverThumb.jsx';
 import QueueWorkflowSelector from './QueueWorkflowSelector';
 import { useDownload } from '../DownloadProvider';
-import { SearchableSelect, EmptyState, StudioTable, ConfirmModal } from '../../../shared';
+import {
+  SearchableSelect,
+  EmptyState,
+  StudioTable,
+  ConfirmModal,
+  StudioPrimaryActionSlot,
+  StudioRightToolbarSlot,
+} from '../../../shared';
 
 function useDownloadSafe() {
   try {
@@ -273,7 +280,6 @@ function QueueQueueMobileCard({
                   onClick={() => onRetryFailedChapters?.(item.id)}
                   disabled={p.hasDl}
                   className="text-[10px] text-error hover:opacity-80 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                  data-tooltip={t('queue.retryFailed', { n: p.err })}
                 >
                   {t('queue.retryFailed', { n: p.err })}
                 </button>
@@ -385,12 +391,12 @@ function QueueQueueMobileCard({
                 </span>
               )}
             </div>
-            <div className="flex shrink-0 items-center gap-1">
+            <div className="flex shrink-0 items-center gap-1.5">
               <button
                 type="button"
                 onClick={() => onToggleGroupDownloadOrder?.(item.id)}
                 disabled={p.hasDl}
-                className="cursor-pointer rounded p-1.5 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface disabled:opacity-40 transition-colors"
+                className="cursor-pointer h-8 w-8 rounded-lg border border-outline-variant/20 bg-surface-container-highest text-on-surface-variant hover:text-primary hover:border-primary/40 hover:bg-primary/10 inline-flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 data-tooltip={t(item.downloadOrder === 'desc' ? 'queue.downloadOrderDesc' : 'queue.downloadOrderAsc')}
                 aria-label={t(item.downloadOrder === 'desc' ? 'queue.downloadOrderDesc' : 'queue.downloadOrderAsc')}
               >
@@ -406,7 +412,7 @@ function QueueQueueMobileCard({
                 type="button"
                 disabled={!(p.done > 0 || p.hasDl)}
                 onClick={() => onOpenMangaFolder?.(item.mangaTitle)}
-                className="cursor-pointer rounded p-1.5 text-primary hover:bg-surface-container-high disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors"
+                className="cursor-pointer h-8 w-8 rounded-lg border border-outline-variant/20 bg-surface-container-highest text-primary hover:border-primary/40 hover:bg-primary/10 inline-flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 data-tooltip={p.done > 0 || p.hasDl ? t('queue.openTitle') : t('queue.folderNotReadyTooltip')}
                 aria-label={p.done > 0 || p.hasDl ? t('queue.openTitle') : t('queue.folderNotReadyTooltip')}
               >
@@ -416,8 +422,9 @@ function QueueQueueMobileCard({
                 type="button"
                 disabled={p.hasDl}
                 onClick={() => onRemoveItem(item.id)}
-                className="cursor-pointer rounded p-1 text-error hover:bg-surface-container-high disabled:opacity-40"
+                className="cursor-pointer h-8 w-8 rounded-lg border border-outline-variant/20 bg-surface-container-highest text-error hover:border-error/30 hover:bg-error/10 inline-flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 data-tooltip={t('queue.removeTitle')}
+                aria-label={t('queue.removeTitle')}
               >
                 <span className="material-symbols-outlined text-[18px] leading-none">delete</span>
               </button>
@@ -809,82 +816,90 @@ export default function QueuePanel({
   );
   return (
     <div className="flex-1 flex flex-col bg-surface overflow-hidden min-h-0">
-      <div className="flex-1 flex flex-col px-6 pt-4 pb-6 gap-4 sm:px-8 overflow-hidden min-h-0">
-        <div className="flex flex-wrap items-center gap-3 shrink-0">
-          <div className="flex items-center gap-2 shrink-0">
+      <StudioPrimaryActionSlot>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            data-testid="start-queue-btn"
+            disabled={queueProcessing || !hasWaiting || !someSelected}
+            data-tooltip={!someSelected ? t('queue.startNeedSelection') : undefined}
+            onClick={onStartQueue}
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-primary px-3.5 text-xs font-semibold text-on-primary shadow-2xs hover:opacity-95 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0 whitespace-nowrap"
+          >
+            <span className="material-symbols-outlined text-[16px] leading-none">play_arrow</span>
+            <span>{t('queue.start')}</span>
+          </button>
+          <button
+            type="button"
+            disabled={pauseResumeDisabled}
+            onClick={handlePauseToggle}
+            className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0 whitespace-nowrap ${
+              selectedPauseMode === 'resume'
+                ? 'border-primary/30 bg-primary/15 text-primary hover:bg-primary/25'
+                : 'border-outline-variant/25 bg-surface-container-highest text-on-surface hover:border-outline-variant/50'
+            }`}
+            data-tooltip={pauseResumeTitle}
+          >
+            <span className="material-symbols-outlined text-[16px] leading-none">
+              {selectedPauseMode === 'resume' ? 'play_circle' : 'pause'}
+            </span>
+            <span>{selectedPauseMode === 'resume' ? t('queue.resume') : t('queue.pause')}</span>
+          </button>
+          {visibleSelectedIds.length > 0 && typeof removeSelectedGroups === 'function' ? (
             <button
               type="button"
-              data-testid="start-queue-btn"
-              disabled={queueProcessing || !hasWaiting || !someSelected}
-              data-tooltip={!someSelected ? t('queue.startNeedSelection') : undefined}
-              onClick={onStartQueue}
-              className="flex items-center justify-center gap-1.5 bg-primary text-on-primary h-11 px-4 rounded-xl text-xs font-bold hover:brightness-110 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-sm shrink-0 whitespace-nowrap"
+              disabled={selectedHasActiveDownload}
+              onClick={() => setConfirmRemoveSelectedOpen(true)}
+              data-tooltip={
+                selectedHasActiveDownload
+                  ? t('queue.removeSelectedActiveTooltip')
+                  : t('queue.removeSelectedTooltip', { count: visibleSelectedIds.length })
+              }
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-error/30 bg-error/15 px-3 text-xs font-semibold text-error hover:bg-error/25 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0 whitespace-nowrap"
             >
-              <span className="material-symbols-outlined !text-[18px]">play_arrow</span>
-              <span>{t('queue.start')}</span>
+              <span className="material-symbols-outlined text-[16px] leading-none">delete</span>
+              <span>{t('queue.removeSelected', { count: visibleSelectedIds.length })}</span>
             </button>
+          ) : null}
+          {failedGroups.length > 0 && typeof onRetryFailedChapters === 'function' ? (
             <button
               type="button"
-              disabled={pauseResumeDisabled}
-              onClick={handlePauseToggle}
-              className="flex items-center justify-center gap-1.5 h-11 px-3.5 rounded-xl border border-outline-variant/25 bg-surface-container-highest text-on-surface text-xs font-medium hover:border-outline-variant/50 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0 whitespace-nowrap"
-              data-tooltip={pauseResumeTitle}
+              onClick={handleRetryAllFailed}
+              data-tooltip={t('queue.retryAllFailedTooltip')}
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-amber-500/35 bg-amber-500/12 px-3 text-xs font-semibold text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors cursor-pointer shrink-0 whitespace-nowrap"
             >
-              <span className="material-symbols-outlined !text-[18px]">
-                {selectedPauseMode === 'resume' ? 'play_circle' : 'pause'}
-              </span>
-              <span>{selectedPauseMode === 'resume' ? t('queue.resume') : t('queue.pause')}</span>
+              <span className="material-symbols-outlined text-[16px] leading-none">refresh</span>
+              <span>{t('queue.retryAllFailed', { count: totalFailedChapters })}</span>
             </button>
-            <div className="h-6 w-px bg-outline-variant/30 mx-0.5 self-center" aria-hidden />
-            <button
-              type="button"
-              disabled={!hasClearable}
-              onClick={onClearCompleted}
-              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-outline-variant/25 bg-surface-container-highest text-error/80 hover:text-error hover:border-error/30 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-              data-tooltip={t('queue.clearCompletedTooltip') || t('queue.clearCompleted')}
-              aria-label={t('queue.clearCompletedTooltip') || t('queue.clearCompleted')}
-            >
-              <span className="material-symbols-outlined text-[20px] leading-none">delete_sweep</span>
-            </button>
-            {visibleSelectedIds.length > 0 && typeof removeSelectedGroups === 'function' ? (
-              <button
-                type="button"
-                disabled={selectedHasActiveDownload}
-                onClick={() => setConfirmRemoveSelectedOpen(true)}
-                data-tooltip={
-                  selectedHasActiveDownload
-                    ? t('queue.removeSelectedActiveTooltip')
-                    : t('queue.removeSelectedTooltip', { count: visibleSelectedIds.length })
-                }
-                className="flex items-center justify-center gap-1.5 h-11 px-3.5 rounded-xl border border-error/30 bg-error/10 text-error text-xs font-semibold hover:bg-error/20 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0 whitespace-nowrap"
-              >
-                <span className="material-symbols-outlined !text-[18px]">delete</span>
-                <span>{t('queue.removeSelected', { count: visibleSelectedIds.length })}</span>
-              </button>
-            ) : null}
-            {failedGroups.length > 0 && typeof onRetryFailedChapters === 'function' ? (
-              <button
-                type="button"
-                onClick={handleRetryAllFailed}
-                data-tooltip={t('queue.retryAllFailedTooltip')}
-                className="flex items-center justify-center gap-1.5 h-11 px-3.5 rounded-xl border border-amber-500/35 bg-amber-500/12 text-amber-600 dark:text-amber-400 text-xs font-semibold hover:bg-amber-500/20 transition-colors cursor-pointer shrink-0 whitespace-nowrap"
-              >
-                <span className="material-symbols-outlined !text-[18px]">refresh</span>
-                <span>{t('queue.retryAllFailed', { count: totalFailedChapters })}</span>
-              </button>
-            ) : null}
-          </div>
+          ) : null}
+        </div>
+      </StudioPrimaryActionSlot>
 
-          <div className="flex-1 flex h-11 items-center gap-2 bg-surface-container-highest rounded-lg px-3 sm:px-4 max-w-xl border border-outline-variant/10 min-w-[200px]">
-            <span className="material-symbols-outlined text-outline shrink-0 text-[20px] leading-none">
-              filter_list
+      <StudioRightToolbarSlot>
+        <button
+          type="button"
+          disabled={!hasClearable}
+          onClick={onClearCompleted}
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-outline-variant/25 bg-surface-container-highest text-on-surface-variant hover:text-error hover:border-error/30 hover:bg-error/10 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+          data-tooltip={t('queue.clearCompletedTooltip') || t('queue.clearCompleted')}
+          aria-label={t('queue.clearCompletedTooltip') || t('queue.clearCompleted')}
+        >
+          <span className="material-symbols-outlined text-[17px] leading-none">delete_sweep</span>
+        </button>
+      </StudioRightToolbarSlot>
+
+      <div className="flex-1 flex flex-col px-6 pt-4 pb-4 gap-4 sm:px-8 overflow-hidden min-h-0">
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <div className="flex-1 flex h-10 items-center gap-2 bg-surface-container-highest rounded-xl px-3 sm:px-3.5 max-w-xl border border-outline-variant/25 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/30 transition-colors min-w-[200px]">
+            <span className="material-symbols-outlined text-outline shrink-0 text-[18px] leading-none">
+              search
             </span>
             <input
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t('queue.searchPlaceholder')}
-              className="min-h-0 h-8 bg-transparent border-none text-sm leading-normal focus:ring-0 p-0 flex-1 min-w-0 text-on-surface outline-none placeholder:text-outline"
+              className="min-h-0 h-8 bg-transparent border-none text-xs sm:text-sm leading-normal focus:ring-0 p-0 flex-1 min-w-0 text-on-surface outline-none placeholder:text-outline"
             />
             {query ? (
               <button
@@ -892,7 +907,7 @@ export default function QueuePanel({
                 onClick={() => setQuery('')}
                 data-tooltip={t('queue.clearSearch')}
                 aria-label={t('queue.clearSearch')}
-                className="cursor-pointer shrink-0 rounded-full p-1 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors"
+                className="cursor-pointer shrink-0 rounded-lg p-1 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors"
               >
                 <span className="material-symbols-outlined text-[16px] leading-none">close</span>
               </button>
@@ -917,32 +932,6 @@ export default function QueuePanel({
             />
           </div>
         </div>
-
-        {queue.length > 0 ? (
-          <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 rounded-xl bg-surface-container-low/70 border border-outline-variant/15 text-xs text-on-surface-variant shrink-0">
-            <span className="font-medium tabular-nums">
-              {t('queue.summaryStats', {
-                mangas: queueStats.mangas,
-                done: queueStats.doneCh,
-                total: queueStats.totalCh,
-              })}
-            </span>
-            {queueStats.errCh > 0 ? (
-              <button
-                type="button"
-                onClick={() => setStatusFilter((prev) => (prev === 'error' ? 'all' : 'error'))}
-                className={`cursor-pointer inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold transition-colors ${
-                  statusFilter === 'error'
-                    ? 'bg-error text-on-error'
-                    : 'bg-error/12 text-error hover:bg-error/20'
-                }`}
-              >
-                <span className="material-symbols-outlined text-[14px] leading-none">error</span>
-                <span>{t('queue.summaryFailedPill', { count: queueStats.errCh })}</span>
-              </button>
-            ) : null}
-          </div>
-        ) : null}
 
         <StudioTable
           columns={[
@@ -1081,7 +1070,7 @@ export default function QueuePanel({
                         e.stopPropagation();
                         toggleGroupExpand(item.id);
                       }}
-                      className="w-7 h-7 flex items-center justify-center rounded-lg border border-outline-variant/25 bg-surface-container-highest/60 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high hover:border-outline-variant/40 transition-all active:scale-95 shrink-0 cursor-pointer"
+                      className="h-8 w-8 rounded-lg border border-outline-variant/20 bg-surface-container-highest text-on-surface-variant hover:text-primary hover:border-primary/40 hover:bg-primary/10 inline-flex items-center justify-center transition-colors active:scale-95 shrink-0 cursor-pointer"
                       data-tooltip={t(isExpanded ? 'queue.collapseChapters' : 'queue.expandChapters')}
                       aria-label={t(isExpanded ? 'queue.collapseChapters' : 'queue.expandChapters')}
                     >
@@ -1112,7 +1101,6 @@ export default function QueuePanel({
                           }}
                           disabled={p.hasDl}
                           className="text-[10px] text-error hover:opacity-80 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                          data-tooltip={t('queue.retryFailed', { n: p.err })}
                         >
                           {t('queue.retryFailed', { n: p.err })}
                         </button>
@@ -1194,7 +1182,7 @@ export default function QueuePanel({
                     </span>
                   ) : (
                     <span
-                      className={`block min-w-0 truncate text-[11px] sm:text-sm flex items-center gap-1 ${
+                      className={`min-w-0 truncate text-[11px] sm:text-sm flex items-center gap-1 ${
                         p.err > 0
                           ? 'text-error'
                           : p.allDone
@@ -1212,11 +1200,11 @@ export default function QueuePanel({
                   )}
                 </td>
                 <td className="p-2 sm:p-3 pr-4 sm:pr-5 w-44 min-w-[170px] align-middle" onClick={(e) => e.stopPropagation()}>
-                  <div className="flex items-center justify-end gap-1 sm:gap-2">
+                  <div className="flex items-center justify-end gap-1.5">
                     <button
                       type="button"
                       onClick={() => toggleGroupExpand(item.id)}
-                      className="w-7 h-7 flex items-center justify-center rounded-lg border border-outline-variant/25 bg-surface-container-highest/60 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high hover:border-outline-variant/40 md:hidden transition-all active:scale-95 shrink-0 cursor-pointer"
+                      className="h-8 w-8 rounded-lg border border-outline-variant/20 bg-surface-container-highest text-on-surface-variant hover:text-primary hover:border-primary/40 hover:bg-primary/10 md:hidden inline-flex items-center justify-center transition-colors active:scale-95 shrink-0 cursor-pointer"
                       data-tooltip={t(isExpanded ? 'queue.collapseChapters' : 'queue.expandChapters')}
                       aria-label={t(isExpanded ? 'queue.collapseChapters' : 'queue.expandChapters')}
                     >
@@ -1231,7 +1219,7 @@ export default function QueuePanel({
                       type="button"
                       onClick={() => onToggleGroupDownloadOrder?.(item.id)}
                       disabled={p.hasDl}
-                      className="cursor-pointer rounded p-1.5 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface disabled:opacity-40 transition-colors"
+                      className="cursor-pointer h-8 w-8 rounded-lg border border-outline-variant/20 bg-surface-container-highest text-on-surface-variant hover:text-primary hover:border-primary/40 hover:bg-primary/10 inline-flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                       data-tooltip={t(item.downloadOrder === 'desc' ? 'queue.downloadOrderDesc' : 'queue.downloadOrderAsc')}
                       aria-label={t(item.downloadOrder === 'desc' ? 'queue.downloadOrderDesc' : 'queue.downloadOrderAsc')}
                     >
@@ -1247,7 +1235,7 @@ export default function QueuePanel({
                       type="button"
                       disabled={!(p.done > 0 || p.hasDl)}
                       onClick={() => onOpenMangaFolder?.(item.mangaTitle)}
-                      className="cursor-pointer rounded p-1.5 text-primary hover:bg-surface-container-high disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors"
+                      className="cursor-pointer h-8 w-8 rounded-lg border border-outline-variant/20 bg-surface-container-highest text-primary hover:border-primary/40 hover:bg-primary/10 inline-flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                       data-tooltip={p.done > 0 || p.hasDl ? t('queue.openTitle') : t('queue.folderNotReadyTooltip')}
                       aria-label={p.done > 0 || p.hasDl ? t('queue.openTitle') : t('queue.folderNotReadyTooltip')}
                     >
@@ -1257,7 +1245,8 @@ export default function QueuePanel({
                       type="button"
                       disabled={p.hasDl}
                       onClick={() => onRemoveItem(item.id)}
-                      className="cursor-pointer rounded p-1 text-error hover:bg-surface-container-high disabled:opacity-40"
+                      className="cursor-pointer h-8 w-8 rounded-lg border border-outline-variant/20 bg-surface-container-highest text-error hover:border-error/30 hover:bg-error/10 inline-flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      data-tooltip={t('queue.removeTitle')}
                       aria-label={t('queue.removeTitle')}
                     >
                       <span className="material-symbols-outlined text-[18px] leading-none">delete</span>
@@ -1420,6 +1409,31 @@ export default function QueuePanel({
               activeChapterLabel={activeChapterLabel}
             />
           </div>
+          {queue.length > 0 ? (
+            <div className="border-t border-outline-variant/20 bg-surface-container-low/80 backdrop-blur-md px-4 py-2.5 flex items-center justify-between gap-2.5 select-none shrink-0">
+              <span className="inline-flex items-center rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary tabular-nums shadow-2xs">
+                {t('queue.summaryStats', {
+                  mangas: queueStats.mangas,
+                  done: queueStats.doneCh,
+                  total: queueStats.totalCh,
+                })}
+              </span>
+              {queueStats.errCh > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter((prev) => (prev === 'error' ? 'all' : 'error'))}
+                  className={`cursor-pointer inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
+                    statusFilter === 'error'
+                      ? 'bg-error text-on-error'
+                      : 'border border-error/25 bg-error/10 text-error hover:bg-error/20'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[14px] leading-none">error</span>
+                  <span>{t('queue.summaryFailedPill', { count: queueStats.errCh })}</span>
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           <ConfirmModal
             open={confirmRemoveSelectedOpen && visibleSelectedIds.length > 0}
             variant="danger"

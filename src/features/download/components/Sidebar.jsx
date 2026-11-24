@@ -195,6 +195,7 @@ export default function Sidebar({
       <div className="p-4 space-y-4">
         <div data-testid="sidebar-controls" className="space-y-4">
           <div className="space-y-2">
+          <SectionTitle as="label" className="block">{t('sidebar.sourceUrl')}</SectionTitle>
           <div className="grid grid-cols-[minmax(0,1fr)_5.5rem] gap-2 items-center">
             <div className="relative flex items-center min-w-0 w-full">
               <input
@@ -209,7 +210,7 @@ export default function Sidebar({
                 }}
                 placeholder={t('sidebar.placeholder.sourceUrl')}
                 aria-label={t('sidebar.sourceUrl')}
-                className="w-full min-w-0 min-h-0 bg-surface-container-highest border-none rounded-xl text-sm h-10 pl-3 pr-9 box-border focus:ring-1 focus:ring-primary outline-none text-on-surface"
+                className="w-full min-w-0 min-h-0 bg-surface-container-highest border border-outline-variant/25 focus:border-primary focus:ring-1 focus:ring-primary/30 rounded-xl text-sm h-10 pl-3 pr-9 box-border outline-none text-on-surface transition-colors"
               />
               {sourceUrl ? (
                 <button
@@ -238,7 +239,7 @@ export default function Sidebar({
               disabled={fetchDisabled}
               data-testid="fetch-button"
               onClick={onFetch}
-              className={`${SIDEBAR_ACTION_BTN} bg-primary-container text-on-primary-container font-bold hover:opacity-90 transition-all active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none`}
+              className={`${SIDEBAR_ACTION_BTN} bg-primary text-on-primary font-semibold hover:opacity-95 shadow-2xs transition-all active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none`}
             >
               <span
                 className={`material-symbols-outlined text-[18px] leading-none${loading ? ' animate-spin' : ''}`}
@@ -335,9 +336,11 @@ export default function Sidebar({
                 value={savePath}
                 onChange={(e) => setSavePath(e.target.value)}
                 placeholder={t('sidebar.placeholder.savePath')}
-                className={`w-full min-w-0 min-h-0 bg-surface-container-highest border-none rounded-xl text-sm h-10 pl-3 ${
-                  savePathWarning ? 'pr-8 ring-1 ring-amber-500/60' : 'pr-3 focus:ring-1 focus:ring-primary'
-                } box-border outline-none text-on-surface transition-all`}
+                className={`w-full min-w-0 min-h-0 bg-surface-container-highest border rounded-xl text-sm h-10 pl-3 ${
+                  savePathWarning
+                    ? 'pr-8 border-amber-500/60 ring-1 ring-amber-500/40'
+                    : 'pr-3 border-outline-variant/25 focus:border-primary focus:ring-1 focus:ring-primary/30'
+                } box-border outline-none text-on-surface transition-colors`}
               />
               {savePathWarning && (
                 <span
@@ -353,6 +356,7 @@ export default function Sidebar({
                 type="button"
                 onClick={onBrowse}
                 className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-outline-variant/25 bg-surface-container-high text-on-surface hover:text-primary hover:border-primary/40 hover:bg-primary/10 transition-all active:scale-95 cursor-pointer shadow-2xs"
+                data-tooltip={t('sidebar.browse')}
                 aria-label={t('sidebar.browse')}
               >
                 <span className="material-symbols-outlined text-[18px] leading-none">folder_open</span>
@@ -499,10 +503,11 @@ export default function Sidebar({
                 <button
                   type="button"
                   onClick={() => setMessageDialog(null)}
-                  className="shrink-0 rounded-md p-1 text-on-surface-variant hover:bg-surface-container-high cursor-pointer"
-                  aria-label="Đóng"
+                  className="shrink-0 h-8 w-8 rounded-lg border border-outline-variant/20 bg-surface-container-highest inline-flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:border-outline-variant/40 transition-colors cursor-pointer"
+                  data-tooltip={t('guestCredit.modalClose')}
+                  aria-label={t('guestCredit.modalClose')}
                 >
-                  <span className="material-symbols-outlined text-[22px] leading-none">close</span>
+                  <span className="material-symbols-outlined text-[18px] leading-none">close</span>
                 </button>
               </div>
               <p

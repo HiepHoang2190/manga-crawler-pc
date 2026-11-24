@@ -7,7 +7,13 @@ import {
   consumeOpenKindleModalRequest,
 } from '../export';
 import { QueueCoverThumb } from '../download';
-import { EmptyState, StudioTable } from '../../shared';
+import {
+  EmptyState,
+  StudioTable,
+  StudioPrimaryActionSlot,
+  StudioRightToolbarSlot,
+  ViewModeToggle,
+} from '../../shared';
 import {
   OfflineChapterMeta,
   OfflineListActions,
@@ -16,6 +22,7 @@ import {
   OfflineCbzFolderModal,
   OfflineGridCard,
   useOfflineLibraryData,
+  SORT_LABEL_KEYS,
 } from './components/offline';
 
 // Contract references for libraryPublicApi: supports onToggleFavorite with favorite_border, mangaInfo.favoriteAdd, mangaInfo.favoriteRemove
@@ -152,15 +159,101 @@ export default function OfflineLibraryTab({
     setDetectingPath(null);
   }, []);
 
+  const electronAPI = typeof window !== 'undefined' ? window.electronAPI : null;
+  const sortTooltip = t('offlineLibrary.sortHint', {
+    mode: t(SORT_LABEL_KEYS[sortMode] || SORT_LABEL_KEYS.titleAsc),
+  });
+
   return (
     <div className="flex-1 flex flex-col bg-surface overflow-hidden min-h-0">
-      <div className="flex-1 flex flex-col px-6 pt-4 pb-6 gap-4 sm:px-8 overflow-hidden min-h-0">
-        {/* Top Toolbar */}
+      <StudioPrimaryActionSlot>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={addFolder}
+            disabled={!electronAPI?.selectDirectory}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3.5 text-xs font-semibold text-on-primary shadow-2xs hover:opacity-95 active:scale-95 transition-all cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed shrink-0 whitespace-nowrap"
+          >
+            <span className="material-symbols-outlined text-[16px] leading-none">folder_special</span>
+            <span>{t('offlineLibrary.addFolder')}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onOpenCbzFile?.()}
+            disabled={typeof onOpenCbzFile !== 'function' || !electronAPI?.pickAndLoadArchive}
+            data-tooltip={t('offlineLibrary.openFileTitle')}
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-outline-variant/25 bg-surface-container-highest px-3 text-xs font-medium text-on-surface hover:border-outline-variant/50 transition-colors cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed shrink-0 whitespace-nowrap"
+          >
+            {cbzLoadProgress && (!cbzLoadProgress.filePath || cbzLoadProgress.source === 'pickFile') && !loadingArchiveFilePath ? (
+              <>
+                <span className="material-symbols-outlined text-[16px] leading-none animate-spin">progress_activity</span>
+                <span>{cbzLoadProgress.total > 0 ? `${cbzLoadProgress.pct ?? 0}%` : '…'}</span>
+              </>
+            ) : (
+              <>
+                <span className="material-symbols-outlined text-[16px] leading-none">archive</span>
+                <span>{t('offlineLibrary.openFile')}</span>
+              </>
+            )}
+          </button>
+          {typeof onFetchAllFavorites === 'function' && favorites.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => onFetchAllFavorites()}
+              disabled={fetchAllFavoritesBusy}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-outline-variant/25 bg-surface-container-highest px-3 text-xs font-medium text-on-surface hover:border-primary/40 hover:text-primary transition-colors cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed shrink-0 whitespace-nowrap"
+            >
+              <span className={`material-symbols-outlined text-[16px] leading-none ${fetchAllFavoritesBusy ? 'animate-spin' : ''}`}>
+                {fetchAllFavoritesBusy ? 'progress_activity' : 'sync'}
+              </span>
+              <span>
+                {fetchAllFavoritesBusy
+                  ? t('offlineLibrary.checkAllUpdatesBusy')
+                  : t('offlineLibrary.checkAllUpdates')}
+              </span>
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => handleManualRefresh()}
+            disabled={loading || !base}
+            data-tooltip={t('offlineLibrary.refreshTooltip') || t('offlineLibrary.refresh')}
+            aria-label={t('offlineLibrary.refreshTooltip') || t('offlineLibrary.refresh')}
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-outline-variant/25 bg-surface-container-highest text-on-surface-variant hover:text-primary hover:border-primary/40 transition-colors cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
+          >
+            <span className={`material-symbols-outlined text-[17px] leading-none ${loading ? 'animate-spin' : ''}`}>
+              refresh
+            </span>
+          </button>
+        </div>
+      </StudioPrimaryActionSlot>
+
+      <StudioRightToolbarSlot>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={cycleSort}
+            className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors cursor-pointer ${
+              sortMode !== 'titleAsc'
+                ? 'border-primary/40 bg-primary/15 text-primary shadow-2xs'
+                : 'border-outline-variant/25 bg-surface-container-highest text-on-surface-variant hover:text-on-surface hover:border-outline-variant/50'
+            }`}
+            data-tooltip={sortTooltip}
+            aria-label={sortTooltip}
+          >
+            <span className="material-symbols-outlined text-[17px] leading-none">sort_by_alpha</span>
+          </button>
+          <ViewModeToggle
+            viewMode={viewMode}
+            onChange={setViewMode}
+            size="md"
+          />
+        </div>
+      </StudioRightToolbarSlot>
+
+      <div className="flex-1 flex flex-col px-6 pt-4 pb-4 gap-4 sm:px-8 overflow-hidden min-h-0">
+        {/* Filter Bar */}
         <OfflineLibraryToolbar
-          viewMode={viewMode}
-          setViewMode={setViewMode}
-          sortMode={sortMode}
-          cycleSort={cycleSort}
           query={query}
           setQuery={setQuery}
           sourceFilter={sourceFilter}
@@ -374,24 +467,15 @@ export default function OfflineLibraryTab({
             )}
           />
         )}
-
-        {/* Bottom Footer Actions */}
-        <OfflineLibraryFooter
-          displayRowsCount={displayRows.length}
-          addFolder={addFolder}
-          onOpenCbzFile={onOpenCbzFile}
-          cbzLoadProgress={cbzLoadProgress}
-          loadingArchiveFilePath={loadingArchiveFilePath}
-          cbzError={cbzError}
-          onFetchAllFavorites={onFetchAllFavorites}
-          fetchAllFavoritesBusy={fetchAllFavoritesBusy}
-          favoritesCount={favorites.length}
-          handleManualRefresh={handleManualRefresh}
-          loading={loading}
-          hasBase={Boolean(base)}
-          t={t}
-        />
       </div>
+
+      {/* Bottom Slim Footer */}
+      <OfflineLibraryFooter
+        displayRowsCount={displayRows.length}
+        cbzLoadProgress={cbzLoadProgress}
+        cbzError={cbzError}
+        t={t}
+      />
 
       {/* Send to Kindle Modal */}
       <SendToKindleModal

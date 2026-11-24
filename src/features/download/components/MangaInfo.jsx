@@ -187,10 +187,10 @@ export default function MangaInfo({
               <div className="flex flex-wrap items-center gap-1.5">
                 {sourceLabel ? (
                   <span
-                    className="inline-flex items-center gap-1 rounded-lg bg-surface-container-highest px-2 py-0.5 text-xs font-medium text-on-surface-variant shrink-0"
+                    className="inline-flex items-center gap-1 rounded-md bg-primary/10 text-primary px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider shrink-0"
                     data-tooltip={`${t('mangaInfo.source')} ${sourceLabel}`}
                   >
-                    <span className="material-symbols-outlined text-[14px] text-primary">public</span>
+                    <span className="material-symbols-outlined text-[13px]">public</span>
                     <span className="truncate max-w-[120px]">{sourceLabel}</span>
                   </span>
                 ) : null}
@@ -252,9 +252,9 @@ export default function MangaInfo({
                   onClick={() => onOpenChaptersPanel()}
                   data-tooltip={t('chapterList.openDrawer')}
                   aria-label={t('chapterList.openDrawerShort')}
-                  className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-[0.98] px-3 text-center text-xs font-semibold text-white shadow-xs cursor-pointer transition-all"
+                  className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface border border-outline-variant/25 hover:border-primary/40 hover:text-primary active:scale-[0.98] px-3 text-center text-xs font-semibold shadow-2xs cursor-pointer transition-all"
                 >
-                  <span className="material-symbols-outlined shrink-0 select-none text-[18px] leading-none text-white">
+                  <span className="material-symbols-outlined shrink-0 select-none text-[18px] leading-none">
                     format_list_bulleted
                   </span>
                   <span className="truncate whitespace-nowrap">{t('chapterList.openDrawerShort')}</span>

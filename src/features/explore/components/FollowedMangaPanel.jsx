@@ -1426,8 +1426,8 @@ export default function FollowedMangaPanel({
                                 </span>
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 text-[11px] text-on-surface-variant/70">
-                                <span className="material-symbols-outlined text-[13px] text-emerald-500 leading-none">check</span>
+                              <span className="inline-flex items-center gap-1 text-xs text-on-surface-variant">
+                                <span className="material-symbols-outlined text-[14px] text-emerald-500 leading-none">check</span>
                                 <span>
                                   {remoteCount > 0
                                     ? t('followedManga.badge.chapterCount', { count: remoteCount })
@@ -1525,16 +1525,13 @@ export default function FollowedMangaPanel({
                   sync={activeSyncById[item.id]}
                   siteLabel={siteMap.labels.get(item.siteId) || item.siteId}
                   siteIcon={siteMap.icons.get(item.siteId)}
-                  isChecking={singleCheckingId === item.id}
                   isLoading={loadingMangaId === item.id}
                   isEnqueuing={enqueuingMangaId === item.id}
                   downloadState={getDownloadState(item)}
                   onStartQueue={onStartQueue}
                   onStopQueue={onStopQueue}
                   onOpenManga={handleOpenManga}
-                  onReadNow={handleReadNow}
                   onEnqueueNew={handleEnqueueNew}
-                  onRecheck={handleRecheckSingle}
                   onRemove={handleRemove}
                 />
               ))}

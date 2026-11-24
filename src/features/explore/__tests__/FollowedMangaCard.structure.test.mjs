@@ -18,11 +18,12 @@ describe('FollowedMangaCard structure and UI standards', () => {
     expect(content).not.toMatch(/\bunderline\b/);
   });
 
-  test('provides quick action buttons for read, enqueue, recheck, and remove', () => {
+  test('provides single-row quick action buttons for view chapters, enqueue/pause-resume, and favorite remove', () => {
     const content = fs.readFileSync(cardPath, 'utf8');
-    expect(content).toContain('onReadNow');
+    expect(content).toContain('data-testid="followed-card-view-chapters"');
+    expect(content).toContain('onOpenManga');
     expect(content).toContain('onEnqueueNew');
-    expect(content).toContain('onRecheck');
+    expect(content).toContain('data-testid="followed-card-pause-resume"');
     expect(content).toContain('onRemove');
     expect(content).toContain('data-tooltip');
     expect(content).toContain('aria-label');
@@ -93,5 +94,31 @@ describe('FollowedMangaCard structure and UI standards', () => {
     expect(content).toContain('playlist_add');
     expect(content).toContain('flex-1 min-w-0 h-8 rounded-lg bg-primary');
     expect(content).toContain('h-8 w-8 shrink-0 rounded-lg');
+  });
+
+  test('matches LatestUpdatesPanel & BulkScanPanel card polish (no px-2 truncation on viewChapters, non-overlapping header row, keyboard a11y, cover reset, no double title click)', () => {
+    const content = fs.readFileSync(cardPath, 'utf8');
+    const viewBtnBlock = content.match(
+      /data-testid="followed-card-view-chapters"[\s\S]{0,400}className="([^"]+)"/,
+    );
+    expect(viewBtnBlock).not.toBeNull();
+    expect(viewBtnBlock[1]).toContain(
+      'flex-1 min-w-0 h-8 rounded-lg bg-primary text-on-primary hover:opacity-90 text-xs font-semibold transition-all flex items-center justify-center gap-1.5',
+    );
+    expect(viewBtnBlock[1]).not.toMatch(/\bpx-2\b/);
+
+    expect(content).toContain('inset-x-2 top-2 z-[1] flex items-start justify-between gap-2');
+    expect(content).toContain('hover:shadow-md');
+    expect(content).toContain('ring-2 ring-primary/40');
+    expect(content).toContain('menu_book');
+    expect(content).toContain("t('latestUpdates.noCover')");
+    expect(content).toContain('backdrop-blur-[1px]');
+    expect(content).toContain('role="button"');
+    expect(content).toContain('tabIndex={0}');
+    expect(content).toContain('onKeyDown={handleCardKeyDown}');
+    expect(content).toContain('setImgError(false)');
+    expect(content).toContain('if (isLoading || isEnqueuing) return');
+    expect(content).not.toContain('text-[11px] text-on-surface-variant/70');
+    expect(content).not.toMatch(/<p\b[^>]*onClick=/);
   });
 });

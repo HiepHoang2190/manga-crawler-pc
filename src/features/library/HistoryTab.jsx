@@ -4,7 +4,12 @@ import { useDownload, QueueCoverThumb } from '../download';
 import { loadPanelUi, savePanelUi } from '../../utils/panelUiPrefs';
 import { formatChapterFolderName } from '../../utils/chapterFolderFormat';
 import { historyRowsToCsv, triggerCsvDownload } from '../../utils/historyCsv';
-import { SearchableSelect, EmptyState, StudioTable } from '../../shared';
+import {
+  SearchableSelect,
+  EmptyState,
+  StudioTable,
+  StudioPrimaryActionSlot,
+} from '../../shared';
 
 /** Trạng thái hiển thị của một dòng lịch sử (khớp badge). */
 function rowStatusKey(row) {
@@ -86,14 +91,11 @@ const HISTORY_FILTERS = [
   { id: 'skipped', labelKey: 'history.filter.skipped', icon: 'block' },
 ];
 
-const historyFilterBtnBase =
-  'flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold cursor-pointer hover:brightness-110';
-
 /** Cùng trọng lượng nét / không fill — khớp folder & delete trong một hàng. */
 const historyActionIcon =
   "material-symbols-outlined text-[18px] leading-none [font-variation-settings:'FILL'_0,'wght'_400,'GRAD'_0,'opsz'_24]";
 const historyActionBtn =
-  'inline-flex items-center justify-center py-1.5 px-1.5 rounded hover:bg-surface-container-highest cursor-pointer leading-none';
+  'inline-flex items-center justify-center h-8 w-8 rounded-lg border border-outline-variant/20 bg-surface-container-highest hover:border-primary/40 hover:bg-primary/10 transition-colors cursor-pointer shrink-0 leading-none';
 
 export default function HistoryTab({
   chapterFolder,
@@ -201,52 +203,67 @@ export default function HistoryTab({
 
   return (
     <div className="flex-1 flex flex-col bg-surface overflow-hidden min-h-0">
-      <div className="flex-1 flex flex-col px-6 pt-4 pb-6 gap-4 sm:px-8 overflow-hidden min-h-0">
-        <div className="flex flex-wrap items-center gap-3 shrink-0">
-          <div className="flex items-center gap-2 shrink-0">
-            {onAddAllErrorsToQueue && (
-              <button
-                type="button"
-                disabled={filteredErrors.length === 0}
-                onClick={() => onAddAllErrorsToQueue(filteredErrors)}
-                data-tooltip={t('history.addAllErrorsToQueueTitle') || t('history.addAllErrorsToQueue')}
-                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-outline-variant/25 bg-surface-container-highest text-primary hover:border-outline-variant/50 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <span className="material-symbols-outlined text-[20px] leading-none">playlist_add</span>
-              </button>
-            )}
+      <StudioPrimaryActionSlot>
+        <div className="flex items-center gap-2 shrink-0">
+          {onAddAllErrorsToQueue && (
             <button
               type="button"
-              disabled={!bugHistoryRows.length}
-              onClick={handleExportBugCsv}
-              data-tooltip={t('history.exportBugCsvTitle') || t('history.exportBugCsv')}
-              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-outline-variant/25 bg-surface-container-highest text-primary hover:border-outline-variant/50 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              disabled={filteredErrors.length === 0}
+              onClick={() => onAddAllErrorsToQueue(filteredErrors)}
+              data-tooltip={t('history.addAllErrorsToQueueTitle') || t('history.addAllErrorsToQueue')}
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-semibold text-on-primary shadow-2xs hover:opacity-95 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0 whitespace-nowrap"
             >
-              <span className="material-symbols-outlined text-[20px] leading-none">download</span>
+              <span className="material-symbols-outlined text-[16px] leading-none">playlist_add</span>
+              <span>{t('history.addAllErrorsToQueue')}</span>
             </button>
-            <div className="h-6 w-px bg-outline-variant/30 mx-0.5 self-center" aria-hidden />
-            <button
-              type="button"
-              disabled={!filteredHistory.length}
-              onClick={() => onClearHistory?.(statusFilter)}
-              aria-label={t('history.clear')}
-              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-outline-variant/25 bg-surface-container-highest text-error/80 hover:text-error hover:border-error/30 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <span className="material-symbols-outlined text-[20px] leading-none">delete_sweep</span>
-            </button>
-          </div>
+          )}
+          <button
+            type="button"
+            disabled={!bugHistoryRows.length}
+            onClick={handleExportBugCsv}
+            data-tooltip={t('history.exportBugCsvTitle') || t('history.exportBugCsv')}
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-outline-variant/25 bg-surface-container-highest px-3 text-xs font-medium text-on-surface hover:border-outline-variant/50 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0 whitespace-nowrap"
+          >
+            <span className="material-symbols-outlined text-[16px] leading-none">download</span>
+            <span>{t('history.exportBugCsv')}</span>
+          </button>
+          <button
+            type="button"
+            disabled={!filteredHistory.length}
+            onClick={() => onClearHistory?.(statusFilter)}
+            aria-label={t('history.clear')}
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-error/30 bg-error/15 px-3 text-xs font-semibold text-error hover:bg-error/25 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0 whitespace-nowrap"
+          >
+            <span className="material-symbols-outlined text-[16px] leading-none">delete_sweep</span>
+            <span>{t('history.clear')}</span>
+          </button>
+        </div>
+      </StudioPrimaryActionSlot>
 
-          <div className="flex-1 flex h-11 items-center bg-surface-container-highest rounded-lg px-3 sm:px-4 max-w-xl border border-outline-variant/10 min-w-[200px]">
-            <span className="material-symbols-outlined text-outline mr-2 sm:mr-3 shrink-0 text-[20px] leading-none">
-              filter_list
+      <div className="flex-1 flex flex-col px-6 pt-4 pb-4 gap-4 sm:px-8 overflow-hidden min-h-0">
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <div className="flex-1 flex h-10 items-center gap-2 bg-surface-container-highest rounded-xl px-3 sm:px-3.5 max-w-xl border border-outline-variant/25 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/30 transition-colors min-w-[200px]">
+            <span className="material-symbols-outlined text-outline shrink-0 text-[18px] leading-none">
+              search
             </span>
             <input
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t('history.searchPlaceholder')}
-              className="min-h-0 h-8 bg-transparent border-none text-sm leading-normal focus:ring-0 p-0 w-full text-on-surface outline-none placeholder:text-outline"
+              className="min-h-0 h-8 bg-transparent border-none text-xs sm:text-sm leading-normal focus:ring-0 p-0 flex-1 min-w-0 text-on-surface outline-none placeholder:text-outline"
             />
+            {query ? (
+              <button
+                type="button"
+                onClick={() => setQuery('')}
+                data-tooltip={t('offlineLibrary.clearSearch')}
+                aria-label={t('offlineLibrary.clearSearch')}
+                className="cursor-pointer shrink-0 rounded-lg p-1 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors"
+              >
+                <span className="material-symbols-outlined text-[16px] leading-none">close</span>
+              </button>
+            ) : null}
           </div>
           <div className="shrink-0">
             <SearchableSelect
@@ -361,7 +378,7 @@ export default function HistoryTab({
                 </div>
               </td>
               <td className="w-40 p-3 pr-4 sm:pr-5 align-middle text-right">
-                <div className="flex items-center justify-end gap-1">
+                <div className="flex items-center justify-end gap-1.5">
                   {rowStatusKey(row) === 'error' && onAddToQueue && (
                     <button
                       type="button"
@@ -380,7 +397,7 @@ export default function HistoryTab({
                         setCopyDone(false);
                         setDetailRow(row);
                       }}
-                      className={`${historyActionBtn} text-error`}
+                      className={`${historyActionBtn} text-error hover:border-error/30 hover:bg-error/10`}
                       data-tooltip={t('history.bugDetailOpenTitle')}
                       aria-label={t('history.bugDetailOpenTitle')}
                     >
@@ -410,7 +427,7 @@ export default function HistoryTab({
                   <button
                     type="button"
                     onClick={() => onRemoveHistoryEntry?.(row.id)}
-                    className={`${historyActionBtn} text-error`}
+                    className={`${historyActionBtn} text-error hover:border-error/30 hover:bg-error/10 hover:text-error`}
                     data-tooltip={t('history.removeEntryTitle')}
                     aria-label={t('history.removeEntryTitle')}
                   >
@@ -421,6 +438,12 @@ export default function HistoryTab({
             </>
           )}
         />
+      </div>
+
+      <div className="border-t border-outline-variant/20 bg-surface-container-low/80 backdrop-blur-md px-4 py-2.5 flex items-center justify-between gap-2.5 select-none shrink-0">
+        <span className="inline-flex items-center rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary tabular-nums shadow-2xs">
+          {t('history.totalRecords', { count: filteredHistory.length })}
+        </span>
       </div>
 
       {detailRow && (

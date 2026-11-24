@@ -17,6 +17,11 @@ export {
   TOOLS_SIDEBAR_WIDTH_MAX,
 } from './hooks/useToolsSidebarResize.js';
 export { StudioLayout, useStudioLayout } from './layout';
+export {
+  StudioToolbarSlotProvider,
+  StudioPrimaryActionSlot,
+  StudioRightToolbarSlot,
+} from './layout';
 export { default as OutputFormatSelector, OUTPUT_FORMATS } from './ui/OutputFormatSelector.jsx';
 export { default as OutputDestinationSelector } from './ui/OutputDestinationSelector.jsx';
 export { default as CaesiumCompressControl, COMPRESS_QUALITY_PRESETS } from './ui/CaesiumCompressControl.jsx';
