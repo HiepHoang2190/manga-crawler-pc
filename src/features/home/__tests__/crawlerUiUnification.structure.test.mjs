@@ -167,4 +167,33 @@ describe('Crawler Tab Explore-First Unified UI Standard', () => {
     expect(history).not.toContain('max-w-xl');
     expect(offlineToolbar).not.toContain('max-w-xl');
   });
+
+  test('In-queue error tools & zero History UI: 2 primary Crawler tabs, Manga-level bug_report beside trash, and React Portal Error Modal', () => {
+    const home = read('src/features/home/HomeWorkspace.jsx');
+    const queue = read('src/features/download/components/QueuePanel.jsx');
+
+    // HomeWorkspace has only 2 core primary tabs (queue, offlineRead), migrates saved history tab, and mounts zero History UI
+    const tabsMatch = home.match(/const TABS = \[[\s\S]*?\];/);
+    expect(tabsMatch).not.toBeNull();
+    expect(tabsMatch[0]).toContain("id: 'queue'");
+    expect(tabsMatch[0]).toContain("id: 'offlineRead'");
+    expect(tabsMatch[0]).not.toContain("id: 'history'");
+    expect(home).toMatch(/activeTab === 'history'/);
+    expect(home).not.toContain('open-history-modal-btn');
+    expect(home).not.toContain('history-modal-backdrop');
+    expect(home).not.toContain('<HistoryTab');
+    expect(home).toContain('chapterFolder={chapterFolder}');
+
+    // QueuePanel error tools: portal modal, shared historyCsv helpers, export CTA, Manga-level bug_report beside delete
+    expect(queue).toContain('createPortal');
+    expect(queue).toContain("from '../../../utils/historyCsv'");
+    expect(queue).toContain('buildErrorDetailText');
+    expect(queue).toContain('exportErrorRowsToCsv');
+    expect(queue).toContain('data-testid="queue-export-error-csv-btn"');
+    expect(queue).toContain('w-64 min-w-[256px]');
+    expect(queue).toContain('data-testid="queue-group-bug-btn"');
+    expect(queue).toContain('bug_report');
+    expect(queue).toContain('data-testid="queue-error-modal-backdrop"');
+    expect(queue).toContain('id="queue-error-detail-title"');
+  });
 });

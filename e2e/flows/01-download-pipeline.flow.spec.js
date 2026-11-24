@@ -103,18 +103,7 @@ test.describe('Flow 1: Download Pipeline, Queue & In-App Reader', () => {
       }
     }
 
-    // 7. Check Library / History tab
-    const historyTab = window.locator('[data-testid="queue-tab-history"]');
-    if (await historyTab.isVisible().catch(() => false)) {
-      await historyTab.click();
-      await window.waitForTimeout(800);
-      await expect(window.locator('[data-testid="tab-content-home"]')).toBeVisible();
-
-      // Capture populated Library / History record
-      await captureHelp(window, 'library-history');
-    }
-
-    // 8. Check Offline Library tab with downloaded series
+    // 7. Check Offline Library tab with downloaded series
     const offlineReadTab = window.locator('[data-testid="queue-tab-offlineRead"]');
     if (await offlineReadTab.isVisible().catch(() => false)) {
       await offlineReadTab.click();

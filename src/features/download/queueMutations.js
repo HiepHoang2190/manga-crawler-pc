@@ -114,9 +114,11 @@ export function retryQueueChapter(prev, group_id, chapter_id) {
     if (g.id !== group_id) return g;
     return {
       ...g,
-      chapters: g.chapters.map((c) =>
-        c.id === chapter_id ? { ...c, status: 'waiting', retryCount: 0, downloadError: null } : c
-      ),
+      chapters: g.chapters.map((c) => {
+        if (c.id !== chapter_id) return c;
+        const { errorAt, successCount, totalPages, failedPageIndices, ...rest } = c;
+        return { ...rest, status: 'waiting', retryCount: 0, downloadError: null };
+      }),
     };
   });
 }
@@ -206,8 +208,19 @@ export function retryFailedChapters(prev, group_id) {
     return {
       ...g,
       chapters: g.chapters.map((c) => {
-        if (c.status === 'done' && c.downloadError) {
-          const { downloadError, ...rest } = c;
+        const isFailed =
+          c.status === 'error' ||
+          c.status === 'failed' ||
+          (c.status === 'done' && Boolean(c.downloadError));
+        if (isFailed) {
+          const {
+            downloadError,
+            errorAt,
+            successCount,
+            totalPages,
+            failedPageIndices,
+            ...rest
+          } = c;
           return { ...rest, status: 'waiting', retryCount: 0 };
         }
         return c;

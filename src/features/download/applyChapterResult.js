@@ -4,17 +4,41 @@
  * @param {boolean} ok - whether download succeeded
  * @param {string} errorMsg - error message when !ok
  * @param {number} autoRetryMax - maximum retry attempts
+ * @param {object} [errorMeta] - optional diagnostic metadata on final failure
  * @returns {object} updated chapter with status/retryCount
  */
-export function applyChapterResult(chapter, ok, errorMsg, autoRetryMax) {
+export function applyChapterResult(chapter, ok, errorMsg, autoRetryMax, errorMeta) {
   const currentRetry = chapter.retryCount ?? 0;
   if (!ok && currentRetry < autoRetryMax) {
     return { ...chapter, status: 'waiting', retryCount: currentRetry + 1 };
   } else if (ok) {
-    const { downloadError, ...rest } = chapter;
+    const {
+      downloadError,
+      errorAt,
+      successCount,
+      totalPages,
+      failedPageIndices,
+      ...rest
+    } = chapter;
     return { ...rest, status: 'done', retryCount: 0 };
   } else {
-    return { ...chapter, status: 'done', downloadError: errorMsg };
+    const {
+      errorAt,
+      successCount,
+      totalPages,
+      failedPageIndices,
+      ...rest
+    } = chapter;
+    const next = { ...rest, status: 'done', downloadError: errorMsg };
+    if (errorMeta && typeof errorMeta === 'object') {
+      if (errorMeta.at) next.errorAt = errorMeta.at;
+      if (errorMeta.successCount != null) next.successCount = errorMeta.successCount;
+      if (errorMeta.totalPages != null) next.totalPages = errorMeta.totalPages;
+      if (Array.isArray(errorMeta.failedPageIndices) && errorMeta.failedPageIndices.length > 0) {
+        next.failedPageIndices = errorMeta.failedPageIndices;
+      }
+    }
+    return next;
   }
 }
 

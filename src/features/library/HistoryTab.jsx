@@ -3,7 +3,11 @@ import { useI18n } from '../../context/I18nContext';
 import { useDownload, QueueCoverThumb } from '../download';
 import { loadPanelUi, savePanelUi } from '../../utils/panelUiPrefs';
 import { formatChapterFolderName } from '../../utils/chapterFolderFormat';
-import { historyRowsToCsv, triggerCsvDownload } from '../../utils/historyCsv';
+import {
+  buildErrorDetailText,
+  exportErrorRowsToCsv,
+  formatErrorTimeFull,
+} from '../../utils/historyCsv';
 import {
   SearchableSelect,
   EmptyState,
@@ -18,18 +22,7 @@ function rowStatusKey(row) {
   return 'error';
 }
 
-/** Chuỗi đầy đủ — dùng cho tooltip / title. */
-function formatWhenFull(iso) {
-  if (!iso) return '—';
-  try {
-    const d = new Date(iso);
-    return d.toLocaleString();
-  } catch {
-    return iso;
-  }
-}
-
-/** Chỉ ngày (vd. 3/31/2026); giờ đầy đủ xem qua title khi hover. */
+/** Chỉ ngày (vd. 3/31/2026); giờ đầy đủ xem qua tooltip khi hover. */
 function formatWhenShort(iso) {
   if (!iso) return '—';
   try {
@@ -42,24 +35,6 @@ function formatWhenShort(iso) {
   } catch {
     return iso;
   }
-}
-
-/** Nội dung chi tiết lỗi (chỉ dùng khi dòng là error). */
-function buildHistoryBugDetailText(row, { t, chapterFolder }) {
-  const lines = [];
-  lines.push(`${t('history.col.manga')}: ${row.mangaTitle || ''}`);
-  lines.push(`${t('history.col.chapter')}: ${formatChapterFolderName(row.chapterTitle, chapterFolder)}`);
-  lines.push(`${t('history.col.time')}: ${formatWhenFull(row.at)}`);
-  if (row.message) lines.push(`${t('history.bugMessage')}: ${row.message}`);
-  if (row.successCount != null && row.totalPages != null) {
-    lines.push(`${t('history.pagesProgress')}: ${row.successCount}/${row.totalPages}`);
-  }
-  if (Array.isArray(row.failedPageIndices) && row.failedPageIndices.length) {
-    lines.push(`${t('history.failedPages')}: ${row.failedPageIndices.join(', ')}`);
-  }
-  if (row.chapterUrl) lines.push(`${t('history.csvChapterUrl')}: ${row.chapterUrl}`);
-  if (row.mangaUrl) lines.push(`${t('history.csvMangaUrl')}: ${row.mangaUrl}`);
-  return lines.join('\n');
 }
 
 function StatusBadge({ ok, skipped, labels }) {
@@ -106,6 +81,8 @@ export default function HistoryTab({
   onReadHistoryEntry,
   onAddToQueue,
   onAddAllErrorsToQueue,
+  inlineActions = false,
+  onClose,
 }) {
   const { t } = useI18n();
   const { downloadHistory: history = [] } = useDownload();
@@ -154,44 +131,26 @@ export default function HistoryTab({
   useEffect(() => {
     if (!detailRow) return undefined;
     const onKey = (e) => {
-      if (e.key === 'Escape') setDetailRow(null);
+      if (e.key === 'Escape') {
+        e.stopImmediatePropagation();
+        setDetailRow(null);
+      }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [detailRow]);
 
   const handleExportBugCsv = useCallback(() => {
-    if (!bugHistoryRows.length) return;
-    const headers = [
-      t('history.col.time'),
-      t('history.col.manga'),
-      t('history.col.chapter'),
-      t('history.bugMessage'),
-      t('history.csvSuccessCount'),
-      t('history.csvTotalPages'),
-      t('history.csvFailedIndices'),
-      t('history.csvChapterUrl'),
-      t('history.csvMangaUrl'),
-    ];
-    const rows = bugHistoryRows.map((row) => [
-      row.at || '',
-      row.mangaTitle || '',
-      formatChapterFolderName(row.chapterTitle, chapterFolder),
-      row.message || '',
-      row.successCount != null ? String(row.successCount) : '',
-      row.totalPages != null ? String(row.totalPages) : '',
-      Array.isArray(row.failedPageIndices) ? row.failedPageIndices.join(';') : '',
-      row.chapterUrl || '',
-      row.mangaUrl || '',
-    ]);
-    const csv = historyRowsToCsv(headers, rows);
-    const stamp = new Date().toISOString().slice(0, 10);
-    triggerCsvDownload(`manga-bug-log-${stamp}.csv`, csv);
+    exportErrorRowsToCsv(bugHistoryRows, {
+      t,
+      chapterFolder,
+      filenamePrefix: 'manga-bug-log',
+    });
   }, [bugHistoryRows, chapterFolder, t]);
 
   const handleCopyDetail = useCallback(async () => {
     if (!detailRow) return;
-    const text = buildHistoryBugDetailText(detailRow, { t, chapterFolder });
+    const text = buildErrorDetailText(detailRow, { t, chapterFolder });
     try {
       await navigator.clipboard.writeText(text);
       setCopyDone(true);
@@ -201,44 +160,80 @@ export default function HistoryTab({
     }
   }, [detailRow, t, chapterFolder]);
 
+  const actionButtons = (
+    <div className="flex items-center gap-2 shrink-0 flex-wrap">
+      {onAddAllErrorsToQueue && (
+        <button
+          type="button"
+          disabled={filteredErrors.length === 0}
+          onClick={() => onAddAllErrorsToQueue(filteredErrors)}
+          data-tooltip={t('history.addAllErrorsToQueueTitle') || t('history.addAllErrorsToQueue')}
+          className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-semibold text-on-primary shadow-2xs hover:opacity-95 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0 whitespace-nowrap"
+        >
+          <span className="material-symbols-outlined text-[16px] leading-none">playlist_add</span>
+          <span>{t('history.addAllErrorsToQueue')}</span>
+        </button>
+      )}
+      <button
+        type="button"
+        disabled={!bugHistoryRows.length}
+        onClick={handleExportBugCsv}
+        data-tooltip={t('history.exportBugCsvTitle') || t('history.exportBugCsv')}
+        className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-outline-variant/25 bg-surface-container-highest px-3 text-xs font-medium text-on-surface hover:border-outline-variant/50 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0 whitespace-nowrap"
+      >
+        <span className="material-symbols-outlined text-[16px] leading-none">download</span>
+        <span>{t('history.exportBugCsv')}</span>
+      </button>
+      <button
+        type="button"
+        disabled={!filteredHistory.length}
+        onClick={() => onClearHistory?.(statusFilter)}
+        aria-label={t('history.clear')}
+        className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-error/30 bg-error/15 px-3 text-xs font-semibold text-error hover:bg-error/25 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0 whitespace-nowrap"
+      >
+        <span className="material-symbols-outlined text-[16px] leading-none">delete_sweep</span>
+        <span>{t('history.clear')}</span>
+      </button>
+    </div>
+  );
+
   return (
     <div className="flex-1 flex flex-col bg-surface overflow-hidden min-h-0">
-      <StudioPrimaryActionSlot>
-        <div className="flex items-center gap-2 shrink-0">
-          {onAddAllErrorsToQueue && (
-            <button
-              type="button"
-              disabled={filteredErrors.length === 0}
-              onClick={() => onAddAllErrorsToQueue(filteredErrors)}
-              data-tooltip={t('history.addAllErrorsToQueueTitle') || t('history.addAllErrorsToQueue')}
-              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-semibold text-on-primary shadow-2xs hover:opacity-95 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0 whitespace-nowrap"
-            >
-              <span className="material-symbols-outlined text-[16px] leading-none">playlist_add</span>
-              <span>{t('history.addAllErrorsToQueue')}</span>
-            </button>
-          )}
-          <button
-            type="button"
-            disabled={!bugHistoryRows.length}
-            onClick={handleExportBugCsv}
-            data-tooltip={t('history.exportBugCsvTitle') || t('history.exportBugCsv')}
-            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-outline-variant/25 bg-surface-container-highest px-3 text-xs font-medium text-on-surface hover:border-outline-variant/50 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0 whitespace-nowrap"
-          >
-            <span className="material-symbols-outlined text-[16px] leading-none">download</span>
-            <span>{t('history.exportBugCsv')}</span>
-          </button>
-          <button
-            type="button"
-            disabled={!filteredHistory.length}
-            onClick={() => onClearHistory?.(statusFilter)}
-            aria-label={t('history.clear')}
-            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-error/30 bg-error/15 px-3 text-xs font-semibold text-error hover:bg-error/25 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0 whitespace-nowrap"
-          >
-            <span className="material-symbols-outlined text-[16px] leading-none">delete_sweep</span>
-            <span>{t('history.clear')}</span>
-          </button>
+      {inlineActions ? (
+        <div className="border-b border-outline-variant/20 bg-surface-container-low/80 backdrop-blur-md px-5 py-3 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="material-symbols-outlined text-[19px] leading-none text-primary shrink-0">
+              history
+            </span>
+            <h2 className="text-sm font-bold text-on-surface truncate">
+              {t('queue.tab.history')}
+            </h2>
+            {bugHistoryRows.length > 0 ? (
+              <span className="inline-flex items-center rounded-full border border-error/25 bg-error/10 px-2.5 py-0.5 text-[11px] font-semibold text-error tabular-nums shrink-0">
+                {t('history.errorCountBadge', { count: bugHistoryRows.length })}
+              </span>
+            ) : null}
+          </div>
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            {actionButtons}
+            {onClose ? (
+              <button
+                type="button"
+                onClick={onClose}
+                data-tooltip={t('history.detailClose')}
+                aria-label={t('history.detailClose')}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-outline-variant/25 bg-surface-container-highest text-on-surface-variant hover:text-on-surface hover:border-outline-variant/50 transition-colors cursor-pointer shrink-0"
+              >
+                <span className="material-symbols-outlined text-[17px] leading-none">close</span>
+              </button>
+            ) : null}
+          </div>
         </div>
-      </StudioPrimaryActionSlot>
+      ) : (
+        <StudioPrimaryActionSlot>
+          {actionButtons}
+        </StudioPrimaryActionSlot>
+      )}
 
       <div className="flex-1 flex flex-col px-6 pt-4 pb-4 gap-4 sm:px-8 overflow-hidden min-h-0">
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
@@ -315,11 +310,11 @@ export default function HistoryTab({
             },
             {
               key: 'actions',
-              width: 'w-40',
+              width: 'w-56 min-w-[224px]',
               header: '',
               ariaLabel: t('history.col.openAria'),
               align: 'right',
-              headerClassName: 'w-40 p-3 pr-4 sm:pr-5 border-none text-right',
+              headerClassName: 'w-56 min-w-[224px] p-3 pr-4 sm:pr-5 border-none text-right',
             },
           ]}
           data={filteredHistory}
@@ -368,7 +363,7 @@ export default function HistoryTab({
               </td>
               <td
                 className="w-36 min-w-0 overflow-hidden p-3 font-mono text-xs text-on-surface/60 truncate"
-                data-tooltip={formatWhenFull(row.at)}
+                data-tooltip={formatErrorTimeFull(row.at)}
               >
                 {formatWhenShort(row.at)}
               </td>
@@ -377,7 +372,7 @@ export default function HistoryTab({
                   <StatusBadge ok={row.ok} skipped={row.skipped} labels={badgeLabels} />
                 </div>
               </td>
-              <td className="w-40 p-3 pr-4 sm:pr-5 align-middle text-right">
+              <td className="w-56 min-w-[224px] p-3 pr-4 sm:pr-5 align-middle text-right">
                 <div className="flex items-center justify-end gap-1.5">
                   {rowStatusKey(row) === 'error' && onAddToQueue && (
                     <button
@@ -448,14 +443,14 @@ export default function HistoryTab({
 
       {detailRow && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50"
+          className="fixed inset-0 z-[210] flex items-center justify-center p-4 bg-black/50"
           role="dialog"
           aria-modal="true"
           aria-labelledby="history-detail-title"
           onClick={() => setDetailRow(null)}
         >
           <div
-            className="bg-surface max-w-lg w-full max-h-[85vh] overflow-hidden flex flex-col rounded-xl border border-outline-variant/20 shadow-xl"
+            className="bg-surface max-w-lg w-full max-h-[85vh] overflow-hidden flex flex-col rounded-2xl border border-outline-variant/20 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-4 border-b border-outline-variant/15 shrink-0">
@@ -465,21 +460,21 @@ export default function HistoryTab({
             </div>
             <div className="p-4 overflow-y-auto custom-scrollbar min-h-0 flex-1">
               <pre className="whitespace-pre-wrap break-words text-xs text-on-surface-variant font-mono leading-relaxed">
-                {buildHistoryBugDetailText(detailRow, { t, chapterFolder })}
+                {buildErrorDetailText(detailRow, { t, chapterFolder })}
               </pre>
             </div>
             <div className="p-4 border-t border-outline-variant/15 flex flex-wrap gap-2 shrink-0 justify-end">
               <button
                 type="button"
                 onClick={handleCopyDetail}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-secondary-container text-on-secondary-container hover:brightness-110"
+                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-secondary-container text-on-secondary-container hover:brightness-110 cursor-pointer"
               >
                 {copyDone ? t('history.detailCopied') : t('history.detailCopy')}
               </button>
               <button
                 type="button"
                 onClick={() => setDetailRow(null)}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-surface-container-high text-on-surface hover:bg-surface-container-highest"
+                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-surface-container-high text-on-surface hover:bg-surface-container-highest cursor-pointer"
               >
                 {t('history.detailClose')}
               </button>

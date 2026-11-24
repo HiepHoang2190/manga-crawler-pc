@@ -43,7 +43,6 @@ test('HomeWorkspace switches to Queue when download nonce increments while mount
 test('home tab strip lives in HomeWorkspace and mounts tab contents from barrels', () => {
   const src = fs.readFileSync(path.join(dirname, 'HomeWorkspace.jsx'), 'utf8');
   expect(src).toMatch(/FavoritesTab/);
-  expect(src).toMatch(/HistoryTab/);
   expect(src).toMatch(/OfflineLibraryTab/);
   expect(src).toMatch(/QueuePanel/);
   expect(src).toMatch(/KindleJobBanner/);

@@ -34,6 +34,76 @@ describe('applyChapterResult', () => {
     const chapter = { id: '1', status: 'downloading' };
     expect(applyChapterResult(chapter, false, 'x', 1).retryCount).toBe(1);
   });
+
+  test('attaches errorMeta fields on final failure and ignores them during auto-retry', () => {
+    const retrying = applyChapterResult(
+      { id: '1', status: 'downloading', retryCount: 0 },
+      false,
+      'timeout',
+      2,
+      { at: '2026-11-24T10:00:00.000Z', successCount: 3, totalPages: 10, failedPageIndices: [4, 5] }
+    );
+    expect(retrying).toEqual({
+      id: '1',
+      status: 'waiting',
+      retryCount: 1,
+    });
+
+    const finalFail = applyChapterResult(
+      { id: '1', status: 'downloading', retryCount: 2 },
+      false,
+      'timeout',
+      2,
+      { at: '2026-11-24T10:00:00.000Z', successCount: 3, totalPages: 10, failedPageIndices: [4, 5] }
+    );
+    expect(finalFail).toEqual({
+      id: '1',
+      status: 'done',
+      retryCount: 2,
+      downloadError: 'timeout',
+      errorAt: '2026-11-24T10:00:00.000Z',
+      successCount: 3,
+      totalPages: 10,
+      failedPageIndices: [4, 5],
+    });
+  });
+
+  test('success strips errorMeta fields along with downloadError', () => {
+    const chapter = {
+      id: '1',
+      status: 'downloading',
+      retryCount: 2,
+      downloadError: 'old',
+      errorAt: '2026-11-24T10:00:00.000Z',
+      successCount: 3,
+      totalPages: 10,
+      failedPageIndices: [4, 5],
+    };
+    expect(applyChapterResult(chapter, true, '', 2)).toEqual({
+      id: '1',
+      status: 'done',
+      retryCount: 0,
+    });
+  });
+
+  test('final failure strips stale errorMeta fields when new errorMeta omits them', () => {
+    const chapter = {
+      id: '1',
+      status: 'downloading',
+      retryCount: 2,
+      downloadError: 'old',
+      errorAt: '2026-11-23T10:00:00.000Z',
+      successCount: 3,
+      totalPages: 10,
+      failedPageIndices: [4, 5],
+    };
+    expect(applyChapterResult(chapter, false, 'new err', 2)).toEqual({
+      id: '1',
+      status: 'done',
+      retryCount: 2,
+      downloadError: 'new err',
+    });
+  });
 });
 
 describe('buildRetryLogMessage', () => {

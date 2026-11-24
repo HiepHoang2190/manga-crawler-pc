@@ -6,11 +6,19 @@ export function downloadProgressMatchesGroup(g, dp) {
   );
 }
 
+export function isFailedQueueChapter(c) {
+  return Boolean(
+    c &&
+      (c.status === 'error' ||
+        c.status === 'failed' ||
+        (c.status === 'done' && Boolean(c.downloadError)))
+  );
+}
+
 export function groupProgress(g) {
   const total = g.chapters.length;
-  // chapters lỗi: status 'done' nhưng có downloadError (tải không đầy đủ)
-  const err = g.chapters.filter((c) => c.status === 'done' && c.downloadError).length;
-  const done = g.chapters.filter((c) => c.status === 'done').length;
+  const err = g.chapters.filter((c) => isFailedQueueChapter(c)).length;
+  const done = g.chapters.filter((c) => c.status === 'done' || isFailedQueueChapter(c)).length;
   // chapters thành công thực sự (done nhưng không có lỗi)
   const success = g.chapters.filter((c) => c.status === 'done' && !c.downloadError).length;
   const hasDl = g.chapters.some((c) => c.status === 'downloading');

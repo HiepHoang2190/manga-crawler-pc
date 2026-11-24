@@ -494,12 +494,24 @@ export function DownloadProvider({ children }) {
                 chapters: gg.chapters.map((c) => {
                   if (c.id !== chapter.id) return c;
                   if (ok) {
-                    const { downloadError, ...rest } = c;
+                    const {
+                      downloadError,
+                      errorAt,
+                      successCount,
+                      totalPages,
+                      failedPageIndices,
+                      ...rest
+                    } = c;
                     return { ...rest, status: 'done' };
                   }
                   const errorMsg = res?.aborted ? t('queue.status.skipped') : (res?.error || t('app.log.downloadIncompleteShort'));
                   const effectiveRetryMax = (res?.aborted || isFatalSaveDirError) ? 0 : autoRetryMax;
-                  const result = applyChapterResult(c, false, errorMsg, effectiveRetryMax);
+                  const result = applyChapterResult(c, false, errorMsg, effectiveRetryMax, {
+                    at: new Date().toISOString(),
+                    successCount: res?.successCount,
+                    totalPages: res?.totalPages,
+                    failedPageIndices: Array.isArray(res?.failedPageIndices) ? res.failedPageIndices : undefined,
+                  });
                   if (result.status === 'waiting') {
                     appendLog(
                       buildRetryLogMessage(
@@ -639,7 +651,9 @@ export function DownloadProvider({ children }) {
                 ...gg,
                 chapters: gg.chapters.map((c) => {
                   if (c.id !== chapter.id) return c;
-                  const result = applyChapterResult(c, false, msg, autoRetryMax);
+                  const result = applyChapterResult(c, false, msg, autoRetryMax, {
+                    at: new Date().toISOString(),
+                  });
                   if (result.status === 'waiting') {
                     appendLog(
                       buildRetryLogMessage(

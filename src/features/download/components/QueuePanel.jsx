@@ -1,9 +1,13 @@
-import { useMemo, useRef, useState, Fragment } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, Fragment } from 'react';
+import { createPortal } from 'react-dom';
 import { useI18n } from '../../../context/I18nContext';
 import {
   groupProgress,
   groupProgressPercent,
+  isFailedQueueChapter,
 } from '../../../utils/queueProgress';
+import { formatChapterFolderName } from '../../../utils/chapterFolderFormat';
+import { buildErrorDetailText, exportErrorRowsToCsv } from '../../../utils/historyCsv';
 import ProgressPanel from './ProgressPanel';
 import QueueCoverThumb from './QueueCoverThumb.jsx';
 import QueueWorkflowSelector from './QueueWorkflowSelector';
@@ -602,6 +606,7 @@ export default function QueuePanel({
   onSetGroupWorkflow: propOnSetGroupWorkflow,
   onSetAllGroupsWorkflow: propOnSetAllGroupsWorkflow,
   onRetryGroupWorkflow: propOnRetryGroupWorkflow,
+  chapterFolder,
 }) {
   const { t } = useI18n();
   const downloadCtx = useDownloadSafe();
@@ -730,6 +735,73 @@ export default function QueuePanel({
 
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [errorModalTarget, setErrorModalTarget] = useState(null);
+  const [copiedErrorKey, setCopiedErrorKey] = useState(null);
+  const copyTimerRef = useRef(null);
+  const isMountedRef = useRef(true);
+  const errorModalCloseBtnRef = useRef(null);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
+    };
+  }, []);
+
+  const errorModalData = useMemo(() => {
+    if (!errorModalTarget?.groupId) return null;
+    const group = queue.find((g) => g.id === errorModalTarget.groupId);
+    if (!group) return null;
+    const entries = [];
+    for (const c of group.chapters || []) {
+      if (!isFailedQueueChapter(c)) continue;
+      if (errorModalTarget.chapterId && c.id !== errorModalTarget.chapterId) continue;
+      entries.push({
+        chapterId: c.id,
+        at: c.errorAt || '',
+        mangaTitle: group.mangaTitle || '',
+        chapterTitle: c.chapterTitle || '',
+        message: c.downloadError || t('queue.status.error'),
+        successCount: c.successCount,
+        totalPages: c.totalPages,
+        failedPageIndices: c.failedPageIndices,
+        chapterUrl: c.chapterUrl || '',
+        mangaUrl: group.mangaUrl || '',
+      });
+    }
+    if (entries.length === 0) return null;
+    return {
+      groupId: group.id,
+      chapterId: errorModalTarget.chapterId || null,
+      mangaTitle: group.mangaTitle || '',
+      hasDl: groupProgress(group).hasDl,
+      entries,
+    };
+  }, [queue, errorModalTarget, t]);
+
+  useEffect(() => {
+    if (errorModalTarget && !errorModalData) {
+      setErrorModalTarget(null);
+    }
+  }, [errorModalTarget, errorModalData]);
+
+  useEffect(() => {
+    if (!errorModalData) return undefined;
+    const rafId = window.requestAnimationFrame(() => errorModalCloseBtnRef.current?.focus?.());
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        setErrorModalTarget(null);
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.removeEventListener('keydown', onKey, true);
+    };
+  }, [errorModalData]);
 
   const failedGroups = useMemo(
     () => queue.filter((g) => groupProgress(g).err > 0),
@@ -739,6 +811,50 @@ export default function QueuePanel({
     () => failedGroups.reduce((sum, g) => sum + groupProgress(g).err, 0),
     [failedGroups]
   );
+
+  const failedQueueErrorRows = useMemo(() => {
+    const rows = [];
+    for (const g of queue) {
+      for (const c of g.chapters || []) {
+        if (!isFailedQueueChapter(c)) continue;
+        rows.push({
+          at: c.errorAt || '',
+          mangaTitle: g.mangaTitle || '',
+          chapterTitle: c.chapterTitle || '',
+          message: c.downloadError || t('queue.status.error'),
+          successCount: c.successCount,
+          totalPages: c.totalPages,
+          failedPageIndices: c.failedPageIndices,
+          chapterUrl: c.chapterUrl || '',
+          mangaUrl: g.mangaUrl || '',
+        });
+      }
+    }
+    return rows;
+  }, [queue, t]);
+
+  const handleExportQueueErrorsCsv = useCallback(() => {
+    exportErrorRowsToCsv(failedQueueErrorRows, {
+      t,
+      chapterFolder,
+      filenamePrefix: 'manga-queue-errors',
+    });
+  }, [failedQueueErrorRows, t, chapterFolder]);
+
+  const handleCopyErrorText = useCallback(async (key, text) => {
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      if (!isMountedRef.current) return;
+      setCopiedErrorKey(key);
+      if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = window.setTimeout(() => {
+        if (isMountedRef.current) setCopiedErrorKey(null);
+      }, 2000);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const queueStats = useMemo(() => {
     let totalCh = 0;
@@ -886,6 +1002,18 @@ export default function QueuePanel({
               <span>{t('queue.retryAllFailed', { count: totalFailedChapters })}</span>
             </button>
           ) : null}
+          {failedQueueErrorRows.length > 0 ? (
+            <button
+              type="button"
+              data-testid="queue-export-error-csv-btn"
+              onClick={handleExportQueueErrorsCsv}
+              data-tooltip={t('queue.exportErrorsCsvTooltip')}
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-outline-variant/25 bg-surface-container-highest px-3 text-xs font-medium text-on-surface hover:border-outline-variant/50 transition-colors cursor-pointer shrink-0 whitespace-nowrap"
+            >
+              <span className="material-symbols-outlined text-[16px] leading-none">download</span>
+              <span>{t('queue.exportErrorsCsv')}</span>
+            </button>
+          ) : null}
         </div>
       </StudioPrimaryActionSlot>
 
@@ -1001,11 +1129,11 @@ export default function QueuePanel({
             },
             {
               key: 'actions',
-              width: 'w-56 min-w-[224px]',
+              width: 'w-64 min-w-[256px]',
               header: '',
               ariaLabel: t('queue.col.actionsHeader'),
               align: 'right',
-              headerClassName: 'w-56 min-w-[224px] border-none p-3 pr-4 sm:pr-5 text-right',
+              headerClassName: 'w-64 min-w-[256px] border-none p-3 pr-4 sm:pr-5 text-right',
             },
           ]}
           data={filteredQueue}
@@ -1204,7 +1332,7 @@ export default function QueuePanel({
                     </span>
                   )}
                 </td>
-                <td className="p-2 sm:p-3 pr-4 sm:pr-5 w-56 min-w-[224px] align-middle" onClick={(e) => e.stopPropagation()}>
+                <td className="p-2 sm:p-3 pr-4 sm:pr-5 w-64 min-w-[256px] align-middle" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-end gap-1.5">
                     <button
                       type="button"
@@ -1247,6 +1375,21 @@ export default function QueuePanel({
                     >
                       <span className="material-symbols-outlined text-[18px] leading-none">folder_open</span>
                     </button>
+                    {p.err > 0 ? (
+                      <button
+                        type="button"
+                        data-testid="queue-group-bug-btn"
+                        onClick={() => {
+                          setCopiedErrorKey(null);
+                          setErrorModalTarget({ groupId: item.id });
+                        }}
+                        className="cursor-pointer h-8 w-8 shrink-0 rounded-lg border border-error/30 bg-error/10 text-error hover:bg-error/20 inline-flex items-center justify-center transition-colors"
+                        data-tooltip={t('queue.viewMangaErrorsTooltip', { count: p.err })}
+                        aria-label={t('queue.viewMangaErrorsTooltip', { count: p.err })}
+                      >
+                        <span className="material-symbols-outlined text-[18px] leading-none">bug_report</span>
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       disabled={p.hasDl}
@@ -1360,6 +1503,14 @@ export default function QueuePanel({
                                 <span className="text-[13px] truncate text-on-surface font-medium">
                                   {c.chapterTitle}
                                 </span>
+                                {isErr && c.downloadError ? (
+                                  <span
+                                    className="text-[11px] text-error/90 truncate"
+                                    data-tooltip={c.downloadError}
+                                  >
+                                    {c.downloadError}
+                                  </span>
+                                ) : null}
                               </div>
                               {!allSame && (
                                 <div className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${badgeBg} ${badgeText} shrink-0`}>
@@ -1368,12 +1519,27 @@ export default function QueuePanel({
                               )}
                             </div>
                             <div className="flex items-center gap-1 shrink-0 ml-3">
+                              {isErr && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setCopiedErrorKey(null);
+                                    setErrorModalTarget({ groupId: item.id, chapterId: c.id });
+                                  }}
+                                  className="h-7 w-7 rounded-lg border border-outline-variant/20 bg-surface-container-highest text-error hover:border-error/30 hover:bg-error/10 flex items-center justify-center transition-colors cursor-pointer"
+                                  data-tooltip={t('history.bugDetailOpenTitle')}
+                                  aria-label={t('history.bugDetailOpenTitle')}
+                                >
+                                  <span className="material-symbols-outlined !text-[15px] leading-none">bug_report</span>
+                                </button>
+                              )}
                               {(isDl || isWait) && (
                                 <button
                                   type="button"
                                   onClick={() => onSkipChapter && onSkipChapter(item.id, c.id, isDl)}
-                                  className="text-on-surface-variant hover:text-amber-500 hover:bg-amber-500/10 rounded-full w-7 h-7 flex items-center justify-center transition-all"
+                                  className="text-on-surface-variant hover:text-amber-500 hover:bg-amber-500/10 rounded-lg w-7 h-7 flex items-center justify-center transition-colors cursor-pointer"
                                   data-tooltip={t('queue.skipChapterTitle') || 'Skip'}
+                                  aria-label={t('queue.skipChapterTitle') || 'Skip'}
                                 >
                                   <span className="material-symbols-outlined !text-[16px]">skip_next</span>
                                 </button>
@@ -1382,8 +1548,9 @@ export default function QueuePanel({
                                 <button
                                   type="button"
                                   onClick={() => onRetryChapter && onRetryChapter(item.id, c.id)}
-                                  className="text-on-surface-variant hover:text-green-500 hover:bg-green-500/10 rounded-full w-7 h-7 flex items-center justify-center transition-all"
+                                  className="text-on-surface-variant hover:text-green-500 hover:bg-green-500/10 rounded-lg w-7 h-7 flex items-center justify-center transition-colors cursor-pointer"
                                   data-tooltip={t('queue.retryChapterTitle') || 'Retry'}
+                                  aria-label={t('queue.retryChapterTitle') || 'Retry'}
                                 >
                                   <span className="material-symbols-outlined !text-[16px]">refresh</span>
                                 </button>
@@ -1391,8 +1558,9 @@ export default function QueuePanel({
                               <button
                                 type="button"
                                 onClick={() => onRemoveChapter && onRemoveChapter(item.id, c.id)}
-                                className="text-on-surface-variant hover:text-error hover:bg-error/10 rounded-full w-7 h-7 flex items-center justify-center transition-all"
+                                className="text-on-surface-variant hover:text-error hover:bg-error/10 rounded-lg w-7 h-7 flex items-center justify-center transition-colors cursor-pointer"
                                 data-tooltip={t('queue.removeChapterTitle') || 'Remove'}
+                                aria-label={t('queue.removeChapterTitle') || 'Remove'}
                               >
                                 <span className="material-symbols-outlined !text-[16px]">close</span>
                               </button>
@@ -1460,6 +1628,163 @@ export default function QueuePanel({
             }}
             onCancel={() => setConfirmRemoveSelectedOpen(false)}
           />
+          {errorModalData && typeof document !== 'undefined'
+            ? createPortal(
+                <div
+                  data-testid="queue-error-modal-backdrop"
+                  className="fixed inset-0 z-[220] flex items-center justify-center p-4 bg-black/55 backdrop-blur-[2px]"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="queue-error-detail-title"
+                  onClick={(e) => {
+                    if (e.target === e.currentTarget) setErrorModalTarget(null);
+                  }}
+                >
+                  <div className="bg-surface max-w-2xl w-full max-h-[82vh] overflow-hidden flex flex-col rounded-2xl border border-outline-variant/20 shadow-2xl">
+                    <div className="px-5 py-3.5 border-b border-outline-variant/20 bg-surface-container-low/80 flex items-center justify-between gap-3 shrink-0">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="material-symbols-outlined text-[19px] leading-none text-error shrink-0">
+                          bug_report
+                        </span>
+                        <h2 id="queue-error-detail-title" className="text-sm font-bold text-on-surface truncate">
+                          {errorModalData.mangaTitle || t('history.bugDetailTitle')}
+                        </h2>
+                        <span className="inline-flex items-center rounded-full border border-error/25 bg-error/10 px-2.5 py-0.5 text-[11px] font-semibold text-error tabular-nums shrink-0">
+                          {t('history.errorCountBadge', { count: errorModalData.entries.length })}
+                        </span>
+                      </div>
+                      <button
+                        ref={errorModalCloseBtnRef}
+                        type="button"
+                        onClick={() => setErrorModalTarget(null)}
+                        data-tooltip={t('history.detailClose')}
+                        aria-label={t('history.detailClose')}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-outline-variant/25 bg-surface-container-highest text-on-surface-variant hover:text-on-surface hover:border-outline-variant/50 transition-colors cursor-pointer shrink-0"
+                      >
+                        <span className="material-symbols-outlined text-[16px] leading-none">close</span>
+                      </button>
+                    </div>
+                    <div className="p-4 overflow-y-auto custom-scrollbar min-h-0 flex-1 space-y-3">
+                      {errorModalData.entries.map((entry) => {
+                        const detailText = buildErrorDetailText(entry, { t, chapterFolder });
+                        const isEntryCopied = copiedErrorKey === entry.chapterId;
+                        return (
+                          <div
+                            key={entry.chapterId}
+                            className="rounded-xl border border-error/20 bg-surface-container-low/60 p-3.5 space-y-2"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-semibold text-on-surface truncate">
+                                {formatChapterFolderName(entry.chapterTitle, chapterFolder)}
+                              </span>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopyErrorText(entry.chapterId, detailText)}
+                                  data-tooltip={isEntryCopied ? t('history.detailCopied') : t('history.detailCopy')}
+                                  aria-label={isEntryCopied ? t('history.detailCopied') : t('history.detailCopy')}
+                                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-outline-variant/20 bg-surface-container-highest text-on-surface-variant hover:text-primary hover:border-primary/40 transition-colors cursor-pointer"
+                                >
+                                  <span className="material-symbols-outlined text-[15px] leading-none">
+                                    {isEntryCopied ? 'check' : 'content_copy'}
+                                  </span>
+                                </button>
+                                {typeof onRetryChapter === 'function' ? (
+                                  <button
+                                    type="button"
+                                    disabled={errorModalData.hasDl}
+                                    onClick={() => onRetryChapter(errorModalData.groupId, entry.chapterId)}
+                                    data-tooltip={t('queue.retryChapterTitle') || 'Retry'}
+                                    aria-label={t('queue.retryChapterTitle') || 'Retry'}
+                                    className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-outline-variant/20 bg-surface-container-highest text-on-surface-variant hover:text-green-500 hover:border-green-500/35 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                                  >
+                                    <span className="material-symbols-outlined text-[15px] leading-none">refresh</span>
+                                  </button>
+                                ) : null}
+                              </div>
+                            </div>
+                            <pre className="whitespace-pre-wrap break-words text-xs text-on-surface-variant font-mono leading-relaxed">
+                              {detailText}
+                            </pre>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="px-5 py-3 border-t border-outline-variant/20 bg-surface-container-low/70 flex flex-wrap items-center justify-between gap-2 shrink-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            exportErrorRowsToCsv(errorModalData.entries, {
+                              t,
+                              chapterFolder,
+                              filenamePrefix: 'manga-queue-errors',
+                            })
+                          }
+                          data-tooltip={t('queue.exportMangaErrorsCsvTooltip')}
+                          className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-outline-variant/25 bg-surface-container-highest px-3 text-xs font-medium text-on-surface hover:border-outline-variant/50 transition-colors cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-[15px] leading-none">download</span>
+                          <span>{t('queue.exportMangaErrorsCsv')}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const combined = errorModalData.entries
+                              .map((entry) => buildErrorDetailText(entry, { t, chapterFolder }))
+                              .join('\n\n---\n\n');
+                            handleCopyErrorText('all', combined);
+                          }}
+                          className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-outline-variant/25 bg-surface-container-highest px-3 text-xs font-medium text-on-surface hover:border-outline-variant/50 transition-colors cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-[15px] leading-none">
+                            {copiedErrorKey === 'all' ? 'check' : 'content_copy'}
+                          </span>
+                          <span>
+                            {copiedErrorKey === 'all'
+                              ? t('history.detailCopied')
+                              : errorModalData.entries.length > 1
+                                ? t('queue.copyAllErrors')
+                                : t('history.detailCopy')}
+                          </span>
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {errorModalData.chapterId && typeof onRetryChapter === 'function' ? (
+                          <button
+                            type="button"
+                            disabled={errorModalData.hasDl}
+                            onClick={() => onRetryChapter(errorModalData.groupId, errorModalData.chapterId)}
+                            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-primary px-3.5 text-xs font-semibold text-on-primary shadow-2xs hover:opacity-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+                          >
+                            <span className="material-symbols-outlined text-[15px] leading-none">refresh</span>
+                            <span>{t('queue.retryChapterTitle') || 'Retry'}</span>
+                          </button>
+                        ) : !errorModalData.chapterId && typeof onRetryFailedChapters === 'function' ? (
+                          <button
+                            type="button"
+                            disabled={errorModalData.hasDl}
+                            onClick={() => onRetryFailedChapters(errorModalData.groupId)}
+                            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-primary px-3.5 text-xs font-semibold text-on-primary shadow-2xs hover:opacity-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+                          >
+                            <span className="material-symbols-outlined text-[15px] leading-none">refresh</span>
+                            <span>{t('queue.retryFailed', { n: errorModalData.entries.length })}</span>
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => setErrorModalTarget(null)}
+                          className="inline-flex h-8 items-center justify-center rounded-lg bg-surface-container-high px-3.5 text-xs font-medium text-on-surface hover:bg-surface-container-highest cursor-pointer transition-colors"
+                        >
+                          {t('history.detailClose')}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>,
+                document.body
+              )
+            : null}
         </div>
     );
   }

@@ -5,6 +5,8 @@ import {
   removeQueueGroup,
   clearCompletedQueueGroups,
   pauseQueueGroups,
+  retryQueueChapter,
+  retryFailedChapters,
   mergeHistoryRowsIntoQueue,
   countNewHistoryChapters,
   listQueuedChapterUrlsAhead,
@@ -370,6 +372,73 @@ describe('workflow mutations', () => {
 
       const next = clearCompletedQueueGroups(queue);
       expect(next.map((g) => g.id)).toEqual(['done-with-error', 'still-waiting']);
+    });
+  });
+
+  describe('retryQueueChapter / retryFailedChapters metadata cleanup', () => {
+    test('retryQueueChapter clears downloadError and extended failure metadata', () => {
+      const queue = [
+        {
+          id: 'g1',
+          chapters: [
+            {
+              id: 'c1',
+              status: 'done',
+              retryCount: 2,
+              downloadError: 'net err',
+              errorAt: '2026-11-24T10:00:00.000Z',
+              successCount: 4,
+              totalPages: 10,
+              failedPageIndices: [5, 6],
+            },
+          ],
+        },
+      ];
+      const next = retryQueueChapter(queue, 'g1', 'c1');
+      expect(next[0].chapters[0]).toEqual({
+        id: 'c1',
+        status: 'waiting',
+        retryCount: 0,
+        downloadError: null,
+      });
+    });
+
+    test('retryFailedChapters clears downloadError and extended failure metadata across group', () => {
+      const queue = [
+        {
+          id: 'g1',
+          chapters: [
+            {
+              id: 'c1',
+              status: 'done',
+              retryCount: 2,
+              downloadError: 'net err',
+              errorAt: '2026-11-24T10:00:00.000Z',
+              successCount: 4,
+              totalPages: 10,
+              failedPageIndices: [5, 6],
+            },
+            { id: 'c_err', status: 'error', retryCount: 1, downloadError: 'Skipped' },
+            { id: 'c2', status: 'done', retryCount: 0 },
+          ],
+        },
+      ];
+      const next = retryFailedChapters(queue, 'g1');
+      expect(next[0].chapters[0]).toEqual({
+        id: 'c1',
+        status: 'waiting',
+        retryCount: 0,
+      });
+      expect(next[0].chapters[1]).toEqual({
+        id: 'c_err',
+        status: 'waiting',
+        retryCount: 0,
+      });
+      expect(next[0].chapters[2]).toEqual({
+        id: 'c2',
+        status: 'done',
+        retryCount: 0,
+      });
     });
   });
 });

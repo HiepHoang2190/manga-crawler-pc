@@ -15,7 +15,6 @@ import { useReader, ChaptersDrawer } from '../reader';
 import {
   useLibrary,
   FavoritesTab,
-  HistoryTab,
   OfflineLibraryTab,
 } from '../library';
 import {
@@ -37,7 +36,6 @@ import {
 
 const TABS = [
   { id: 'queue', icon: 'queue_play_next' },
-  { id: 'history', icon: 'history' },
   { id: 'offlineRead', icon: 'auto_stories' },
 ];
 
@@ -117,12 +115,9 @@ export default function HomeWorkspace({
     startQueue,
     stopQueue,
     downloadProgress,
-    clearDownloadHistory,
-    removeDownloadHistoryEntry,
     queueTabFocusNonce,
     focusQueueTab,
     enqueueChapters,
-    enqueueHistoryRows,
     removeQueueGroup,
     removeQueueGroups,
     removeQueueChapter,
@@ -157,7 +152,6 @@ export default function HomeWorkspace({
     readFromFavorite,
     readFromOfflineLibrary,
     openOfflineFolderPath,
-    readFromHistory,
     handleFetchAllFavorites,
     downloadedCountForReaderCbz,
     favoriteSyncById,
@@ -188,7 +182,12 @@ export default function HomeWorkspace({
   }, [leftWidth]);
 
   const [chaptersDrawerOpen, setChaptersDrawerOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState(() => loadPanelUi().queueTab);
+  const [activeTab, setActiveTab] = useState(() => {
+    const saved = loadPanelUi().queueTab;
+    if (saved === 'favorites') return 'offlineRead';
+    if (saved === 'history') return 'queue';
+    return saved;
+  });
   const [helpModalTabId, setHelpModalTabId] = useState(null);
   const [tabBusyMap, setTabBusyMap] = useState({});
 
@@ -237,6 +236,8 @@ export default function HomeWorkspace({
   useEffect(() => {
     if (activeTab === 'favorites') {
       setActiveTab('offlineRead');
+    } else if (activeTab === 'history') {
+      setActiveTab('queue');
     }
   }, [activeTab]);
 
@@ -263,24 +264,6 @@ export default function HomeWorkspace({
         return;
       }
       const r = await api.openMangaFolder(base, mangaTitle);
-      if (!r?.ok) appendLog(r?.error || t('app.log.openFolderFailed'), 'warn');
-    },
-    [savePath, appendLog, t]
-  );
-
-  const handleOpenChapterFolder = useCallback(
-    async (mangaTitle, chapterTitle, baseSaveDirOverride) => {
-      const api = window.electronAPI;
-      const base = String(baseSaveDirOverride ?? savePath).trim();
-      if (!base) {
-        appendLog(t('offlineLibrary.needSavePath'), 'warn');
-        return;
-      }
-      if (!api?.openChapterFolder) {
-        appendLog(t('app.log.electronOpenFolder'), 'warn');
-        return;
-      }
-      const r = await api.openChapterFolder(base, mangaTitle, chapterTitle);
       if (!r?.ok) appendLog(r?.error || t('app.log.openFolderFailed'), 'warn');
     },
     [savePath, appendLog, t]
@@ -406,31 +389,6 @@ export default function HomeWorkspace({
     },
     [handleDownloadMangadexCovers, manga?.title],
   );
-
-  const handleAddToQueue = useCallback((historyRow) => {
-    if (!historyRow?.mangaUrl || !historyRow?.chapterUrl) {
-      appendLog(t('history.alreadyInQueue', { chapter: historyRow?.chapterTitle || '', manga: historyRow?.mangaTitle || '' }), 'warn');
-      return;
-    }
-    const { addedCount } = enqueueHistoryRows([historyRow]);
-    if (addedCount === 0) {
-      appendLog(t('history.alreadyInQueue', { chapter: historyRow.chapterTitle, manga: historyRow.mangaTitle }), 'warn');
-      return;
-    }
-    appendLog(t('history.addedToQueue', { chapter: historyRow.chapterTitle, manga: historyRow.mangaTitle }), 'success');
-    focusQueueTab();
-  }, [appendLog, t, focusQueueTab, enqueueHistoryRows]);
-
-  const handleAddAllErrorsToQueue = useCallback((rows) => {
-    if (!rows?.length) return;
-    const { addedCount, affectedManga } = enqueueHistoryRows(rows);
-    if (addedCount === 0) {
-      appendLog(t('history.bulkAllAlreadyInQueue'), 'warn');
-    } else {
-      appendLog(t('history.bulkAddedToQueue', { count: addedCount, manga: affectedManga }), 'success');
-    }
-    focusQueueTab();
-  }, [appendLog, t, focusQueueTab, enqueueHistoryRows]);
 
   const handleToggleFavoriteRow = useCallback(
     (row) => {
@@ -644,18 +602,7 @@ export default function HomeWorkspace({
           />
 
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            {activeTab === 'history' ? (
-              <HistoryTab
-                chapterFolder={chapterFolder}
-                onClearHistory={clearDownloadHistory}
-                onRemoveHistoryEntry={removeDownloadHistoryEntry}
-                onOpenChapterFolder={handleOpenChapterFolder}
-                onFetchHistoryEntry={fetchMangaFromFavorite}
-                onReadHistoryEntry={readFromHistory}
-                onAddToQueue={handleAddToQueue}
-                onAddAllErrorsToQueue={handleAddAllErrorsToQueue}
-              />
-            ) : activeTab === 'queue' ? (
+            {activeTab === 'queue' ? (
               <QueuePanel
                 queue={queue}
                 queueSelectedIds={queueSelectedIds}
@@ -679,6 +626,7 @@ export default function HomeWorkspace({
                 activeChapterLabel={activeChapterLabel}
                 onOpenMangaFolder={handleOpenMangaFolder}
                 onFetchQueueGroup={fetchMangaFromFavorite}
+                chapterFolder={chapterFolder}
               />
             ) : activeTab === 'offlineRead' || activeTab === 'favorites' ? (
               <OfflineLibraryTab
