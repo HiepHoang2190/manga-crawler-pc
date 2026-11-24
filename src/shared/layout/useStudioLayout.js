@@ -1,15 +1,15 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 
 // --- Pure Clamp Helpers ---
-export function clampLeftSidebarWidth(w, innerWidth, min = 200, max = 520) {
+export function clampLeftSidebarWidth(w, innerWidth, min = 200, max = 520, maxRatio = 0.45) {
   const winW = typeof innerWidth === 'number' ? innerWidth : (typeof window !== 'undefined' ? window.innerWidth : 1200);
-  const maxW = Math.min(max, Math.floor(winW * 0.45));
+  const maxW = Math.min(max, Math.floor(winW * maxRatio));
   return Math.max(min, Math.min(w, Math.max(min, maxW)));
 }
 
-export function clampRightSidebarWidth(w, innerWidth, min = 260, max = 650) {
+export function clampRightSidebarWidth(w, innerWidth, min = 260, max = 650, maxRatio = 0.48, maxAvailable = Infinity) {
   const winW = typeof innerWidth === 'number' ? innerWidth : (typeof window !== 'undefined' ? window.innerWidth : 1200);
-  const maxW = Math.min(max, Math.floor(winW * 0.48));
+  const maxW = Math.min(max, Math.floor(winW * maxRatio), maxAvailable);
   return Math.max(min, Math.min(w, Math.max(min, maxW)));
 }
 
@@ -43,9 +43,12 @@ export function useStudioLayout({
   defaultLeftWidth = 260,
   minLeftWidth = 200,
   maxLeftWidth = 520,
+  maxLeftRatio = 0.45,
   defaultRightWidth = 340,
   minRightWidth = 260,
   maxRightWidth = 650,
+  maxRightRatio = 0.48,
+  minCenterWidth = 0,
   defaultBottomHeight = 220,
   minBottomHeight = 100,
   maxBottomHeight = 550,
@@ -60,15 +63,10 @@ export function useStudioLayout({
   const RIGHT_OPEN_KEY = `${storagePrefix}_right_open_v1`;
   const BOTTOM_OPEN_KEY = `${storagePrefix}_bottom_open_v1`;
 
-  // --- Clamp Callbacks ---
+  // --- Clamp Left & Bottom Callbacks ---
   const clampLeft = useCallback(
-    (w) => clampLeftSidebarWidth(w, typeof window !== 'undefined' ? window.innerWidth : 1200, minLeftWidth, maxLeftWidth),
-    [minLeftWidth, maxLeftWidth]
-  );
-
-  const clampRight = useCallback(
-    (w) => clampRightSidebarWidth(w, typeof window !== 'undefined' ? window.innerWidth : 1200, minRightWidth, maxRightWidth),
-    [minRightWidth, maxRightWidth]
+    (w) => clampLeftSidebarWidth(w, typeof window !== 'undefined' ? window.innerWidth : 1200, minLeftWidth, maxLeftWidth, maxLeftRatio),
+    [minLeftWidth, maxLeftWidth, maxLeftRatio]
   );
 
   const clampBottom = useCallback(
@@ -76,7 +74,7 @@ export function useStudioLayout({
     [minBottomHeight, maxBottomHeight]
   );
 
-  // --- Initial State Loaders ---
+  // --- Initial State Loaders (Left / Open states initialized before clampRight) ---
   const [showLeftSidebar, setShowLeftSidebar] = useState(() => {
     if (typeof localStorage === 'undefined') return defaultLeftOpen;
     try {
@@ -113,8 +111,40 @@ export function useStudioLayout({
         if (!isNaN(num)) return clampLeft(num);
       }
     } catch { }
-    return defaultLeftWidth;
+    return clampLeft(defaultLeftWidth);
   });
+
+  // Keep refs for active drag handlers, dynamic center-width clamp, and pure toggle computation
+  const instanceIdRef = useRef(Symbol('studioLayout'));
+  const showLeftSidebarRef = useRef(showLeftSidebar);
+  useEffect(() => {
+    showLeftSidebarRef.current = showLeftSidebar;
+  }, [showLeftSidebar]);
+
+  const showRightSidebarRef = useRef(showRightSidebar);
+  useEffect(() => {
+    showRightSidebarRef.current = showRightSidebar;
+  }, [showRightSidebar]);
+
+  const isBottomOpenRef = useRef(isBottomOpen);
+  useEffect(() => {
+    isBottomOpenRef.current = isBottomOpen;
+  }, [isBottomOpen]);
+
+  const leftWidthRef = useRef(leftWidth);
+  useEffect(() => {
+    leftWidthRef.current = leftWidth;
+  }, [leftWidth]);
+
+  const clampRight = useCallback(
+    (w) => {
+      const winW = typeof window !== 'undefined' ? window.innerWidth : 1200;
+      const occupiedLeft = showLeftSidebarRef.current ? leftWidthRef.current : 0;
+      const maxAvailable = minCenterWidth > 0 ? winW - occupiedLeft - minCenterWidth : Infinity;
+      return clampRightSidebarWidth(w, winW, minRightWidth, maxRightWidth, maxRightRatio, maxAvailable);
+    },
+    [minRightWidth, maxRightWidth, maxRightRatio, minCenterWidth]
+  );
 
   const [rightWidth, setRightWidth] = useState(() => {
     if (typeof localStorage === 'undefined') return defaultRightWidth;
@@ -125,7 +155,7 @@ export function useStudioLayout({
         if (!isNaN(num)) return clampRight(num);
       }
     } catch { }
-    return defaultRightWidth;
+    return clampRight(defaultRightWidth);
   });
 
   const [bottomHeight, setBottomHeight] = useState(() => {
@@ -140,12 +170,6 @@ export function useStudioLayout({
     return defaultBottomHeight;
   });
 
-  // Keep refs for active drag handlers
-  const leftWidthRef = useRef(leftWidth);
-  useEffect(() => {
-    leftWidthRef.current = leftWidth;
-  }, [leftWidth]);
-
   const rightWidthRef = useRef(rightWidth);
   useEffect(() => {
     rightWidthRef.current = rightWidth;
@@ -156,12 +180,37 @@ export function useStudioLayout({
     bottomHeightRef.current = bottomHeight;
   }, [bottomHeight]);
 
-  // Synchronize state across instances sharing the same storagePrefix
+  // Re-clamp widths/height smoothly when the window resizes (e.g., exiting fullscreen)
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const handleWindowResize = () => {
+      const nextLeft = clampLeft(leftWidthRef.current);
+      if (nextLeft !== leftWidthRef.current) {
+        leftWidthRef.current = nextLeft;
+        setLeftWidth(nextLeft);
+      }
+      const nextRight = clampRight(rightWidthRef.current);
+      if (nextRight !== rightWidthRef.current) {
+        rightWidthRef.current = nextRight;
+        setRightWidth(nextRight);
+      }
+      const nextBottom = clampBottom(bottomHeightRef.current);
+      if (nextBottom !== bottomHeightRef.current) {
+        bottomHeightRef.current = nextBottom;
+        setBottomHeight(nextBottom);
+      }
+    };
+    window.addEventListener('resize', handleWindowResize);
+    return () => window.removeEventListener('resize', handleWindowResize);
+  }, [clampLeft, clampRight, clampBottom]);
+
+  // Synchronize state across other instances sharing the same storagePrefix
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const handleSync = (e) => {
       const detail = e?.detail;
       if (!detail || detail.prefix !== storagePrefix) return;
+      if (detail.sourceId && detail.sourceId === instanceIdRef.current) return;
       if (detail.type === 'leftWidth' && typeof detail.value === 'number') {
         setLeftWidth(clampLeft(detail.value));
       } else if (detail.type === 'rightWidth' && typeof detail.value === 'number') {
@@ -169,10 +218,13 @@ export function useStudioLayout({
       } else if (detail.type === 'bottomHeight' && typeof detail.value === 'number') {
         setBottomHeight(clampBottom(detail.value));
       } else if (detail.type === 'showLeftSidebar' && typeof detail.value === 'boolean') {
+        showLeftSidebarRef.current = detail.value;
         setShowLeftSidebar(detail.value);
       } else if (detail.type === 'showRightSidebar' && typeof detail.value === 'boolean') {
+        showRightSidebarRef.current = detail.value;
         setShowRightSidebar(detail.value);
       } else if (detail.type === 'isBottomOpen' && typeof detail.value === 'boolean') {
+        isBottomOpenRef.current = detail.value;
         setIsBottomOpen(detail.value);
       }
     };
@@ -180,37 +232,49 @@ export function useStudioLayout({
     return () => window.removeEventListener(STUDIOLAYOUT_SYNC_EVENT, handleSync);
   }, [storagePrefix, clampLeft, clampRight, clampBottom]);
 
-  // Persist open/close toggles
+  // Persist open/close toggles outside React state updaters to avoid re-entrant sync double-toggle
   const toggleLeftSidebar = useCallback(() => {
-    setShowLeftSidebar((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem(LEFT_OPEN_KEY, String(next));
-      } catch { }
-      broadcastStudioLayoutSync({ prefix: storagePrefix, type: 'showLeftSidebar', value: next });
-      return next;
+    const next = !showLeftSidebarRef.current;
+    showLeftSidebarRef.current = next;
+    setShowLeftSidebar(next);
+    try {
+      localStorage.setItem(LEFT_OPEN_KEY, String(next));
+    } catch { }
+    broadcastStudioLayoutSync({
+      prefix: storagePrefix,
+      type: 'showLeftSidebar',
+      value: next,
+      sourceId: instanceIdRef.current,
     });
   }, [LEFT_OPEN_KEY, storagePrefix]);
 
   const toggleRightSidebar = useCallback(() => {
-    setShowRightSidebar((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem(RIGHT_OPEN_KEY, String(next));
-      } catch { }
-      broadcastStudioLayoutSync({ prefix: storagePrefix, type: 'showRightSidebar', value: next });
-      return next;
+    const next = !showRightSidebarRef.current;
+    showRightSidebarRef.current = next;
+    setShowRightSidebar(next);
+    try {
+      localStorage.setItem(RIGHT_OPEN_KEY, String(next));
+    } catch { }
+    broadcastStudioLayoutSync({
+      prefix: storagePrefix,
+      type: 'showRightSidebar',
+      value: next,
+      sourceId: instanceIdRef.current,
     });
   }, [RIGHT_OPEN_KEY, storagePrefix]);
 
   const toggleBottom = useCallback(() => {
-    setIsBottomOpen((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem(BOTTOM_OPEN_KEY, String(next));
-      } catch { }
-      broadcastStudioLayoutSync({ prefix: storagePrefix, type: 'isBottomOpen', value: next });
-      return next;
+    const next = !isBottomOpenRef.current;
+    isBottomOpenRef.current = next;
+    setIsBottomOpen(next);
+    try {
+      localStorage.setItem(BOTTOM_OPEN_KEY, String(next));
+    } catch { }
+    broadcastStudioLayoutSync({
+      prefix: storagePrefix,
+      type: 'isBottomOpen',
+      value: next,
+      sourceId: instanceIdRef.current,
     });
   }, [BOTTOM_OPEN_KEY, storagePrefix]);
 
@@ -231,7 +295,15 @@ export function useStudioLayout({
         const delta = ev.clientX - startX;
         const next = clampLeft(startW + delta);
         lastW = next;
+        leftWidthRef.current = next;
         setLeftWidth(next);
+        if (minCenterWidth > 0 && showRightSidebarRef.current) {
+          const clampedRight = clampRight(rightWidthRef.current);
+          if (clampedRight < rightWidthRef.current) {
+            rightWidthRef.current = clampedRight;
+            setRightWidth(clampedRight);
+          }
+        }
       };
 
       const cleanup = () => {
@@ -245,7 +317,7 @@ export function useStudioLayout({
         try {
           localStorage.setItem(LEFT_WIDTH_KEY, String(lastW));
         } catch { }
-        broadcastStudioLayoutSync({ prefix: storagePrefix, type: 'leftWidth', value: lastW });
+        broadcastStudioLayoutSync({ prefix: storagePrefix, type: 'leftWidth', value: lastW, sourceId: instanceIdRef.current });
       };
 
       function onUp() {
@@ -256,7 +328,7 @@ export function useStudioLayout({
       window.addEventListener('pointerup', onUp);
       window.addEventListener('pointercancel', onUp);
     },
-    [clampLeft, LEFT_WIDTH_KEY, storagePrefix]
+    [clampLeft, clampRight, minCenterWidth, LEFT_WIDTH_KEY, storagePrefix]
   );
 
   // --- Right Sidebar Resize Handler ---
@@ -276,6 +348,7 @@ export function useStudioLayout({
         const delta = startX - ev.clientX;
         const next = clampRight(startW + delta);
         lastW = next;
+        rightWidthRef.current = next;
         setRightWidth(next);
       };
 
@@ -290,7 +363,7 @@ export function useStudioLayout({
         try {
           localStorage.setItem(RIGHT_WIDTH_KEY, String(lastW));
         } catch { }
-        broadcastStudioLayoutSync({ prefix: storagePrefix, type: 'rightWidth', value: lastW });
+        broadcastStudioLayoutSync({ prefix: storagePrefix, type: 'rightWidth', value: lastW, sourceId: instanceIdRef.current });
       };
 
       function onUp() {
@@ -335,7 +408,7 @@ export function useStudioLayout({
         try {
           localStorage.setItem(BOTTOM_HEIGHT_KEY, String(lastH));
         } catch { }
-        broadcastStudioLayoutSync({ prefix: storagePrefix, type: 'bottomHeight', value: lastH });
+        broadcastStudioLayoutSync({ prefix: storagePrefix, type: 'bottomHeight', value: lastH, sourceId: instanceIdRef.current });
       };
 
       function onUp() {

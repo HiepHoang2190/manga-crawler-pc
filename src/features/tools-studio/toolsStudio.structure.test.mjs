@@ -140,3 +140,10 @@ test('All 4 tool tabs render a single Start/Stop toggle CTA using unified Primar
   const renameSlot = renameSrc.match(/<ToolsStudioCenterSlot active=\{isActive\}>([\s\S]*?)<\/ToolsStudioCenterSlot>/)[1];
   expect(renameSlot).toContain('onClick={handleUndo}');
 });
+
+test('ToolsStudio configures expanded right preview resize bounds for fullscreen displays', () => {
+  const studioSrc = fs.readFileSync(path.join(dirname, 'ToolsStudio.jsx'), 'utf8');
+  expect(studioSrc).toMatch(/maxRightWidth:\s*(?:1[2-9]\d\d|[2-9]\d\d\d)/);
+  expect(studioSrc).toMatch(/maxRightRatio:\s*0\.6\d*/);
+  expect(studioSrc).toMatch(/minCenterWidth:\s*\d+/);
+});

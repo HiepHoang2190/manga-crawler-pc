@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { jest } from '@jest/globals';
 import {
   clampLeftSidebarWidth,
@@ -7,6 +10,8 @@ import {
   STUDIOLAYOUT_SYNC_EVENT,
   broadcastStudioLayoutSync,
 } from './useStudioLayout.js';
+
+const dirname = path.dirname(fileURLToPath(import.meta.url));
 
 describe('useStudioLayout pure helpers and exports', () => {
   test('clampLeftSidebarWidth clamps within bounds', () => {
@@ -24,6 +29,17 @@ describe('useStudioLayout pure helpers and exports', () => {
     expect(clampRightSidebarWidth(200, 1200)).toBe(260); // min
     expect(clampRightSidebarWidth(400, 1200)).toBe(400); // inside
     expect(clampRightSidebarWidth(700, 1200)).toBe(576); // max
+  });
+
+  test('clampRightSidebarWidth supports custom max, maxRatio, and maxAvailable for fullscreen previews', () => {
+    // 1920px fullscreen with max=1600, maxRatio=0.65 -> 1248
+    expect(clampRightSidebarWidth(1400, 1920, 260, 1600, 0.65, Infinity)).toBe(1248);
+    // 2560px ultrawide hits max=1600
+    expect(clampRightSidebarWidth(2000, 2560, 260, 1600, 0.65, Infinity)).toBe(1600);
+    // 1440px with 380px left sidebar and 280px minCenter -> maxAvailable = 780
+    expect(clampRightSidebarWidth(1000, 1440, 260, 1600, 0.65, 780)).toBe(780);
+    // Very narrow maxAvailable still respects min=260 safely
+    expect(clampRightSidebarWidth(300, 600, 260, 1600, 0.65, 100)).toBe(260);
   });
 
   test('clampBottomDrawerHeight clamps within bounds', () => {
@@ -64,5 +80,26 @@ describe('useStudioLayout pure helpers and exports', () => {
 
     mockWindow.removeEventListener(STUDIOLAYOUT_SYNC_EVENT, listener);
     globalThis.window = origWindow;
+  });
+
+  test('toggles do not call broadcastStudioLayoutSync inside setState updaters and deduplicate self sourceId', () => {
+    const src = fs.readFileSync(path.join(dirname, 'useStudioLayout.js'), 'utf8');
+    expect(src).toContain('instanceIdRef');
+    expect(src).toContain('detail.sourceId === instanceIdRef.current');
+    expect(src).toContain('showLeftSidebarRef');
+    expect(src).toContain('showRightSidebarRef');
+    expect(src).toContain('isBottomOpenRef');
+
+    for (const setter of ['setShowLeftSidebar', 'setShowRightSidebar', 'setIsBottomOpen']) {
+      expect(src).not.toMatch(new RegExp(`${setter}\\(\\(prev\\)\\s*=>[\\s\\S]{0,220}broadcastStudioLayoutSync`));
+    }
+  });
+
+  test('useStudioLayout supports maxRightRatio, minCenterWidth, and window resize re-clamping', () => {
+    const src = fs.readFileSync(path.join(dirname, 'useStudioLayout.js'), 'utf8');
+    expect(src).toContain('maxLeftRatio');
+    expect(src).toContain('maxRightRatio');
+    expect(src).toContain('minCenterWidth');
+    expect(src).toMatch(/window\.addEventListener\(['"]resize['"]/);
   });
 });

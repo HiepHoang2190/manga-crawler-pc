@@ -30,20 +30,21 @@ export default function TemplateToolbar({
     icon: tpl.system ? 'auto_awesome' : 'bookmark',
   }));
 
-  // Cập nhật vị trí menu khi mở
+  // Cập nhật vị trí menu khi mở (neo trái theo trigger, tránh tràn hai mép màn hình)
   useLayoutEffect(() => {
     if (!menuOpen || !moreBtnRef.current) return;
     const rect = moreBtnRef.current.getBoundingClientRect();
-    const right = Math.max(8, window.innerWidth - rect.right);
+    const menuWidth = 210;
+    const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - menuWidth - 8));
     const top = rect.bottom + 6;
     setMenuStyle({
       position: 'fixed',
       top: `${top}px`,
-      right: `${right}px`,
+      left: `${left}px`,
     });
   }, [menuOpen]);
 
-  // Đóng menu khi click ra ngoài hoặc nhấn phím Escape
+  // Đóng menu khi click ra ngoài, cuộn/resize hoặc nhấn phím Escape
   useEffect(() => {
     if (!menuOpen) return;
     const handlePointerDown = (e) => {
@@ -61,11 +62,16 @@ export default function TemplateToolbar({
         moreBtnRef.current?.focus();
       }
     };
+    const handleClose = () => setMenuOpen(false);
     window.addEventListener('pointerdown', handlePointerDown);
     window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('resize', handleClose);
+    window.addEventListener('scroll', handleClose, true);
     return () => {
       window.removeEventListener('pointerdown', handlePointerDown);
       window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('resize', handleClose);
+      window.removeEventListener('scroll', handleClose, true);
     };
   }, [menuOpen]);
 
@@ -75,7 +81,7 @@ export default function TemplateToolbar({
   };
 
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-1.5 shrink-0">
       <SearchableSelect
         value={activeId}
         onChange={onSelect}
@@ -84,10 +90,10 @@ export default function TemplateToolbar({
         size="sm"
         showPlaceholderOption={false}
         placeholder={t('imagePipeline.template.select')}
-        className="min-w-[11.5rem]"
+        className="min-w-[11.5rem] max-w-[16rem] shrink-0"
       />
 
-      <div className="flex h-8 items-center rounded-lg border border-outline-variant/25 bg-surface-container-highest box-border overflow-hidden">
+      <div className="inline-flex h-8 items-center rounded-lg border border-outline-variant/30 bg-surface-container-low/80 box-border overflow-hidden shrink-0">
         {/* Nút Lưu nhanh - nổi bật khi có thay đổi chưa lưu (dirty) */}
         <button
           type="button"
@@ -137,7 +143,7 @@ export default function TemplateToolbar({
             ref={menuRef}
             style={menuStyle}
             role="menu"
-            className="z-[9999] min-w-[210px] rounded-xl border border-outline-variant/20 bg-surface-container-high/95 p-1 shadow-2xl backdrop-blur-md animate-in fade-in-0 zoom-in-95 duration-100 flex flex-col space-y-0.5"
+            className="z-[9999] min-w-[210px] max-w-[calc(100vw-16px)] rounded-xl border border-outline-variant/20 bg-surface-container-high/95 p-1 shadow-2xl backdrop-blur-md animate-in fade-in-0 zoom-in-95 duration-100 flex flex-col space-y-0.5"
           >
             {/* Lưu thành template mới */}
             <button

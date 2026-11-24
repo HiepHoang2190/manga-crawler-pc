@@ -162,7 +162,7 @@ export default function PipelineImageList({
               type="button"
               onClick={onAnalyzeAll}
               disabled={Boolean(analyzeProgress) || processing || images.length === 0}
-              className="flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors cursor-pointer disabled:opacity-50"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2.5 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors cursor-pointer disabled:opacity-50 shrink-0 whitespace-nowrap"
               data-tooltip={t('imagePipeline.list.analyzeAllTooltip')}
               aria-label={t('imagePipeline.list.analyzeAll')}
             >
@@ -213,10 +213,31 @@ export default function PipelineImageList({
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-outline-variant/15 bg-surface-container-lowest/50 shadow-sm">
         {images.length === 0 ? (
-          <EmptyState
-            icon={scanning ? 'hourglass_top' : hasSource ? 'filter_alt_off' : 'photo_library'}
-            title={scanning ? t('imagePipeline.list.scanning') : hasSource ? t('imagePipeline.list.emptyFiltered') : t('imagePipeline.list.emptySource')}
-          />
+          scanning ? (
+            <div data-testid="image-pipeline-scan-skeleton" className="flex-1 p-3 space-y-2 overflow-hidden">
+              <div className="flex items-center gap-2 px-2 pb-1 text-xs text-primary font-medium">
+                <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>
+                <span>{t('imagePipeline.list.scanning')}</span>
+              </div>
+              {Array.from({ length: 8 }).map((_, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center gap-3 rounded-lg px-3 py-2.5 bg-surface-container-high/40 animate-pulse"
+                >
+                  <div className="h-4 w-4 rounded bg-outline-variant/25 shrink-0" />
+                  <div className="h-4 w-4 rounded bg-outline-variant/25 shrink-0" />
+                  <div className="h-3.5 rounded bg-outline-variant/25 flex-1 max-w-[45%]" />
+                  <div className="h-3 w-24 rounded bg-outline-variant/20 ml-auto shrink-0" />
+                  <div className="h-6 w-14 rounded-md bg-outline-variant/20 shrink-0" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              icon={hasSource ? 'filter_alt_off' : 'photo_library'}
+              title={hasSource ? t('imagePipeline.list.emptyFiltered') : t('imagePipeline.list.emptySource')}
+            />
+          )
         ) : (
           <ul ref={listRef} className="min-h-0 flex-1 overflow-y-auto py-1 pr-1 custom-scrollbar">
             {images.map((img) => {
@@ -260,7 +281,7 @@ export default function PipelineImageList({
                       progress_activity
                     </span>
                   ) : isDone ? (
-                    <span className="material-symbols-outlined text-[18px] text-emerald-400 shrink-0">
+                    <span className="material-symbols-outlined text-[18px] text-emerald-600 dark:text-emerald-400 shrink-0">
                       check_circle
                     </span>
                   ) : isFailed ? (
@@ -298,21 +319,21 @@ export default function PipelineImageList({
                     </>
                   )}
                   {s.badges.skewAngle !== null && (
-                    <span className={`${BADGE} border-emerald-500/30 bg-emerald-500/10 text-emerald-400`}>
+                    <span className={`${BADGE} border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400`}>
                       {t('imagePipeline.badge.skew', { angle: s.badges.skewAngle })}
                     </span>
                   )}
-                  {s.badges.hasBorder && <span className={`${BADGE} border-emerald-500/30 bg-emerald-500/10 text-emerald-400`}>{t('imagePipeline.badge.border')}</span>}
+                  {s.badges.hasBorder && <span className={`${BADGE} border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400`}>{t('imagePipeline.badge.border')}</span>}
                   {s.badges.isDoublePage && (
                     <span
-                      className={`${BADGE} border-emerald-500/30 bg-emerald-500/10 text-emerald-400`}
+                      className={`${BADGE} border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400`}
                       data-tooltip={t('imagePipeline.badge.doubleHint')}
                     >
                       {t('imagePipeline.badge.double')}
                     </span>
                   )}
-                  {s.manual && <span className={`${BADGE} border-cyan-500/30 bg-cyan-500/10 text-cyan-400`}>{t('imagePipeline.badge.custom')}</span>}
-                  {s.stale && <span className={`${BADGE} border-amber-500/30 bg-amber-500/10 text-amber-400`}>{t('imagePipeline.badge.stale')}</span>}
+                  {s.manual && <span className={`${BADGE} border-cyan-500/30 bg-cyan-500/10 text-cyan-600 dark:text-cyan-400`}>{t('imagePipeline.badge.custom')}</span>}
+                  {s.stale && <span className={`${BADGE} border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400`}>{t('imagePipeline.badge.stale')}</span>}
                   {s.error && (
                     <span className={`${BADGE} border-error/30 bg-error/10 text-error`} data-tooltip={s.errorMessage}>
                       {t('imagePipeline.badge.error')}

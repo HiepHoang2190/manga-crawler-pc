@@ -20,15 +20,6 @@ export const TOOLS_TABS = [
 export default function ToolsStudio({ savePath = '', onRunningChange }) {
   const { t } = useI18n();
 
-  // Mặc định luôn mở khung xem trước của Tools Studio
-  useState(() => {
-    try {
-      if (typeof localStorage !== 'undefined' && localStorage.getItem('tools_studio_right_open_v1') === 'false') {
-        localStorage.setItem('tools_studio_right_open_v1', 'true');
-      }
-    } catch { }
-  });
-
   // Đồng bộ layout co giãn theo chuẩn StudioLayout (kế thừa tương thích useToolsSidebarResize)
   const {
     leftWidth: sidebarWidth,
@@ -43,6 +34,10 @@ export default function ToolsStudio({ savePath = '', onRunningChange }) {
     minLeftWidth: 280,
     maxLeftWidth: 800,
     defaultRightWidth: 380,
+    minRightWidth: 260,
+    maxRightWidth: 1600,
+    maxRightRatio: 0.65,
+    minCenterWidth: 280,
     defaultRightOpen: true,
   });
 

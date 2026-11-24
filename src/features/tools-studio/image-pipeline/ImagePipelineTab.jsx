@@ -159,13 +159,6 @@ export default function ImagePipelineTab({
     onRunningChange?.(processing || scanning);
   }, [processing, scanning, onRunningChange]);
 
-  // Mặc định luôn mở khung xem trước khi mở tab Xử lý ảnh
-  useEffect(() => {
-    if (!showRightSidebar && onToggleRightSidebar) {
-      onToggleRightSidebar();
-    }
-  }, []);
-
   useEffect(() => {
     saveDestination(safeStorage(), destination);
   }, [destination]);
@@ -204,6 +197,7 @@ export default function ImagePipelineTab({
   const scan = useCallback(async () => {
     const reqId = ++scanReq.current;
     if (!api?.pipelineScan || (!sourceDir && sourceFiles.length === 0)) {
+      lastSourceKeyRef.current = sourceKey;
       setImages([]);
       return true;
     }
@@ -223,6 +217,7 @@ export default function ImagePipelineTab({
       if (isNewSource) {
         setAnalysis({});
         setRunErrors({});
+        setCompletedPaths(new Set());
         setOverrides({});
         setAnalyzeAllRequested(false);
       }
@@ -413,6 +408,7 @@ export default function ImagePipelineTab({
       setSourceFiles([]);
       setSourceDir(dir);
       setAnalyzeAllRequested(false);
+      setView((v) => ({ ...v, filter: 'all', search: '' }));
       setStatus(null);
     }
   };
@@ -423,6 +419,7 @@ export default function ImagePipelineTab({
       setSourceDir('');
       setSourceFiles(files);
       setAnalyzeAllRequested(false);
+      setView((v) => ({ ...v, filter: 'all', search: '' }));
       setStatus(null);
     }
   };
@@ -431,6 +428,7 @@ export default function ImagePipelineTab({
     setSourceDir('');
     setSourceFiles([]);
     setAnalyzeAllRequested(false);
+    setView((v) => ({ ...v, filter: 'all', search: '' }));
   };
 
   const handleBrowseOutput = async () => {
@@ -516,7 +514,7 @@ export default function ImagePipelineTab({
       if (res.savedBytes && res.savedBytes > 0) {
         const mb = res.savedBytes / (1024 * 1024);
         const savedStr = mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.round(res.savedBytes / 1024)} KB`;
-        statusText += ` • Tiết kiệm ${savedStr} (-${res.savedPercent}%)`;
+        statusText += ` • ${t('imagePipeline.completion.savedInfo', { saved: savedStr, percent: res.savedPercent })}`;
       }
       setStatus({
         type: res.failed?.length ? 'error' : 'success',
@@ -552,6 +550,7 @@ export default function ImagePipelineTab({
     setSelected(new Set());
     setCompletedPaths(new Set());
     setActiveProcessingPath(null);
+    setView((v) => ({ ...v, filter: 'all', search: '' }));
     setStatus(null);
     setRunErrors({});
     setCompletionModalData(null);
@@ -622,15 +621,9 @@ export default function ImagePipelineTab({
     if (activePath === path) setActivePath(null);
   };
 
-  const handleActivateImage = useCallback(
-    (path) => {
-      setActivePath(path);
-      if (!showRightSidebar && onToggleRightSidebar) {
-        onToggleRightSidebar();
-      }
-    },
-    [showRightSidebar, onToggleRightSidebar]
-  );
+  const handleActivateImage = useCallback((path) => {
+    setActivePath(path);
+  }, []);
 
   const openModalFor = (path) => {
     const idx = displayed.findIndex((img) => img.absolutePath === path);
@@ -642,7 +635,7 @@ export default function ImagePipelineTab({
 
   return (
     <div className="flex-1 flex min-h-0 min-w-0 overflow-hidden bg-surface">
-      {/* Center action slot: Primary Execution Toggle (Bắt đầu / Dừng) */}
+      {/* Center action slot: Primary Execution Toggle (Bắt đầu / Dừng) + Template Toolbar */}
       <ToolsStudioCenterSlot active={isActive}>
         <div className="flex items-center gap-2">
           {processing ? (
@@ -671,12 +664,6 @@ export default function ImagePipelineTab({
               <span>{t('imagePipeline.start')}</span>
             </button>
           )}
-        </div>
-      </ToolsStudioCenterSlot>
-
-      {/* Right action slot: Template Toolbar + Preview Toggle */}
-      <ToolsStudioActionSlot active={isActive}>
-        <div className="flex items-center gap-2">
           <TemplateToolbar
             templates={templates}
             activeId={activeTemplateId}
@@ -692,17 +679,26 @@ export default function ImagePipelineTab({
             onImport={handleImport}
             onExport={handleExport}
           />
-          <div className="h-5 w-px bg-outline-variant/30" />
-          <button
-            type="button"
-            onClick={onToggleRightSidebar}
-            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors cursor-pointer ${showRightSidebar ? 'bg-primary/10 text-primary' : 'text-on-surface-variant hover:bg-surface-container-high'}`}
-            data-tooltip={t('imagePipeline.togglePreview')}
-            aria-label={t('imagePipeline.togglePreview')}
-          >
-            <span className="material-symbols-outlined text-[18px]">view_sidebar</span>
-          </button>
         </div>
+      </ToolsStudioCenterSlot>
+
+      {/* Right action slot: Preview Panel Toggle */}
+      <ToolsStudioActionSlot active={isActive}>
+        <button
+          type="button"
+          data-testid="image-pipeline-toggle-preview-btn"
+          onClick={onToggleRightSidebar}
+          aria-pressed={showRightSidebar}
+          className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors cursor-pointer shrink-0 ${
+            showRightSidebar
+              ? 'border-primary/25 bg-primary/10 text-primary hover:bg-primary/15'
+              : 'border-transparent text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
+          }`}
+          data-tooltip={t('imagePipeline.togglePreview')}
+          aria-label={t('imagePipeline.togglePreview')}
+        >
+          <span className="material-symbols-outlined text-[18px]">view_sidebar</span>
+        </button>
       </ToolsStudioActionSlot>
 
       {showSidebar && (
@@ -734,13 +730,13 @@ export default function ImagePipelineTab({
                 <span className="material-symbols-outlined text-[16px] leading-none">output</span>
                 <span className="truncate">{t('imagePipeline.sidebarTab.output')}</span>
                 {output.caesiumEnabled && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" data-tooltip="Caesium Engine đang bật" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 shrink-0" data-tooltip={t('imagePipeline.caesium.activeBadge')} />
                 )}
               </button>
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto custom-scrollbar px-4 py-4 space-y-4 mr-1.5">
+          <div className="flex-1 flex flex-col overflow-y-auto custom-scrollbar px-4 py-4 space-y-4 mr-1.5">
             {sidebarTab === 'actions' ? (
               <>
                 <SourcePicker
@@ -839,7 +835,71 @@ export default function ImagePipelineTab({
               </>
             )}
 
-            {status && <p className={`text-xs font-medium ${status.type === 'error' ? 'text-error' : 'text-emerald-400'}`}>{status.text}</p>}
+            {/* Thông báo lỗi / kết quả */}
+            {status?.type === 'error' ? (
+              <p
+                data-testid="image-pipeline-status-error"
+                className="text-xs text-error whitespace-pre-wrap"
+                role="alert"
+              >
+                {status.text}
+              </p>
+            ) : status?.text ? (
+              <p
+                data-testid="image-pipeline-status-message"
+                className="text-xs text-on-surface whitespace-pre-wrap border border-outline-variant/20 rounded-xl p-3 bg-surface-container-highest/50"
+                role="status"
+              >
+                {status.text}
+              </p>
+            ) : null}
+
+            {/* Thẻ thống kê tổng quan (đồng bộ tab Trùng ảnh & Đổi tên) */}
+            <div className="mt-auto pt-2">
+              <div
+                data-testid="image-pipeline-overview-card"
+                className="rounded-xl border border-primary/15 bg-primary/5 p-3"
+              >
+                <div className="text-[10px] font-bold text-primary mb-2 flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-[13px]">bar_chart</span>
+                  <span>{t('imagePipeline.overview.title')}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+                  <span className="text-on-surface-variant">{t('imagePipeline.overview.totalImages')}</span>
+                  <span className="font-bold text-on-surface text-right tabular-nums">
+                    {hasSource ? counts.all : '—'}
+                  </span>
+                  <span className="text-on-surface-variant">{t('imagePipeline.overview.selected')}</span>
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400 text-right tabular-nums">
+                    {hasSource ? selectedFiles.length : '—'}
+                  </span>
+                  <span className="text-on-surface-variant">{t('imagePipeline.overview.needsWork')}</span>
+                  <span className="font-bold text-primary text-right tabular-nums">
+                    {hasSource ? counts.needsWork : '—'}
+                  </span>
+                  <span className="text-on-surface-variant">{t('imagePipeline.overview.activeSteps')}</span>
+                  <span className="font-bold text-on-surface text-right tabular-nums">
+                    {countEnabled(stack.actions)}
+                  </span>
+                  {hasSource && counts.error > 0 && (
+                    <>
+                      <span className="text-on-surface-variant">{t('imagePipeline.overview.errors')}</span>
+                      <span className="font-bold text-rose-600 dark:text-rose-400 text-right tabular-nums">
+                        {counts.error}
+                      </span>
+                    </>
+                  )}
+                </div>
+                <div className="mt-2.5 pt-2 border-t border-primary/10 space-y-1.5 text-[10px] text-on-surface-variant/75 leading-relaxed">
+                  <div className="flex items-start gap-1.5">
+                    <span className="w-4 h-4 flex items-center justify-center shrink-0 text-primary/70">
+                      <span className="material-symbols-outlined text-[13px] leading-none">touch_app</span>
+                    </span>
+                    <span className="flex-1 min-w-0 leading-snug pt-0.5">{t('imagePipeline.overview.tip')}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
           <ResizeSplitter variant="overlay" side="right" onPointerDown={handleSplitPointerDown} />
         </div>
