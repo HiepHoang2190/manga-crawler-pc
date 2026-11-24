@@ -146,10 +146,10 @@ function updateKindleQueueItem(id, patch) {
       ...item,
       ...patch,
       title:
-        patch.title !== undefined ? String(patch.title || '').trim() : item.title,
+        patch.title !== undefined ? String(patch.title ?? '') : item.title,
       author:
         patch.author !== undefined
-          ? String(patch.author || '').trim()
+          ? String(patch.author ?? '')
           : item.author,
     };
   });
@@ -216,8 +216,8 @@ async function runQueueItem(api, item) {
     if (item.kind === 'files') {
       r = await api.sendToKindleSendFile({
         filePath: item.filePath,
-        title: item.title,
-        author: item.author || undefined,
+        title: String(item.title || '').trim(),
+        author: String(item.author || '').trim() || undefined,
       });
     } else {
       r = await api.sendToKindleSend(item.payload);

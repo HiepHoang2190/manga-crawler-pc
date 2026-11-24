@@ -9,6 +9,7 @@ import {
   addKindleFileItems,
   startPendingKindleFiles,
   removeKindleQueueItem,
+  updateKindleQueueItem,
 } from './kindleJobStore.mjs';
 
 describe('kindleJobStore', () => {
@@ -137,5 +138,28 @@ describe('kindleJobStore', () => {
     expect(getKindleJob().openModalRequested).toBe(true);
     expect(consumeOpenKindleModalRequest()).toBe(true);
     expect(getKindleJob().openModalRequested).toBe(false);
+  });
+
+  test('updateKindleQueueItem preserves spaces while editing title/author and trims when sending', async () => {
+    const api = {
+      sendToKindleSendFile: jest.fn(async () => ({
+        ok: true,
+        results: [{ name: 'a.epub', ok: true, sizeBytes: 5 }],
+      })),
+    };
+    addKindleFileItems([{ filePath: '/a.epub', name: 'a.epub', title: 'One', sizeBytes: 5 }]);
+    const id = getKindleJob().queue[0].id;
+
+    updateKindleQueueItem(id, { title: 'One Piece ', author: 'Eiichiro Oda ' });
+    expect(getKindleJob().queue[0].title).toBe('One Piece ');
+    expect(getKindleJob().queue[0].author).toBe('Eiichiro Oda ');
+
+    await startPendingKindleFiles(api);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(api.sendToKindleSendFile).toHaveBeenCalledWith({
+      filePath: '/a.epub',
+      title: 'One Piece',
+      author: 'Eiichiro Oda',
+    });
   });
 });

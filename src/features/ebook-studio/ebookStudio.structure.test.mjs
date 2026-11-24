@@ -329,14 +329,15 @@ test('Tools & Kindle primary CTAs use canonical toolbar CTA classes', () => {
   }
 });
 
-test('Packaging, Converter & Tools render bottom-pinned Overview cards matching Tools Studio', () => {
+test('Packaging, Converter, Tools & Kindle render bottom-pinned Overview cards matching Tools Studio', () => {
   const cases = [
     { file: 'components/MangaPackagingSubTab.jsx', testId: 'packaging-overview-card', keys: ['title', 'totalChapters', 'selected', 'format', 'packagingTip'] },
     { file: 'components/FormatConverterSubTab.jsx', testId: 'converter-overview-card', keys: ['title', 'totalFiles', 'pending', 'completed', 'errors', 'converterTip'] },
     { file: 'components/EbookToolsSubTab.jsx', testId: 'tools-overview-card', keys: ['title', 'mode', 'totalFiles', 'sourceSize', 'estimatedParts', 'toolsCombineTip', 'toolsSplitTip'] },
+    { file: '../export/kindle/SendToKindleTab.jsx', testId: 'kindle-overview-card', keys: ['title', 'totalFiles', 'pending', 'completed', 'errors', 'kindleTip'] },
   ];
   for (const { file, testId, keys } of cases) {
-    const src = fs.readFileSync(path.join(dirname, file), 'utf8');
+    const src = fs.readFileSync(path.resolve(dirname, file), 'utf8');
     expect(src).toContain('flex-1 flex flex-col overflow-y-auto custom-scrollbar px-4 py-5 space-y-5 mr-1.5');
     expect(src).toContain('mt-auto pt-2');
     expect(src).toContain(`data-testid="${testId}"`);
@@ -623,6 +624,56 @@ test('Convert Format, Utility Mode, and Config sections use compact single-line 
   for (const loc of ['vi.js', 'en.js']) {
     const locSrc = fs.readFileSync(path.join(rootDir, 'src/i18n/locales', loc), 'utf8');
     for (const key of allUsedKeys) {
+      expect(locSrc).toContain(`'${key}'`);
+    }
+  }
+});
+
+test('SendToKindleTab matches Convert flat sidebar, h-10 buttons, unified error slot, conditional search toolbar, and i18n parity', () => {
+  const kindlePath = path.resolve(dirname, '../export/kindle/SendToKindleTab.jsx');
+  const kindleSrc = fs.readFileSync(kindlePath, 'utf8');
+
+  expect(kindleSrc).toContain('pt-3 border-t border-outline-variant/15');
+  expect(kindleSrc).not.toContain('rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-4');
+  expect(kindleSrc).not.toContain('rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-3.5');
+  expect(kindleSrc).toContain('w-full h-10 flex items-center justify-center gap-2 rounded-xl bg-primary');
+  expect(kindleSrc).toContain('w-full h-10 flex items-center justify-center gap-2 rounded-xl border');
+  expect(kindleSrc).not.toContain('py-2.5 text-xs font-bold');
+  expect(kindleSrc).not.toContain('py-2.5 text-xs font-semibold');
+  expect(kindleSrc).toContain("t('ebookStudio.tools.sourceTitle')");
+  expect(kindleSrc).not.toContain("t('ebookStudio.converter.col1Title'");
+  expect(kindleSrc).toContain('data-testid="kindle-status-error"');
+  expect(kindleSrc).toContain('role="alert"');
+  expect(kindleSrc).toContain('copyLocalError');
+  expect(kindleSrc).toContain('itemErrorText');
+  expect(kindleSrc).toContain('{queue.length > 0 && (');
+  expect(kindleSrc).toContain('searchQuery');
+  expect(kindleSrc).toContain("data-tooltip={t('tools.remove')}");
+  expect(kindleSrc).toContain("t('sendToKindleTab.emptyDesc')");
+  expect(kindleSrc).toContain("t('sendToKindleTab.emptyTitle')");
+  expect(kindleSrc).toContain("title={t('sendToKindleTab.emptyTitle')}");
+  expect(kindleSrc).toContain("description={t('sendToKindleTab.emptyHint')}");
+  const addFilesIdx = kindleSrc.indexOf("t('sendToKindleTab.addFiles')");
+  const emptyDescIdx = kindleSrc.indexOf("t('sendToKindleTab.emptyDesc')");
+  const qualityNoteIdx = kindleSrc.indexOf("t('sendToKindleTab.qualityNote')");
+  const overviewIdx = kindleSrc.indexOf('data-testid="kindle-overview-card"');
+  expect(addFilesIdx).toBeGreaterThan(-1);
+  expect(emptyDescIdx).toBeGreaterThan(addFilesIdx);
+  expect(qualityNoteIdx).toBeGreaterThan(emptyDescIdx);
+  expect(overviewIdx).toBeGreaterThan(qualityNoteIdx);
+  expect(kindleSrc.slice(overviewIdx)).not.toContain("t('sendToKindleTab.emptyDesc')");
+  expect(kindleSrc).not.toContain("t('ebookStudio.converter.pickerHint')");
+  expect(kindleSrc).toContain("data-tooltip={t('sendToKindleTab.remove')}");
+  expect(kindleSrc).toContain("aria-label={t('sendToKindleTab.remove')}");
+  expect(kindleSrc).not.toMatch(/<(button|a|span|div|input|label|img)\b[^>]*\stitle=/);
+  expect(kindleSrc).not.toMatch(/\b(?:hover:)?underline\b/);
+
+  const rootDir = path.resolve(dirname, '../../..');
+  const usedKindleKeys = [...kindleSrc.matchAll(/\bt\(\s*'([^']+)'/g)].map((m) => m[1]);
+  expect(usedKindleKeys.length).toBeGreaterThan(15);
+  for (const loc of ['vi.js', 'en.js']) {
+    const locSrc = fs.readFileSync(path.join(rootDir, 'src/i18n/locales', loc), 'utf8');
+    for (const key of usedKindleKeys) {
       expect(locSrc).toContain(`'${key}'`);
     }
   }
