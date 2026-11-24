@@ -4,13 +4,14 @@ export function OfflineChapterMeta({
   chapterCount,
   sync,
   t,
+  inline = false,
   lineVariant = 'chapters',
   onEnqueuePending,
 }) {
   const pending =
     sync?.hasNew && typeof sync.remoteCount === 'number' ? sync.remoteCount : 0;
   return (
-    <div className="flex flex-col items-start gap-1 min-w-0">
+    <div className={inline ? 'flex items-center gap-2 flex-wrap min-w-0' : 'flex flex-col items-start gap-1 min-w-0'}>
       <div className="text-xs text-outline tabular-nums flex items-center gap-1.5 flex-wrap">
         <span>
           {lineVariant === 'archiveFiles'

@@ -605,6 +605,34 @@ export default function MangaReader({
   const prevChapterDisabled = !hasPrevChapterNav;
   const nextChapterDisabled = !hasNextChapterNav;
 
+  const toggleChapterPanel = useCallback(() => {
+    setReaderChapterCollapsed((c) => !c);
+  }, []);
+
+  const navigateChapter = useCallback(
+    (step) => {
+      const pos = downloadedIndices.indexOf(chapterIndex);
+      if (pos >= 0) {
+        const dl_step = navInvert ? -step : step;
+        const target_pos = pos + dl_step;
+        if (target_pos >= 0 && target_pos < downloadedIndices.length) {
+          onChapterIndexChange?.(downloadedIndices[target_pos]);
+          return;
+        }
+      }
+      if (canStreamNav) {
+        const catalog_target = chapterIndex + (step > 0 ? catalog_step_next : catalog_step_prev);
+        if (catalog_target >= 0 && catalog_target < chapters.length) {
+          onStreamingReadChapter(chapters[catalog_target]);
+        }
+      }
+    },
+    [downloadedIndices, chapterIndex, navInvert, canStreamNav, catalog_step_next, catalog_step_prev, chapters, onChapterIndexChange, onStreamingReadChapter]
+  );
+
+  const goPrev = useCallback(() => navigateChapter(-1), [navigateChapter]);
+  const goNext = useCallback(() => navigateChapter(1), [navigateChapter]);
+
   useEffect(() => {
     persistReaderZoom(readerZoom);
   }, [readerZoom]);
@@ -806,10 +834,6 @@ export default function MangaReader({
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  const toggleChapterPanel = useCallback(() => {
-    setReaderChapterCollapsed((c) => !c);
-  }, []);
-
   const expandChapterPanel = useCallback(() => {
     setReaderChapterCollapsed(false);
   }, []);
@@ -860,30 +884,6 @@ export default function MangaReader({
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onUp);
   }, [readerChapterCollapsed]);
-
-  const navigateChapter = useCallback(
-    (step) => {
-      const pos = downloadedIndices.indexOf(chapterIndex);
-      if (pos >= 0) {
-        const dl_step = navInvert ? -step : step;
-        const target_pos = pos + dl_step;
-        if (target_pos >= 0 && target_pos < downloadedIndices.length) {
-          onChapterIndexChange?.(downloadedIndices[target_pos]);
-          return;
-        }
-      }
-      if (canStreamNav) {
-        const catalog_target = chapterIndex + (step > 0 ? catalog_step_next : catalog_step_prev);
-        if (catalog_target >= 0 && catalog_target < chapters.length) {
-          onStreamingReadChapter(chapters[catalog_target]);
-        }
-      }
-    },
-    [downloadedIndices, chapterIndex, navInvert, canStreamNav, catalog_step_next, catalog_step_prev, chapters, onChapterIndexChange, onStreamingReadChapter]
-  );
-
-  const goPrev = useCallback(() => navigateChapter(-1), [navigateChapter]);
-  const goNext = useCallback(() => navigateChapter(1), [navigateChapter]);
 
   const toggleNavInvert = useCallback(() => {
     setNavInvert((v) => {

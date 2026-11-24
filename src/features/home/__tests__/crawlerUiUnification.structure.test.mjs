@@ -116,7 +116,13 @@ describe('Crawler Tab Explore-First Unified UI Standard', () => {
       'src/features/library/OfflineLibraryTab.jsx',
       'src/features/library/components/offline/OfflineLibraryToolbar.jsx',
       'src/features/library/components/offline/OfflineLibraryFooter.jsx',
+      'src/features/library/components/offline/OfflineLibrarySidebar.jsx',
+      'src/features/library/components/offline/OfflineLibrarySkeleton.jsx',
+      'src/features/library/components/offline/OfflineCardActions.jsx',
+      'src/features/library/components/offline/OfflineGridCard.jsx',
+      'src/features/library/components/offline/OfflineListRow.jsx',
       'src/features/library/components/offline/OfflineListActions.jsx',
+      'src/features/library/components/offline/OfflineChapterMeta.jsx',
       'src/features/library/components/offline/FavoriteNotifyBell.jsx',
       'src/features/download/components/ProgressPanel.jsx',
     ];
@@ -195,5 +201,207 @@ describe('Crawler Tab Explore-First Unified UI Standard', () => {
     expect(queue).toContain('bug_report');
     expect(queue).toContain('data-testid="queue-error-modal-backdrop"');
     expect(queue).toContain('id="queue-error-detail-title"');
+  });
+
+  test('OfflineLibraryTab renders dedicated contextual OfflineLibrarySidebar via StudioLeftSidebarSlot', () => {
+    const slotFile = read('src/shared/layout/StudioToolbarSlot.jsx');
+    const sharedIndex = read('src/shared/index.js');
+    const home = read('src/features/home/HomeWorkspace.jsx');
+    const offlineTab = read('src/features/library/OfflineLibraryTab.jsx');
+    const offlineSidebar = read('src/features/library/components/offline/OfflineLibrarySidebar.jsx');
+
+    expect(slotFile).toContain('export function StudioLeftSidebarSlot');
+    expect(slotFile).toContain('export function useHasLeftSidebarSlot');
+    expect(sharedIndex).toContain('StudioLeftSidebarSlot');
+    expect(sharedIndex).toContain('useHasLeftSidebarSlot');
+
+    expect(home).toContain('leftSidebarEl={leftSidebarEl}');
+    expect(home).toContain('data-testid="home-left-sidebar-slot"');
+    expect(home).toContain('onBrowseSavePath={handleBrowse}');
+
+    expect(offlineTab).toContain('StudioLeftSidebarSlot');
+    expect(offlineTab).toContain('useHasLeftSidebarSlot');
+    expect(offlineTab).toContain('<OfflineLibrarySidebar');
+
+    expect(offlineSidebar).toContain('data-testid="offline-library-sidebar"');
+    expect(offlineSidebar).toContain('SectionTitle');
+    expect(offlineSidebar).toContain('SearchableSelect');
+    expect(offlineSidebar).toContain('role="group"');
+    expect(offlineSidebar).toContain('h-10');
+    expect(offlineSidebar).toContain('hasNew');
+    expect(offlineSidebar).toContain('extraPaths');
+    expect(offlineSidebar).toContain('stats');
+  });
+
+  test('OfflineLibraryTab opens reader on cover/row/card click and replaces read action icon with Fetch-to-Queue button', () => {
+    const provider = read('src/features/library/LibraryProvider.jsx');
+    const offlineTab = read('src/features/library/OfflineLibraryTab.jsx');
+    const gridCard = read('src/features/library/components/offline/OfflineGridCard.jsx');
+    const listRow = read('src/features/library/components/offline/OfflineListRow.jsx');
+    const listActions = read('src/features/library/components/offline/OfflineListActions.jsx');
+    const cardActions = read('src/features/library/components/offline/OfflineCardActions.jsx');
+
+    expect(provider).toContain('focusQueueTab');
+    expect(provider).toMatch(/fetchMangaFromFavorite\s*=\s*useCallback\([\s\S]*?focusQueueTab/);
+    expect(provider).toMatch(/fetchMangaFromOfflineLibrary\s*=\s*useCallback\([\s\S]*?(?:focusQueueTab|fetchMangaFromFavorite)/);
+
+    expect(offlineTab).toContain('<OfflineListRow');
+    expect(offlineTab).toContain('onOpenRow={handleOpenRow}');
+    expect(offlineTab).toContain('onFetchRow={handleFetchRow}');
+    expect(listRow).toContain('onClick={() => onOpenRow?.(row)}');
+    expect(listRow).toMatch(/<QueueCoverThumb[\s\S]*?\/>/);
+    expect(listRow).not.toMatch(/<QueueCoverThumb[\s\S]*?onFetch=/);
+
+    expect(gridCard).toContain('onClick=');
+    expect(gridCard).toContain('onFetchRow=');
+    expect(gridCard).not.toMatch(/<QueueCoverThumb[\s\S]*?onFetch=/);
+
+    for (const actionsCode of [listActions, cardActions]) {
+      expect(actionsCode).toContain('data-testid="offline-row-fetch-btn"');
+      expect(actionsCode).toContain('>sync<');
+      expect(actionsCode).not.toContain('cloud_download');
+      expect(actionsCode).toContain("t('offlineLibrary.fetchToQueueTooltip')");
+      expect(actionsCode).not.toContain('auto_stories');
+    }
+  });
+
+  test('OfflineLibraryTab omits toolbar root folder button and keeps row/card open-folder button visible (disabled when not local)', () => {
+    const offlineTab = read('src/features/library/OfflineLibraryTab.jsx');
+    const listRow = read('src/features/library/components/offline/OfflineListRow.jsx');
+    const chapterMeta = read('src/features/library/components/offline/OfflineChapterMeta.jsx');
+    const gridCard = read('src/features/library/components/offline/OfflineGridCard.jsx');
+    const listActions = read('src/features/library/components/offline/OfflineListActions.jsx');
+    const cardActions = read('src/features/library/components/offline/OfflineCardActions.jsx');
+
+    expect(offlineTab).not.toContain('data-testid="offline-open-library-folder-btn"');
+    expect(listRow).toMatch(/offline-list-row-actions[\s\S]{0,120}stopPropagation/);
+    expect(listRow).toContain("typeof onEnqueuePendingChapters === 'function'");
+    expect(chapterMeta).toMatch(/stopPropagation\(\);[\s\S]{0,60}onEnqueuePending\(\)/);
+    expect(gridCard).toContain('pointer-events-auto');
+    expect(gridCard).toMatch(/pointer-events-auto[\s\S]{0,120}stopPropagation/);
+
+    for (const actionsCode of [listActions, cardActions]) {
+      expect(actionsCode).toContain('data-testid="offline-row-open-folder-btn"');
+      expect(actionsCode).toContain('disabled={!canOpenFolder}');
+      expect(actionsCode).toContain('disabled:pointer-events-none');
+      expect(actionsCode).toContain("t('offlineLibrary.folderNotDownloadedTooltip')");
+      expect(actionsCode).toContain('canOpenOfflineRowFolder');
+      expect(actionsCode).toContain('openOfflineRowFolder');
+    }
+  });
+
+  test('OfflineLibrary only shows local downloaded rows with chapters and never injects onlineOnlyFavorites', () => {
+    const utils = read('src/features/library/components/offline/offlineLibraryUtils.js');
+    const dataHook = read('src/features/library/components/offline/useOfflineLibraryData.js');
+    const offlineTab = read('src/features/library/OfflineLibraryTab.jsx');
+
+    expect(utils).toContain('export function isDownloadedOfflineRow');
+    expect(utils).toContain('export function buildOfflineDisplayRows');
+    expect(utils).toContain('.filter(isDownloadedOfflineRow)');
+
+    expect(dataHook).toContain('buildOfflineDisplayRows');
+    expect(dataHook).not.toContain('onlineOnlyFavorites');
+    expect(dataHook).not.toContain("source: 'favorite'");
+    expect(dataHook).not.toContain('onRemoveFavorite');
+
+    expect(offlineTab).toContain('stats.favorites > 0');
+    expect(offlineTab).not.toContain('favorites.length > 0');
+  });
+
+  test('OfflineLibrary moves Reset Filters out of sidebar into filtered EmptyState action', () => {
+    const offlineSidebar = read('src/features/library/components/offline/OfflineLibrarySidebar.jsx');
+    const offlineTab = read('src/features/library/OfflineLibraryTab.jsx');
+
+    expect(offlineSidebar).not.toContain('offlineLibrary.sidebar.resetFilters');
+    expect(offlineSidebar).not.toContain('filter_alt_off');
+    expect(offlineSidebar).not.toContain('onResetFilters');
+
+    expect(offlineTab).toContain("t('offlineLibrary.sidebar.resetFilters')");
+    expect(offlineTab).toContain('filter_alt_off');
+    expect(offlineTab).toContain('handleResetFilters');
+  });
+
+  test('OfflineLibraryTab renders Rescan Library as Explore-style primary CTA button', () => {
+    const offlineTab = read('src/features/library/OfflineLibraryTab.jsx');
+    const vi = read('src/i18n/locales/vi.js');
+    const en = read('src/i18n/locales/en.js');
+
+    expect(vi).toContain("'offlineLibrary.rescanLibrary'");
+    expect(en).toContain("'offlineLibrary.rescanLibrary'");
+
+    const primarySlot =
+      offlineTab.match(/<StudioPrimaryActionSlot>([\s\S]*?)<\/StudioPrimaryActionSlot>/)?.[1] || '';
+    expect(primarySlot).toContain('data-testid="offline-rescan-btn"');
+    expect(primarySlot).toContain("t('offlineLibrary.rescanLibrary')");
+    expect(primarySlot).toMatch(
+      /data-testid="offline-rescan-btn"[\s\S]*h-8 px-3\.5[\s\S]*rounded-lg[\s\S]*bg-primary[\s\S]*text-xs font-semibold[\s\S]*text-on-primary[\s\S]*gap-1\.5[\s\S]*animate-spin[\s\S]*>[\s\S]*refresh[\s\S]*onClick=\{addFolder\}/
+    );
+    expect(primarySlot).toMatch(
+      /onClick=\{addFolder\}[\s\S]{0,260}border-outline-variant\/25 bg-surface-container-highest/
+    );
+    expect(primarySlot).not.toMatch(/onClick=\{addFolder\}[\s\S]{0,260}bg-primary\b/);
+    expect(offlineTab).not.toMatch(
+      /<StudioRightToolbarSlot>[\s\S]*handleManualRefresh[\s\S]*<\/StudioRightToolbarSlot>/
+    );
+    expect(offlineTab.match(/handleManualRefresh\(/g)).toHaveLength(1);
+  });
+
+  test('OfflineLibraryTab main content matches FollowedMangaPanel list-card and grid layout (no StudioTable)', () => {
+    const offlineTab = read('src/features/library/OfflineLibraryTab.jsx');
+    const listRow = read('src/features/library/components/offline/OfflineListRow.jsx');
+
+    expect(offlineTab).not.toContain('StudioTable');
+    expect(offlineTab).toContain('custom-scrollbar flex-1 min-h-0 overflow-auto p-4 sm:p-6 bg-surface');
+    expect(offlineTab).toContain('flex flex-col gap-2');
+    expect(offlineTab).toContain('grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6');
+
+    expect(listRow).toContain('px-3 py-2.5 sm:px-4 rounded-xl border');
+    expect(listRow).toContain('h-14 w-10 sm:h-16 sm:w-11');
+    expect(listRow).toContain('rounded-lg');
+    expect(listRow).toContain(
+      'text-[10px] font-semibold uppercase tracking-wide text-primary bg-primary/10 px-2 py-0.5 rounded shrink-0'
+    );
+  });
+
+  test('OfflineLibraryTab renders Explore-style OfflineLibrarySkeleton during rescan, update check, and foreground loading', () => {
+    const skeleton = read('src/features/library/components/offline/OfflineLibrarySkeleton.jsx');
+    const offlineTab = read('src/features/library/OfflineLibraryTab.jsx');
+    const dataHook = read('src/features/library/components/offline/useOfflineLibraryData.js');
+    const provider = read('src/features/library/LibraryProvider.jsx');
+    const vi = read('src/i18n/locales/vi.js');
+    const en = read('src/i18n/locales/en.js');
+
+    expect(vi).toContain("'offlineLibrary.rescanningStatus'");
+    expect(en).toContain("'offlineLibrary.rescanningStatus'");
+
+    expect(skeleton).toContain('React.memo');
+    expect(skeleton).toContain('data-testid="offline-library-skeleton"');
+    expect(skeleton).toContain('aria-busy="true"');
+    expect(skeleton).toContain('role="status"');
+    expect(skeleton).toContain('animate-pulse');
+    expect(skeleton).toContain('h-14 w-10 sm:h-16 sm:w-11');
+    expect(skeleton).toContain('px-3 py-2.5 sm:px-4 rounded-xl border');
+    expect(skeleton).toContain(
+      'grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6'
+    );
+
+    expect(dataHook).toContain('isForegroundLoading');
+    expect(dataHook).toContain('isRescanning');
+    expect(dataHook).toMatch(/if\s*\(!isBackground\)[\s\S]{0,120}setIsForegroundLoading\(true\)/);
+    expect(dataHook).toContain('foregroundRequestsRef.current = Math.max(0, foregroundRequestsRef.current - 1)');
+
+    expect(provider).toContain('fetchAllFavoritesBusyRef.current = true');
+    expect(provider).toMatch(/if\s*\(!fromBackground\)\s*\{\s*setFetchAllFavoritesBusy\(true\)/);
+    expect(provider).toMatch(/if\s*\(!fromBackground\)\s*\{\s*setFetchAllFavoritesBusy\(false\)/);
+
+    expect(offlineTab).toContain('showSkeleton');
+    expect(offlineTab).toContain('<OfflineLibrarySkeleton');
+    expect(offlineTab).toContain('disabled={isForegroundLoading || isRescanning || fetchAllFavoritesBusy || !base}');
+    expect(offlineTab).toContain('disabled={fetchAllFavoritesBusy || isForegroundLoading || isRescanning}');
+    expect(offlineTab).not.toMatch(/disabled=\{[^}]*\bloading\b/);
+    const skelIdx = offlineTab.indexOf('<OfflineLibrarySkeleton');
+    const emptyIdx = offlineTab.indexOf('{libraryEmptyState}');
+    expect(skelIdx).toBeGreaterThan(-1);
+    expect(emptyIdx).toBeGreaterThan(skelIdx);
   });
 });

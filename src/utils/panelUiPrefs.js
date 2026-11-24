@@ -49,7 +49,7 @@ function normalizeHistoryColWidths(obj) {
   return base;
 }
 
-const OFFLINE_SORT_MODES = ['titleAsc', 'titleDesc'];
+const OFFLINE_SORT_MODES = ['titleAsc', 'titleDesc', 'chaptersDesc', 'hasNewFirst'];
 
 const BULK_SCAN_PAGE_SIZES = [20, 50, 100];
 const BULK_SCAN_MAX_PAGES_OPTIONS = ['all', 10, 20, 50, 100];

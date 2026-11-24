@@ -459,9 +459,14 @@ export default function HomeWorkspace({
 
   const [primaryActionEl, setPrimaryActionEl] = useState(null);
   const [rightToolbarEl, setRightToolbarEl] = useState(null);
+  const [leftSidebarEl, setLeftSidebarEl] = useState(null);
 
   return (
-    <StudioToolbarSlotProvider primaryEl={primaryActionEl} rightEl={rightToolbarEl}>
+    <StudioToolbarSlotProvider
+      primaryEl={primaryActionEl}
+      rightEl={rightToolbarEl}
+      leftSidebarEl={leftSidebarEl}
+    >
       <StudioLayout>
         <StudioLayout.Toolbar
           leftSlot={
@@ -540,58 +545,66 @@ export default function HomeWorkspace({
           width={leftWidth}
           onResizeStart={handleLeftResizeStart}
         >
-          <Sidebar
-            connectors={connectorList}
-            sourceUrl={sourceUrl}
-            setSourceUrl={setSourceUrl}
-            site={site}
-            setSite={setSite}
-            mangadexLanguage={mangadexLanguage}
-            setMangadexLanguage={setMangadexLanguage}
-            comickLanguage={comickLanguage}
-            setComickLanguage={setComickLanguage}
-            mangaballLanguage={mangaballLanguage}
-            setMangaballLanguage={setMangaballLanguage}
-            savePath={savePath}
-            setSavePath={setSavePath}
-            loading={loading}
-            fetchError={fetchError}
-            onFetch={handleFetch}
-            onBrowse={handleBrowse}
-            onOpenDownloadSettings={onOpenDownloadSettings}
-            manga={manga}
-            chapters={chapters}
-            isMangaFavorite={isMangaFavorite}
-            onToggleFavorite={toggleFavorite}
-            coverFetchSuccessTick={coverFetchSuccessTick}
-            coverFetchDurationMs={coverFetchDurationMs}
-            onOpenChaptersPanel={() => {
-              setChaptersDrawerOpen(true);
-            }}
-            onEnqueueAllToQueue={handleEnqueueAllFromHome}
-            onOpenCbzExport={() => {
-              if (!isSignedIn) {
-                appendLog(t('guestCredit.cbzLockedToast'), 'warn');
-                return;
-              }
-              setCbzExportDrawerOpen(true);
-            }}
-            onOpenpdfExport={() => {
-              if (!isSignedIn) {
-                appendLog(t('guestCredit.cbzLockedToast'), 'warn');
-                return;
-              }
-              setpdfExportOpen(true);
-            }}
-            onOpenReader={() => openReader()}
-            onOpenEbookStudio={onOpenEbookStudio}
-            downloadedChapterCount={downloadedCountForReaderCbz}
-            threads={threads}
-            setThreads={setThreadsClamped}
-            showCbzExport={isSignedIn}
-            guestFavoriteLocked={!isSignedIn}
-            onGuestFavoriteBlocked={() => appendLog(t('guestCredit.favoritePrompt'), 'warn')}
-          />
+          {activeTab === 'offlineRead' || activeTab === 'favorites' ? (
+            <div
+              ref={setLeftSidebarEl}
+              data-testid="home-left-sidebar-slot"
+              className="flex flex-col flex-1 min-h-0"
+            />
+          ) : (
+            <Sidebar
+              connectors={connectorList}
+              sourceUrl={sourceUrl}
+              setSourceUrl={setSourceUrl}
+              site={site}
+              setSite={setSite}
+              mangadexLanguage={mangadexLanguage}
+              setMangadexLanguage={setMangadexLanguage}
+              comickLanguage={comickLanguage}
+              setComickLanguage={setComickLanguage}
+              mangaballLanguage={mangaballLanguage}
+              setMangaballLanguage={setMangaballLanguage}
+              savePath={savePath}
+              setSavePath={setSavePath}
+              loading={loading}
+              fetchError={fetchError}
+              onFetch={handleFetch}
+              onBrowse={handleBrowse}
+              onOpenDownloadSettings={onOpenDownloadSettings}
+              manga={manga}
+              chapters={chapters}
+              isMangaFavorite={isMangaFavorite}
+              onToggleFavorite={toggleFavorite}
+              coverFetchSuccessTick={coverFetchSuccessTick}
+              coverFetchDurationMs={coverFetchDurationMs}
+              onOpenChaptersPanel={() => {
+                setChaptersDrawerOpen(true);
+              }}
+              onEnqueueAllToQueue={handleEnqueueAllFromHome}
+              onOpenCbzExport={() => {
+                if (!isSignedIn) {
+                  appendLog(t('guestCredit.cbzLockedToast'), 'warn');
+                  return;
+                }
+                setCbzExportDrawerOpen(true);
+              }}
+              onOpenpdfExport={() => {
+                if (!isSignedIn) {
+                  appendLog(t('guestCredit.cbzLockedToast'), 'warn');
+                  return;
+                }
+                setpdfExportOpen(true);
+              }}
+              onOpenReader={() => openReader()}
+              onOpenEbookStudio={onOpenEbookStudio}
+              downloadedChapterCount={downloadedCountForReaderCbz}
+              threads={threads}
+              setThreads={setThreadsClamped}
+              showCbzExport={isSignedIn}
+              guestFavoriteLocked={!isSignedIn}
+              onGuestFavoriteBlocked={() => appendLog(t('guestCredit.favoritePrompt'), 'warn')}
+            />
+          )}
         </StudioLayout.LeftSidebar>
 
         <StudioLayout.Content>
@@ -631,6 +644,7 @@ export default function HomeWorkspace({
             ) : activeTab === 'offlineRead' || activeTab === 'favorites' ? (
               <OfflineLibraryTab
                 savePath={savePath}
+                onBrowseSavePath={handleBrowse}
                 onReadOffline={readFromOfflineLibrary}
                 onFetchManga={fetchMangaFromOfflineLibrary}
                 onOpenFolder={openOfflineFolderPath}
@@ -642,10 +656,6 @@ export default function HomeWorkspace({
                 onRemoveRecentExtractedCbzEntry={removeRecentExtractedCbzEntry}
                 onOpenEbook={openEbook}
                 favorites={favorites}
-                onRemoveFavorite={removeFavorite}
-                onFetchFavorite={fetchMangaFromFavorite}
-                onReadFavorite={readFromFavorite}
-                onOpenMangaFolder={handleOpenMangaFolder}
                 favoriteSyncById={favoriteSyncById}
                 favoriteTabBadgeReadById={bellReadRemoteById}
                 fetchAllFavoritesBusy={fetchAllFavoritesBusy}

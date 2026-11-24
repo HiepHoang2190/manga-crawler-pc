@@ -4,4 +4,6 @@ export {
   StudioToolbarSlotProvider,
   StudioPrimaryActionSlot,
   StudioRightToolbarSlot,
+  StudioLeftSidebarSlot,
+  useHasLeftSidebarSlot,
 } from './StudioToolbarSlot';

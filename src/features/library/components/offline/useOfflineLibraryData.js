@@ -11,8 +11,12 @@ import { isFavoriteTabBadgeUnread } from '../../favoriteTabBadge';
 import {
   loadExtraPaths,
   saveExtraPaths,
+  buildOfflineDisplayRows,
   isExtractedTempRow,
   OFFLINE_SORT_CYCLE,
+  filterOfflineLibraryRows,
+  sortOfflineLibraryRows,
+  computeOfflineLibraryStats,
 } from './offlineLibraryUtils';
 
 export function useOfflineLibraryData({
@@ -22,11 +26,12 @@ export function useOfflineLibraryData({
   favoriteTabBadgeReadById = {},
   recentExtractedCbzEntries = [],
   onRemoveRecentExtractedCbzEntry,
-  onRemoveFavorite,
   t,
 }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [isForegroundLoading, setIsForegroundLoading] = useState(false);
+  const [isRescanning, setIsRescanning] = useState(false);
   const [error, setError] = useState('');
   const [notification, setNotification] = useState(null);
   const [extraPaths, setExtraPaths] = useState(() => loadExtraPaths());
@@ -36,6 +41,7 @@ export function useOfflineLibraryData({
   const [viewMode, setViewMode] = useState(() => loadPanelUi().offlineRead.viewMode);
   const [sortMode, setSortMode] = useState(() => loadPanelUi().offlineRead.sortMode);
   const isPickingRef = useRef(false);
+  const foregroundRequestsRef = useRef(0);
 
   // Auto clear error after 10s
   useEffect(() => {
@@ -68,10 +74,12 @@ export function useOfflineLibraryData({
       if (!api?.listLocalMangaLibrary) {
         setError(t('offlineLibrary.electronOnly'));
         setRows([]);
-        return;
+        return false;
       }
       setLoading(true);
       if (!isBackground) {
+        foregroundRequestsRef.current += 1;
+        setIsForegroundLoading(true);
         setError('');
       }
       try {
@@ -80,8 +88,7 @@ export function useOfflineLibraryData({
           if (!isBackground) {
             setError(t('offlineLibrary.needSavePath'));
           }
-          setLoading(false);
-          return;
+          return false;
         }
         const r = await api.listLocalMangaLibrary(base, { force });
         const hiddenSave = loadHiddenSavePaths();
@@ -193,23 +200,38 @@ export function useOfflineLibraryData({
         setRows([...fromSave, ...fromExtra].sort((a, b) =>
           a.mangaTitle.localeCompare(b.mangaTitle, undefined, { numeric: true, sensitivity: 'base' })
         ));
+        return true;
       } catch (e) {
         setError(String(e?.message || e));
         setRows([]);
+        return false;
       } finally {
         setLoading(false);
+        if (!isBackground) {
+          foregroundRequestsRef.current = Math.max(0, foregroundRequestsRef.current - 1);
+          if (foregroundRequestsRef.current === 0) {
+            setIsForegroundLoading(false);
+          }
+        }
       }
     },
     [base, extraPaths, t]
   );
 
   const handleManualRefresh = useCallback(async () => {
-    clearHiddenSavePaths();
-    await refresh({ force: true });
-    setNotification({
-      type: 'success',
-      message: t('offlineLibrary.refreshedSuccess'),
-    });
+    setIsRescanning(true);
+    try {
+      clearHiddenSavePaths();
+      const ok = await refresh({ force: true });
+      if (ok) {
+        setNotification({
+          type: 'success',
+          message: t('offlineLibrary.refreshedSuccess'),
+        });
+      }
+    } finally {
+      setIsRescanning(false);
+    }
   }, [refresh, t]);
 
   useEffect(() => {
@@ -232,28 +254,19 @@ export function useOfflineLibraryData({
     };
   }, [refresh]);
 
-  const removeExtra = useCallback(
-    (absolutePath) => {
-      const next = extraPaths.filter((e) => String(e.path) !== String(absolutePath));
-      setExtraPaths(next);
+  const removeExtra = useCallback((absolutePath) => {
+    setExtraPaths((prev) => {
+      const next = prev.filter((e) => String(e.path) !== String(absolutePath));
+      if (next.length === prev.length) return prev;
       saveExtraPaths(next);
-    },
-    [extraPaths]
-  );
+      return next;
+    });
+  }, []);
 
   const removeFromOfflineList = useCallback(
     async (row) => {
-      if (row?.source === 'favorite') {
-        onRemoveFavorite?.(row.favoriteId || row.key?.replace('fav:', ''));
-        return;
-      }
       const p = String(row?.absolutePath || '').trim();
-      if (!p) {
-        if (row?.favoriteId) {
-          onRemoveFavorite?.(row.favoriteId);
-        }
-        return;
-      }
+      if (!p) return;
       if (row.source === 'recentExtracted' || row.source === 'recentArchive' || isExtractedTempRow(row)) {
         const api = window.electronAPI;
         const source_file = String(row?.sourceFile || '').trim();
@@ -303,7 +316,7 @@ export function useOfflineLibraryData({
         removeExtra(p);
       }
     },
-    [extraPaths, removeExtra, refresh, onRemoveRecentExtractedCbzEntry, t, recentExtractedCbzEntries, onRemoveFavorite]
+    [extraPaths, removeExtra, refresh, onRemoveRecentExtractedCbzEntry, t, recentExtractedCbzEntries]
   );
 
   const addFolder = useCallback(async () => {
@@ -433,7 +446,6 @@ export function useOfflineLibraryData({
 
   const resolveSourceLabel = useCallback(
     (row) => {
-      if (row.source === 'favorite') return t('offlineLibrary.sourceFavorite');
       if (row.source === 'extraCbz') {
         return row.archiveKind === 'archive'
           ? t('offlineLibrary.sourceArchiveFolder')
@@ -448,162 +460,33 @@ export function useOfflineLibraryData({
     [t]
   );
 
-  const displayRows = useMemo(() => {
-    const list = [...rows];
-    const extractedEntries = Array.isArray(recentExtractedCbzEntries)
-      ? recentExtractedCbzEntries
-      : [];
-    for (const entry of extractedEntries) {
-      const extractedPath = String(entry?.openPath || entry?.extractPath || '').trim();
-      if (!extractedPath) continue;
-      const existedRow = list.some(
-        (r) => String(r.absolutePath || '').trim() === extractedPath
-      );
-      if (existedRow) continue;
-      list.unshift({
-        key: `recentExtracted:${extractedPath}`,
-        source: String(entry?.sourceKind || 'extracted') === 'file' ? 'recentArchive' : 'recentExtracted',
-        mangaTitle:
-          String(entry?.title || '').trim() ||
-          extractedPath.split(/[/\\]/).filter(Boolean).pop() ||
-          extractedPath,
-        chapterCount: Number(entry?.chapterCount || 0),
-        hasDb: false,
-        absolutePath: extractedPath,
-        extractPath: String(entry?.extractPath || '').trim(),
-        releaseOnRemove: Boolean(String(entry?.extractPath || '').trim()),
-        ebookPath: String(entry?.ebookPath || '').trim(),
-        localCoverPath: String(entry?.localCoverPath || '').trim(),
-        sourceFile: String(entry?.sourceFile || '').trim(),
-      });
-    }
+  const displayRows = useMemo(
+    () =>
+      buildOfflineDisplayRows({
+        rows,
+        recentExtractedCbzEntries,
+        favorites,
+        favoriteSyncById,
+        favoriteTabBadgeReadById,
+        isFavoriteTabBadgeUnread,
+      }),
+    [rows, recentExtractedCbzEntries, favorites, favoriteSyncById, favoriteTabBadgeReadById]
+  );
 
-    const favByUrl = new Map();
-    const favById = new Map();
-    const favByTitle = new Map();
-    for (const f of favorites) {
-      if (f?.id) favById.set(f.id, f);
-      const u = String(f?.mangaUrl || f?.url || '').trim();
-      if (u) favByUrl.set(u, f);
-      const t = String(f?.title || '').trim().toLowerCase();
-      if (t) favByTitle.set(t, f);
-    }
+  const stats = useMemo(
+    () => computeOfflineLibraryStats(displayRows),
+    [displayRows]
+  );
 
-    const matchedFavIds = new Set();
+  const filtered = useMemo(
+    () => filterOfflineLibraryRows(displayRows, { sourceFilter, query }),
+    [displayRows, query, sourceFilter]
+  );
 
-    const augmented = list.map((r) => {
-      const url = String(r.mangaUrl || '').trim();
-      const title = String(r.mangaTitle || '').trim().toLowerCase();
-      const localUrl = r.absolutePath ? `file://${r.absolutePath}` : '';
-      const localId = localUrl ? `local::${localUrl}` : '';
-      const matchedFav =
-        (url && favByUrl.get(url)) ||
-        (localUrl && favByUrl.get(localUrl)) ||
-        (localId && favById.get(localId)) ||
-        (title && favByTitle.get(title));
-      if (matchedFav) {
-        matchedFavIds.add(matchedFav.id);
-        const sync = favoriteSyncById[matchedFav.id];
-        return {
-          ...r,
-          isFavorite: true,
-          favoriteId: matchedFav.id,
-          notifyWatch: matchedFav.notifyWatch,
-          siteId: r.siteId || matchedFav.siteId || '',
-          mangaUrl: r.mangaUrl || matchedFav.mangaUrl || matchedFav.url || '',
-          coverUrl: matchedFav.coverUrl || '',
-          sync,
-          isBadgeUnread: isFavoriteTabBadgeUnread(
-            matchedFav.id,
-            sync,
-            favoriteTabBadgeReadById
-          ),
-        };
-      }
-      return {
-        ...r,
-        isFavorite: false,
-      };
-    });
-
-    const onlineOnlyFavorites = [];
-    for (const f of favorites) {
-      if (!matchedFavIds.has(f.id)) {
-        const sync = favoriteSyncById[f.id];
-        onlineOnlyFavorites.push({
-          key: `fav:${f.id}`,
-          source: 'favorite',
-          mangaTitle: f.title || '',
-          chapterCount: f.chapterCount || 0,
-          hasDb: false,
-          mangaUrl: f.mangaUrl || f.url || '',
-          siteId: f.siteId || '',
-          absolutePath: '',
-          localCoverPath: '',
-          coverUrl: f.coverUrl || '',
-          isFavorite: true,
-          favoriteId: f.id,
-          notifyWatch: f.notifyWatch,
-          sync,
-          isBadgeUnread: isFavoriteTabBadgeUnread(
-            f.id,
-            sync,
-            favoriteTabBadgeReadById
-          ),
-        });
-      }
-    }
-
-    return [...onlineOnlyFavorites, ...augmented];
-  }, [rows, recentExtractedCbzEntries, favorites, favoriteSyncById, favoriteTabBadgeReadById]);
-
-  const filtered = useMemo(() => {
-    let list = displayRows;
-    if (sourceFilter === 'favorites') {
-      list = list.filter((r) => r.isFavorite);
-    } else if (sourceFilter === 'save') {
-      list = list.filter((r) => r.source === 'save');
-    } else if (sourceFilter === 'extra') {
-      list = list.filter(
-        (r) =>
-          r.source === 'extra' ||
-          r.source === 'recentExtracted' ||
-          r.source === 'recentArchive'
-      );
-    } else if (sourceFilter === 'archives') {
-      list = list.filter(
-        (r) =>
-          r.source === 'extraCbz' ||
-          r.source === 'recentArchive' ||
-          r.archiveKind === 'archive' ||
-          r.archiveKind === 'cbz'
-      );
-    }
-    const q = query.trim().toLowerCase();
-    if (q) {
-      list = list.filter(
-        (r) =>
-          String(r.mangaTitle || '').toLowerCase().includes(q) ||
-          String(r.absolutePath || '').toLowerCase().includes(q)
-      );
-    }
-    return list;
-  }, [displayRows, query, sourceFilter]);
-
-  const sortedFiltered = useMemo(() => {
-    const arr = [...filtered];
-    const titleCmp = (a, b) =>
-      String(a.mangaTitle || '').localeCompare(String(b.mangaTitle || ''), undefined, {
-        numeric: true,
-        sensitivity: 'base',
-      });
-    if (sortMode === 'titleDesc') {
-      arr.sort((a, b) => -titleCmp(a, b));
-    } else {
-      arr.sort(titleCmp);
-    }
-    return arr;
-  }, [filtered, sortMode]);
+  const sortedFiltered = useMemo(
+    () => sortOfflineLibraryRows(filtered, sortMode),
+    [filtered, sortMode]
+  );
 
   const cycleSort = useCallback(() => {
     setSortMode((prev) => {
@@ -616,11 +499,14 @@ export function useOfflineLibraryData({
   return {
     rows,
     loading,
+    isForegroundLoading,
+    isRescanning,
     error,
     setError,
     notification,
     setNotification,
     extraPaths,
+    removeExtra,
     query,
     setQuery,
     sourceFilter,
@@ -628,6 +514,7 @@ export function useOfflineLibraryData({
     viewMode,
     setViewMode,
     sortMode,
+    setSortMode,
     cycleSort,
     base,
     refresh,
@@ -636,6 +523,7 @@ export function useOfflineLibraryData({
     addFolder,
     resolveSourceLabel,
     displayRows,
+    stats,
     filtered,
     sortedFiltered,
   };

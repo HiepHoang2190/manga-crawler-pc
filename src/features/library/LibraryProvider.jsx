@@ -76,6 +76,7 @@ export function LibraryProvider({ children }) {
     mangaballLanguage,
     hydrateSession,
     loadManga: loadMangaWithParams,
+    focusQueueTab,
     enqueueChapters,
     queueProcessing,
     startQueue,
@@ -130,10 +131,6 @@ export function LibraryProvider({ children }) {
   useEffect(() => {
     saveFavoriteAutoDownloadWorkflowId(favoriteAutoDownloadWorkflowId);
   }, [favoriteAutoDownloadWorkflowId]);
-
-  useEffect(() => {
-    fetchAllFavoritesBusyRef.current = fetchAllFavoritesBusy;
-  }, [fetchAllFavoritesBusy]);
 
   const toggleFavorite = useCallback(() => {
     if (!manga?.title) return;
@@ -491,13 +488,14 @@ export function LibraryProvider({ children }) {
 
   const fetchMangaFromFavorite = useCallback(
     async (item) => {
-      const url = String(item?.mangaUrl || '').trim();
+      const url = String(item?.mangaUrl || item?.url || '').trim();
       if (!url) return;
       const siteId = String(item?.siteId ?? item?.site ?? '').trim();
       setMenuView('home');
+      focusQueueTab?.();
       await loadMangaWithParams(siteId, url, { force: true });
     },
-    [loadMangaWithParams, setMenuView]
+    [loadMangaWithParams, setMenuView, focusQueueTab]
   );
 
   const handleBellFetchFavorite = useCallback(
@@ -512,10 +510,10 @@ export function LibraryProvider({ children }) {
 
   const readFromFavorite = useCallback(
     async (item) => {
-      const url = String(item?.mangaUrl || '').trim();
+      const url = String(item?.mangaUrl || item?.url || '').trim();
       if (!url) return;
       const siteId = String(item?.siteId ?? item?.site ?? '').trim();
-      const mangaTitleHint = String(item?.title || '').trim();
+      const mangaTitleHint = String(item?.title || item?.mangaTitle || '').trim();
       const result = await loadMangaWithParams(siteId, url, {
         force: false,
         mangaTitleHint,
@@ -573,14 +571,8 @@ export function LibraryProvider({ children }) {
   );
 
   const fetchMangaFromOfflineLibrary = useCallback(
-    async (row) => {
-      const url = String(row?.mangaUrl || '').trim();
-      if (!url) return;
-      const siteId = String(row?.siteId ?? '').trim();
-      setMenuView('home');
-      await loadMangaWithParams(siteId, url, { force: true });
-    },
-    [loadMangaWithParams, setMenuView]
+    (row) => fetchMangaFromFavorite(row),
+    [fetchMangaFromFavorite]
   );
 
   const enqueueFavoritePendingChapters = useCallback(
@@ -765,7 +757,10 @@ export function LibraryProvider({ children }) {
       }
       if (!list.length) return;
 
-      setFetchAllFavoritesBusy(true);
+      fetchAllFavoritesBusyRef.current = true;
+      if (!fromBackground) {
+        setFetchAllFavoritesBusy(true);
+      }
       setFavoriteSyncById((prev) => {
         const next = { ...prev };
         for (const item of list) {
@@ -1000,7 +995,10 @@ export function LibraryProvider({ children }) {
       } catch (e) {
         appendLog(String(e?.message || e), 'error');
       } finally {
-        setFetchAllFavoritesBusy(false);
+        fetchAllFavoritesBusyRef.current = false;
+        if (!fromBackground) {
+          setFetchAllFavoritesBusy(false);
+        }
       }
     },
     [

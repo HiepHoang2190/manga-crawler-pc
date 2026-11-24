@@ -2,15 +2,22 @@ import React from 'react';
 
 export function OfflineLibraryFooter({
   displayRowsCount,
+  filteredCount,
   cbzLoadProgress,
   cbzError,
   t,
 }) {
+  const showFiltered = filteredCount != null && filteredCount !== displayRowsCount;
   return (
     <div className="border-t border-outline-variant/20 bg-surface-container-low/80 backdrop-blur-md px-4 py-2.5 flex flex-col gap-2 select-none shrink-0">
       <div className="flex flex-wrap items-center justify-between gap-2.5">
-        <span className="inline-flex items-center rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary tabular-nums shadow-2xs">
-          {t('offlineLibrary.footerCount', { n: displayRowsCount })}
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary tabular-nums shadow-2xs">
+          <span className="material-symbols-outlined text-[15px] leading-none">local_library</span>
+          <span>
+            {showFiltered
+              ? t('offlineLibrary.footerFilteredCount', { shown: filteredCount, total: displayRowsCount })
+              : t('offlineLibrary.footerCount', { n: displayRowsCount })}
+          </span>
         </span>
         {cbzLoadProgress && cbzLoadProgress.total > 0 ? (
           <div className="flex items-center gap-2.5 min-w-[140px] max-w-xs flex-1 justify-end">

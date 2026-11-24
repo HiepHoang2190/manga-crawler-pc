@@ -21,6 +21,8 @@ export {
   StudioToolbarSlotProvider,
   StudioPrimaryActionSlot,
   StudioRightToolbarSlot,
+  StudioLeftSidebarSlot,
+  useHasLeftSidebarSlot,
 } from './layout';
 export { default as OutputFormatSelector, OUTPUT_FORMATS } from './ui/OutputFormatSelector.jsx';
 export { default as OutputDestinationSelector } from './ui/OutputDestinationSelector.jsx';

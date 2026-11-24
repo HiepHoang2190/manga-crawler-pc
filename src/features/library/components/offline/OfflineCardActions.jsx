@@ -1,59 +1,43 @@
 import React from 'react';
 import { FavoriteNotifyBell } from './FavoriteNotifyBell';
-import { isKindleEligible, isExtractedTempRow, FAV_MS_ICON_20 } from './offlineLibraryUtils';
+import {
+  isKindleEligible,
+  isExtractedTempRow,
+  hasRowFetchUrl,
+  canOpenOfflineRowFolder,
+  openOfflineRowFolder,
+  FAV_MS_ICON_20,
+} from './offlineLibraryUtils';
 
 export function OfflineCardActions({
   row,
   t,
-  onReadOffline,
-  onReadFavorite,
+  onFetchRow,
   onOpenFolder,
   onRemoveFromList,
-  onOpenPinnedCbzFolder,
-  onReadArchivePath,
   onSendToKindle,
   onToggleNotifyWatch,
 }) {
-  const isCbzPin = row.source === 'extraCbz';
-  const isRecentArchive = row.source === 'recentArchive';
-  const hasFolder = Boolean(row.absolutePath);
-
-  const handleRead = () => {
-    if (isCbzPin) {
-      onOpenPinnedCbzFolder?.(row.absolutePath);
-    } else if (isRecentArchive) {
-      onReadArchivePath?.(row.absolutePath);
-    } else if (row.source === 'favorite' && !row.absolutePath) {
-      if (onReadFavorite) onReadFavorite(row);
-      else onReadOffline?.(row);
-    } else {
-      onReadOffline?.(row);
-    }
-  };
+  const canOpenFolder = canOpenOfflineRowFolder(row, { onOpenFolder });
+  const hasFetchUrl = hasRowFetchUrl(row);
 
   return (
     <div className="flex flex-wrap items-center justify-center gap-5 sm:gap-6 w-full px-2">
-      <button
-        type="button"
-        onClick={handleRead}
-        className="inline-flex items-center justify-center w-10 h-10 shrink-0 rounded-full bg-surface-container-high/95 text-primary border border-outline-variant/30 shadow-lg hover:brightness-110 transition-[filter] cursor-pointer"
-        data-tooltip={
-          isCbzPin
-            ? row.archiveKind === 'archive'
-              ? t('offlineLibrary.openArchiveListFromPin')
-              : t('offlineLibrary.openCbzListFromPin')
-            : t('mangaInfo.openReader')
-        }
-        aria-label={
-          isCbzPin
-            ? row.archiveKind === 'archive'
-              ? t('offlineLibrary.openArchiveListFromPin')
-              : t('offlineLibrary.openCbzListFromPin')
-            : t('mangaInfo.openReader')
-        }
-      >
-        <span className={FAV_MS_ICON_20}>{isCbzPin ? 'archive' : 'auto_stories'}</span>
-      </button>
+      {hasFetchUrl && typeof onFetchRow === 'function' ? (
+        <button
+          type="button"
+          data-testid="offline-row-fetch-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            onFetchRow(row);
+          }}
+          className="inline-flex items-center justify-center w-10 h-10 shrink-0 rounded-full bg-surface-container-high/95 text-primary border border-outline-variant/30 shadow-lg hover:brightness-110 transition-[filter] cursor-pointer"
+          data-tooltip={t('offlineLibrary.fetchToQueueTooltip')}
+          aria-label={t('offlineLibrary.fetchToQueueTooltip')}
+        >
+          <span className={FAV_MS_ICON_20}>sync</span>
+        </button>
+      ) : null}
 
       {row.isFavorite ? (
         <FavoriteNotifyBell
@@ -67,7 +51,10 @@ export function OfflineCardActions({
       {typeof onSendToKindle === 'function' && isKindleEligible(row) ? (
         <button
           type="button"
-          onClick={() => onSendToKindle(row)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onSendToKindle(row);
+          }}
           className="inline-flex items-center justify-center w-10 h-10 shrink-0 rounded-full bg-surface-container-high/95 text-primary border border-outline-variant/30 shadow-lg hover:brightness-110 transition-[filter] cursor-pointer"
           data-tooltip={t('sendToKindle.menuButton')}
           aria-label={t('sendToKindle.menuButton')}
@@ -76,41 +63,50 @@ export function OfflineCardActions({
         </button>
       ) : null}
 
-      {hasFolder ? (
+      <span
+        className={`inline-flex shrink-0 ${!canOpenFolder ? 'cursor-not-allowed' : ''}`}
+        data-tooltip={
+          canOpenFolder
+            ? t('favorites.openFolderTitle')
+            : t('offlineLibrary.folderNotDownloadedTooltip')
+        }
+      >
         <button
           type="button"
-          onClick={() => {
-            const folder_path =
-              row.source === 'recentArchive'
-                ? String(row.extractPath || '').trim() || row.absolutePath
-                : row.absolutePath;
-            onOpenFolder?.(folder_path);
+          data-testid="offline-row-open-folder-btn"
+          disabled={!canOpenFolder}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (canOpenFolder) openOfflineRowFolder(row, { onOpenFolder });
           }}
-          className="inline-flex items-center justify-center w-10 h-10 shrink-0 rounded-full bg-surface-container-high/95 text-primary border border-outline-variant/30 shadow-lg hover:brightness-110 transition-[filter] cursor-pointer"
-          data-tooltip={t('favorites.openFolderTitle')}
+          className="inline-flex items-center justify-center w-10 h-10 shrink-0 rounded-full bg-surface-container-high/95 text-primary border border-outline-variant/30 shadow-lg hover:brightness-110 transition-[filter] cursor-pointer disabled:pointer-events-none disabled:opacity-35"
+          aria-label={
+            canOpenFolder
+              ? t('favorites.openFolderTitle')
+              : t('offlineLibrary.folderNotDownloadedTooltip')
+          }
         >
           <span className={FAV_MS_ICON_20}>folder_open</span>
         </button>
-      ) : null}
+      </span>
 
       {typeof onRemoveFromList === 'function' ? (
         <button
           type="button"
-          onClick={() => onRemoveFromList(row)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemoveFromList(row);
+          }}
           className="inline-flex items-center justify-center w-10 h-10 shrink-0 rounded-full bg-red-500/25 backdrop-blur-md text-red-400 hover:bg-red-500 hover:text-white transition-colors cursor-pointer"
           data-tooltip={
-            row.source === 'favorite'
-              ? t('mangaInfo.favoriteRemove')
-              : isExtractedTempRow(row)
-                ? t('offlineLibrary.removeExtractedTempTitle')
-                : t('offlineLibrary.removeFromListTitle')
+            isExtractedTempRow(row)
+              ? t('offlineLibrary.removeExtractedTempTitle')
+              : t('offlineLibrary.removeFromListTitle')
           }
           aria-label={
-            row.source === 'favorite'
-              ? t('mangaInfo.favoriteRemove')
-              : isExtractedTempRow(row)
-                ? t('offlineLibrary.removeExtractedTempTitle')
-                : t('offlineLibrary.removeFromListTitle')
+            isExtractedTempRow(row)
+              ? t('offlineLibrary.removeExtractedTempTitle')
+              : t('offlineLibrary.removeFromListTitle')
           }
         >
           <span className={FAV_MS_ICON_20}>delete</span>
