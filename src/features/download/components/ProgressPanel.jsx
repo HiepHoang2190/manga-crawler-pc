@@ -10,6 +10,7 @@ export default function ProgressPanel({
   downloadProgress = null,
   queueProcessing = false,
   activeChapterLabel = '',
+  compact = false,
 }) {
   const { t } = useI18n();
   const dp = downloadProgress;
@@ -33,12 +34,45 @@ export default function ProgressPanel({
     detailLine = t('progress.queueComplete');
   }
 
+  if (compact) {
+    const isComplete = o.totalChapters > 0 && o.doneChapters >= o.totalChapters;
+    const showInlineProgress = queueProcessing || o.percent > 0 || isComplete;
+    if (!showInlineProgress) return null;
+
+    const compactDetail =
+      !queueProcessing && o.percent > 0 && !isComplete
+        ? t('progress.chaptersDone', { done: o.doneChapters, total: o.totalChapters })
+        : detailLine;
+
+    return (
+      <div className="flex items-center gap-2.5 min-w-0 flex-1 max-w-md justify-end">
+        <span
+          className="text-xs text-on-surface-variant truncate min-w-0"
+          data-tooltip={compactDetail !== t('progress.ready') ? compactDetail : undefined}
+        >
+          {compactDetail}
+        </span>
+        <div className="h-1.5 w-24 sm:w-32 shrink-0 bg-outline-variant/25 rounded-full overflow-hidden">
+          <div
+            className={`h-full transition-[width] duration-300 ease-out ${
+              isComplete ? 'bg-emerald-500' : 'bg-primary'
+            }`}
+            style={{ width: `${o.percent}%` }}
+          />
+        </div>
+        <span className="text-xs font-semibold tabular-nums text-on-surface shrink-0">
+          {o.percent}%
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 bg-surface-container-high rounded-xl border border-outline-variant/20 shadow-sm shrink-0">
       <SectionTitle as="h4" className="mb-3">{t('progress.title')}</SectionTitle>
 
       <div className="flex items-center gap-3 mb-2">
-        <div className="h-2 flex-1 min-w-0 bg-surface-container-lowest rounded-full overflow-hidden border border-outline-variant/10">
+        <div className="h-2 flex-1 min-w-0 bg-outline-variant/25 rounded-full overflow-hidden">
           <div
             className="h-full bg-primary transition-[width] duration-300 ease-out"
             style={{ width: `${o.percent}%` }}

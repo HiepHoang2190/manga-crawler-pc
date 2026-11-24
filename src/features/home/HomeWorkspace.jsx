@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { useI18n } from '../../context/I18nContext';
 import {
   useAppLog,
-  ResizeSplitter,
   StudioLayout,
   StudioToolbarSlotProvider,
   useStudioLayout,
@@ -48,7 +47,6 @@ function visibleTabsForUser(_isGuestUser) {
 
 const MAIN_SIDEBAR_WIDTH_KEY = 'mangaMainSidebarWidthPx';
 const MAIN_SIDEBAR_WIDTH_MIN = 320;
-const MAIN_SIDEBAR_VISIBLE_KEY = 'mangaMainSidebarVisible';
 
 function getDefaultSidebarWidth() {
   if (typeof window === 'undefined') return 400;
@@ -70,16 +68,6 @@ function loadMainSidebarWidth() {
     /* ignore */
   }
   return clampMainSidebarWidth(getDefaultSidebarWidth(), window.innerWidth);
-}
-
-function loadMainSidebarVisible() {
-  if (typeof window === 'undefined') return true;
-  try {
-    return localStorage.getItem(MAIN_SIDEBAR_VISIBLE_KEY) !== 'false';
-  } catch {
-    /* ignore */
-  }
-  return true;
 }
 
 export default function HomeWorkspace({
@@ -181,8 +169,6 @@ export default function HomeWorkspace({
   const { setCbzExportDrawerOpen, setpdfExportOpen } = useExport();
 
   const {
-    showLeftSidebar,
-    toggleLeftSidebar,
     leftWidth,
     handleLeftResizeStart,
   } = useStudioLayout({
@@ -190,17 +176,16 @@ export default function HomeWorkspace({
     defaultLeftWidth: loadMainSidebarWidth(),
     minLeftWidth: 320,
     maxLeftWidth: 800,
-    defaultLeftOpen: loadMainSidebarVisible(),
+    defaultLeftOpen: true,
   });
 
   useEffect(() => {
     try {
       localStorage.setItem(MAIN_SIDEBAR_WIDTH_KEY, String(leftWidth));
-      localStorage.setItem(MAIN_SIDEBAR_VISIBLE_KEY, showLeftSidebar ? 'true' : 'false');
     } catch {
       /* ignore */
     }
-  }, [leftWidth, showLeftSidebar]);
+  }, [leftWidth]);
 
   const [chaptersDrawerOpen, setChaptersDrawerOpen] = useState(false);
   const [activeTab, setActiveTab] = useState(() => loadPanelUi().queueTab);
@@ -521,9 +506,6 @@ export default function HomeWorkspace({
     <StudioToolbarSlotProvider primaryEl={primaryActionEl} rightEl={rightToolbarEl}>
       <StudioLayout>
         <StudioLayout.Toolbar
-          showLeftSidebar={showLeftSidebar}
-          onToggleLeftSidebar={toggleLeftSidebar}
-          leftSidebarTooltip={showLeftSidebar ? t('sidebar.hidePanel') : t('sidebar.showPanel')}
           leftSlot={
             <div className="flex items-center gap-2 min-w-0 overflow-x-auto no-scrollbar">
               <div
@@ -596,12 +578,11 @@ export default function HomeWorkspace({
 
       <StudioLayout.Body>
         <StudioLayout.LeftSidebar
-          open={showLeftSidebar}
+          open={true}
           width={leftWidth}
           onResizeStart={handleLeftResizeStart}
         >
           <Sidebar
-            onCollapse={toggleLeftSidebar}
             connectors={connectorList}
             sourceUrl={sourceUrl}
             setSourceUrl={setSourceUrl}

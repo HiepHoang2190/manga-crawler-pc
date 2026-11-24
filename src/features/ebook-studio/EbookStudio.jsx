@@ -34,8 +34,6 @@ export default function EbookStudio({ savePath = '', initialMangaDir = '', onRun
   }, []);
 
   const {
-    showLeftSidebar,
-    toggleLeftSidebar,
     leftWidth: sidebarWidth,
     handleLeftResizeStart: handleSplitPointerDown,
   } = useStudioLayout({
@@ -73,9 +71,6 @@ export default function EbookStudio({ savePath = '', initialMangaDir = '', onRun
     <StudioLayout>
       {/* Top Header Bar */}
       <StudioLayout.Toolbar
-        showLeftSidebar={showLeftSidebar}
-        onToggleLeftSidebar={toggleLeftSidebar}
-        leftSidebarTooltip={showLeftSidebar ? t('sidebar.hidePanel') : t('sidebar.showPanel')}
         leftSlot={
           <div className="flex items-center gap-2 min-w-0 overflow-x-auto no-scrollbar">
             <div
@@ -150,8 +145,8 @@ export default function EbookStudio({ savePath = '', initialMangaDir = '', onRun
               isActive={activeTab === 'packaging'}
               savePath={savePath}
               initialMangaDir={initialMangaDir}
-              showCol1={showLeftSidebar}
-              showSidebar={showLeftSidebar}
+              showCol1={true}
+              showSidebar={true}
               sidebarWidth={sidebarWidth}
               handleSplitPointerDown={handleSplitPointerDown}
               onRunningChange={(isRunning) => handleTabRunningChange('packaging', isRunning)}
@@ -165,8 +160,8 @@ export default function EbookStudio({ savePath = '', initialMangaDir = '', onRun
             <FormatConverterSubTab
               isActive={activeTab === 'converter'}
               savePath={savePath}
-              showCol1={showLeftSidebar}
-              showSidebar={showLeftSidebar}
+              showCol1={true}
+              showSidebar={true}
               sidebarWidth={sidebarWidth}
               handleSplitPointerDown={handleSplitPointerDown}
               onRunningChange={(isRunning) => handleTabRunningChange('converter', isRunning)}
@@ -180,8 +175,8 @@ export default function EbookStudio({ savePath = '', initialMangaDir = '', onRun
             <EbookToolsSubTab
               isActive={activeTab === 'tools'}
               savePath={savePath}
-              showCol1={showLeftSidebar}
-              showSidebar={showLeftSidebar}
+              showCol1={true}
+              showSidebar={true}
               sidebarWidth={sidebarWidth}
               handleSplitPointerDown={handleSplitPointerDown}
               onRunningChange={(isRunning) => handleTabRunningChange('tools', isRunning)}
@@ -194,8 +189,8 @@ export default function EbookStudio({ savePath = '', initialMangaDir = '', onRun
           >
             <SendToKindleTab
               isActive={activeTab === 'kindle'}
-              showCol1={showLeftSidebar}
-              showSidebar={showLeftSidebar}
+              showCol1={true}
+              showSidebar={true}
               sidebarWidth={sidebarWidth}
               handleSplitPointerDown={handleSplitPointerDown}
               onRunningChange={(isRunning) => handleTabRunningChange('kindle', isRunning)}

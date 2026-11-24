@@ -132,7 +132,9 @@ export function reorderQueueChapter(prev, group_id, from_idx, to_idx) {
 }
 
 export function clearCompletedQueueGroups(prev) {
-  return prev.filter((g) => !(g.chapters.length > 0 && g.chapters.every((c) => c.status === 'done')));
+  return prev.filter(
+    (g) => !(g.chapters.length > 0 && g.chapters.every((c) => c.status === 'done') && !g.chapters.some((c) => c.downloadError))
+  );
 }
 
 export function clearCompletedChaptersInGroup(prev, group_id) {

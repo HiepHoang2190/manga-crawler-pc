@@ -3,6 +3,7 @@ import {
   countNewChaptersForManga,
   mergeChaptersIntoQueue,
   removeQueueGroup,
+  clearCompletedQueueGroups,
   pauseQueueGroups,
   mergeHistoryRowsIntoQueue,
   countNewHistoryChapters,
@@ -347,6 +348,28 @@ describe('workflow mutations', () => {
 
       const next = unpauseQueueGroupsWithWaiting(queue);
       expect(next).toBe(queue);
+    });
+  });
+
+  describe('clearCompletedQueueGroups', () => {
+    test('removes only cleanly completed groups and preserves groups with downloadError chapters', () => {
+      const queue = [
+        {
+          id: 'done-clean',
+          chapters: [{ id: 'c1', status: 'done' }],
+        },
+        {
+          id: 'done-with-error',
+          chapters: [{ id: 'c2', status: 'done', downloadError: 'timeout' }],
+        },
+        {
+          id: 'still-waiting',
+          chapters: [{ id: 'c3', status: 'waiting' }],
+        },
+      ];
+
+      const next = clearCompletedQueueGroups(queue);
+      expect(next.map((g) => g.id)).toEqual(['done-with-error', 'still-waiting']);
     });
   });
 });

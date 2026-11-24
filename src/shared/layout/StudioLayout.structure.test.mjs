@@ -94,22 +94,35 @@ test('left-sidebar toggle buttons use neutral ghost style when open and primary 
   );
 });
 
-test('utility tabs (PluginManagementPanel, SiteCheckerPanel) omit onToggleLeftSidebar and keep LeftSidebar open with resize', () => {
-  const pluginsSrc = fs.readFileSync(
-    path.join(dirname, '../../features/plugins/PluginManagementPanel.jsx'),
-    'utf8',
-  );
-  const siteCheckerSrc = fs.readFileSync(
-    path.join(dirname, '../../features/site-checker/SiteCheckerPanel.jsx'),
-    'utf8',
-  );
+test('non-canvas tabs omit onToggleLeftSidebar and keep LeftSidebar open with resize', () => {
+  const studioLeftSidebarTabs = [
+    '../../features/plugins/PluginManagementPanel.jsx',
+    '../../features/site-checker/SiteCheckerPanel.jsx',
+    '../../features/latest-updates/LatestUpdatesPanel.jsx',
+    '../../features/bulk-scan/BulkScanPanel.jsx',
+    '../../features/explore/components/FollowedMangaPanel.jsx',
+    '../../features/home/HomeWorkspace.jsx',
+  ];
 
-  for (const src of [pluginsSrc, siteCheckerSrc]) {
+  for (const rel of studioLeftSidebarTabs) {
+    const src = fs.readFileSync(path.join(dirname, rel), 'utf8');
     expect(src).not.toContain('onToggleLeftSidebar');
     expect(src).not.toContain('showLeftSidebar');
     expect(src).toMatch(/<StudioLayout\.LeftSidebar[\s\S]{0,120}open=\{true\}/);
     expect(src).toContain('leftWidth');
     expect(src).toContain('handleLeftResizeStart');
+  }
+
+  for (const rel of [
+    '../../features/tools-studio/ToolsStudio.jsx',
+    '../../features/ebook-studio/EbookStudio.jsx',
+  ]) {
+    const src = fs.readFileSync(path.join(dirname, rel), 'utf8');
+    expect(src).not.toContain('onToggleLeftSidebar');
+    expect(src).not.toContain('showLeftSidebar');
+    expect(src).toContain('showSidebar={true}');
+    expect(src).toContain('sidebarWidth');
+    expect(src).toContain('handleSplitPointerDown');
   }
 });
 

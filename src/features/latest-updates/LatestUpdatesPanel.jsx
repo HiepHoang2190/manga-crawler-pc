@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   EmptyState,
   FetchErrorState,
+  MangaCard,
   MultiSelectDropdown,
   SearchableSelect,
   SectionTitle,
@@ -389,8 +390,6 @@ export default function LatestUpdatesPanel({
 }) {
   const { t } = useI18n();
   const {
-    showLeftSidebar,
-    toggleLeftSidebar,
     leftWidth,
     handleLeftResizeStart,
   } = useStudioLayout({
@@ -1795,9 +1794,6 @@ export default function LatestUpdatesPanel({
   return (
     <StudioLayout>
       <StudioLayout.Toolbar
-        showLeftSidebar={showLeftSidebar}
-        onToggleLeftSidebar={toggleLeftSidebar}
-        leftSidebarTooltip={showLeftSidebar ? t('sidebar.hidePanel') : t('sidebar.showPanel')}
         leftSlot={
           <div className="flex items-center gap-2 min-w-0 overflow-x-auto no-scrollbar">
             {subtabsSlot}
@@ -1887,7 +1883,7 @@ export default function LatestUpdatesPanel({
 
       <StudioLayout.Body>
         <StudioLayout.LeftSidebar
-          open={showLeftSidebar}
+          open={true}
           width={leftWidth}
           onResizeStart={handleLeftResizeStart}
         >
@@ -2246,146 +2242,50 @@ export default function LatestUpdatesPanel({
                   const chapterListDisabled =
                     otherBusy || enqBusy || openBusy || !chapter_actions_enabled;
                   return (
-                    <li
+                    <MangaCard
+                      as="li"
                       key={k}
-                      role="button"
-                      tabIndex={0}
-                      onClick={(e) => {
-                        if (e.target.closest('button') || e.target.closest('a')) return;
-                        if (!chapterListDisabled) {
-                          handleOpenChapterListButton(row.siteId, row);
-                        }
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          if (e.target.closest('button') || e.target.closest('a')) return;
-                          e.preventDefault();
-                          if (!chapterListDisabled) {
-                            handleOpenChapterListButton(row.siteId, row);
-                          }
-                        }
-                      }}
-                      className={`group flex min-w-0 flex-col overflow-hidden rounded-xl border border-outline-variant/20 bg-surface-container-high/35 transition-all hover:border-outline-variant/40 hover:bg-surface-container-high/55 hover:shadow-md cursor-pointer select-none ${
-                        openBusy ? 'ring-2 ring-primary/40' : ''
-                      }`}
-                    >
-                      <div className="relative aspect-[3/4.2] bg-surface-container-highest flex items-center justify-center overflow-hidden">
-                        <div className="flex flex-col items-center justify-center gap-1 text-on-surface-variant/40 p-2 text-center pointer-events-none select-none">
-                          <span className="material-symbols-outlined text-[32px] leading-none">menu_book</span>
-                          <span className="text-[10px] font-medium leading-tight line-clamp-1">{t('latestUpdates.noCover')}</span>
-                        </div>
-                        {row.coverUrl ? (
-                          <img
-                            src={row.coverUrl}
-                            alt=""
-                            className="absolute inset-0 size-full object-cover group-hover:scale-105 transition-transform duration-300"
-                            loading="lazy"
-                            decoding="async"
-                            onError={(e) => {
-                              e.currentTarget.style.display = 'none';
-                            }}
+                      coverUrl={row.coverUrl}
+                      noCoverText={t('latestUpdates.noCover')}
+                      loading={openBusy}
+                      disabled={chapterListDisabled}
+                      onClick={() => handleOpenChapterListButton(row.siteId, row)}
+                      topLeft={<MangaCard.SourceBadge label={row.siteLabel} />}
+                      topRight={
+                        typeof onToggleFavorite === 'function' ? (
+                          <MangaCard.FavoriteButton
+                            isFavorite={isFav}
+                            onClick={() => handleToggleFavorite(row, row.siteId)}
+                            tooltipAdd={t('mangaInfo.favoriteAdd')}
+                            tooltipRemove={t('mangaInfo.favoriteRemove')}
                           />
-                        ) : null}
-                        {openBusy ? (
-                          <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
-                            <span className="material-symbols-outlined animate-spin text-[28px] text-white leading-none">
-                              progress_activity
-                            </span>
-                          </div>
-                        ) : null}
-                        <span className="pointer-events-none absolute left-2 top-2 z-[1] max-w-[calc(100%-3rem)] truncate rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
-                          {row.siteLabel}
-                        </span>
-                        {typeof onToggleFavorite === 'function' ? (
-                          <button
-                            type="button"
-                            aria-pressed={isFav}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleToggleFavorite(row, row.siteId);
-                            }}
-                            className={`absolute right-2 top-2 z-[1] flex h-7 w-7 cursor-pointer items-center justify-center rounded-full shadow-md transition-all ${
-                              isFav
-                                ? 'bg-rose-500/80 text-white ring-1 ring-white/40 backdrop-blur-[2px] hover:bg-rose-500/90'
-                                : 'border border-white/25 bg-black/40 text-white/95 shadow-black/10 backdrop-blur-sm hover:bg-black/50'
-                            }`}
-                            data-tooltip={
-                              isFav
-                                ? t('mangaInfo.favoriteRemove')
-                                : t('mangaInfo.favoriteAdd')
-                            }
-                          >
-                            <span
-                              className="material-symbols-outlined block text-[15px] leading-none"
-                              style={
-                                isFav
-                                  ? { fontVariationSettings: "'FILL' 1, 'wght' 300, 'GRAD' 0, 'opsz' 20" }
-                                  : { fontVariationSettings: "'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 20" }
-                              }
-                            >
-                              {isFav ? 'favorite' : 'favorite_border'}
-                            </span>
-                          </button>
-                        ) : null}
-                      </div>
-                      <div className="flex min-h-0 flex-1 flex-col gap-1 p-3">
-                        <p className="line-clamp-2 text-sm font-semibold leading-snug text-on-surface group-hover:text-primary transition-colors" data-tooltip={row.title}>
-                          {row.title}
-                        </p>
-                        {row.latestChapterLabel ? (
-                          <p className="text-xs text-on-surface-variant">{row.latestChapterLabel}</p>
-                        ) : null}
-                        <div className="mt-auto flex w-full items-center gap-1.5 pt-1">
-                          <button
-                            type="button"
+                        ) : null
+                      }
+                      heading={row.title}
+                      subtitle={
+                        row.latestChapterLabel ? (
+                          <p className="text-xs text-on-surface-variant truncate">{row.latestChapterLabel}</p>
+                        ) : null
+                      }
+                      footer={
+                        <>
+                          <MangaCard.ChapterButton
+                            label={t('latestUpdates.openChapterList')}
+                            loading={openBusy}
+                            loadingLabel={t('latestUpdates.loading')}
                             disabled={chapterListDisabled}
-                            data-tooltip={chapter_actions_disabled_title}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenChapterListButton(row.siteId, row);
-                            }}
-                            className="flex-1 min-w-0 h-8 rounded-lg bg-primary text-on-primary hover:opacity-90 text-xs font-semibold transition-all flex items-center justify-center gap-1.5 disabled:pointer-events-none disabled:opacity-45 cursor-pointer shadow-2xs"
-                          >
-                            {openBusy ? (
-                              <span className="inline-flex items-center justify-center gap-1">
-                                <span className="material-symbols-outlined animate-spin text-[14px] leading-none">
-                                  progress_activity
-                                </span>
-                                <span className="truncate">{t('latestUpdates.loading')}</span>
-                              </span>
-                            ) : (
-                              <>
-                                <span className="material-symbols-outlined text-[15px] leading-none shrink-0">
-                                  format_list_bulleted
-                                </span>
-                                <span className="truncate whitespace-nowrap">{t('latestUpdates.openChapterList')}</span>
-                              </>
-                            )}
-                          </button>
-                          <button
-                            type="button"
+                            tooltip={chapter_actions_disabled_title}
+                            onClick={() => handleOpenChapterListButton(row.siteId, row)}
+                          />
+                          <MangaCard.QueueButton
+                            loading={enqBusy}
                             disabled={enqueueDisabled}
-                            data-tooltip={chapter_actions_disabled_title || t('latestUpdates.addToQueue')}
-                            aria-label={t('latestUpdates.addToQueue')}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleEnqueue(row.siteId, row);
-                            }}
-                            className="h-8 w-8 shrink-0 rounded-lg bg-primary text-on-primary hover:opacity-90 transition-all flex items-center justify-center disabled:pointer-events-none disabled:opacity-45 cursor-pointer shadow-2xs"
-                          >
-                            {enqBusy ? (
-                              <span className="material-symbols-outlined animate-spin text-[15px] leading-none">
-                                progress_activity
-                              </span>
-                            ) : (
-                              <span className="material-symbols-outlined text-[17px] leading-none">
-                                playlist_add
-                              </span>
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                    </li>
+                            tooltip={chapter_actions_disabled_title || t('latestUpdates.addToQueue')}
+                            onClick={() => handleEnqueue(row.siteId, row)}
+                          />
+                        </>
+                      }
+                    />
                   );
                 })}
               </ul>

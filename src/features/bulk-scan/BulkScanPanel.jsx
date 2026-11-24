@@ -1,6 +1,6 @@
 import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from '../../context/I18nContext';
-import { EmptyState, FetchErrorState, SearchableSelect, SectionTitle, StudioLayout, useStudioLayout, ViewModeToggle } from '../../shared';
+import { EmptyState, FetchErrorState, MangaCard, SearchableSelect, SectionTitle, StudioLayout, useStudioLayout, ViewModeToggle } from '../../shared';
 import { ChaptersDrawer } from '../reader';
 import { dedupeChaptersByNumber } from '../download';
 import ExploreSourceSelect from '../explore/components/ExploreSourceSelect.jsx';
@@ -156,8 +156,6 @@ export default function BulkScanPanel({
 }) {
   const { t } = useI18n();
   const {
-    showLeftSidebar,
-    toggleLeftSidebar,
     leftWidth,
     handleLeftResizeStart,
   } = useStudioLayout({
@@ -944,9 +942,6 @@ export default function BulkScanPanel({
   return (
     <StudioLayout className="w-full h-full">
       <StudioLayout.Toolbar
-        showLeftSidebar={showLeftSidebar}
-        onToggleLeftSidebar={toggleLeftSidebar}
-        leftSidebarTooltip={showLeftSidebar ? t('sidebar.hidePanel') : t('sidebar.showPanel')}
         leftSlot={
           <div className="flex items-center gap-2 min-w-0 overflow-x-auto no-scrollbar">
             {subtabsSlot}
@@ -1043,7 +1038,7 @@ export default function BulkScanPanel({
 
       <StudioLayout.Body>
         <StudioLayout.LeftSidebar
-          open={showLeftSidebar}
+          open={true}
           width={leftWidth}
           onResizeStart={handleLeftResizeStart}
         >
@@ -1331,52 +1326,30 @@ export default function BulkScanPanel({
                       const enqBusy = enqueueKey === item.mangaUrl;
                       const inlineBusy = Boolean(inlineBusyKey || enqueueKey);
                       return (
-                        <div
+                        <MangaCard
                           key={item.mangaUrl}
                           data-testid="bulk-scan-card"
-                          role="button"
-                          tabIndex={0}
-                          className={`group relative flex cursor-pointer select-none flex-col overflow-hidden rounded-xl border transition-all ${
+                          aria-pressed={checked}
+                          coverUrl={item.coverUrl}
+                          noCoverText={t('latestUpdates.noCover')}
+                          loading={openBusy}
+                          disabled={controlsBusy}
+                          onClick={(e) => applyRowSelection(e, item, index)}
+                          cardClassName={`${
                             checked
                               ? 'border-primary/50 bg-primary/5 ring-2 ring-primary/25 shadow-xs'
-                              : 'border-outline-variant/20 bg-surface-container-high/35 hover:border-outline-variant/40 hover:bg-surface-container-high/55 hover:shadow-md'
+                              : 'border-outline-variant/20 bg-surface-container-high/35 hover:border-outline-variant/40 hover:bg-surface-container-high/55'
                           } ${controlsBusy ? 'pointer-events-none opacity-60' : ''}`}
-                          onClick={(e) => applyRowSelection(e, item, index)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              e.preventDefault();
-                              applyRowSelection(e, item, index);
-                            }
-                          }}
-                        >
-                          {/* Standard Aspect Ratio Cover [3/4.2] */}
-                          <div className="relative aspect-[3/4.2] bg-surface-container-highest flex items-center justify-center overflow-hidden">
-                            <div className="flex flex-col items-center justify-center gap-1 text-on-surface-variant/40 p-2 text-center pointer-events-none select-none">
-                              <span className="material-symbols-outlined text-[32px] leading-none">menu_book</span>
-                              <span className="text-[10px] font-medium leading-tight line-clamp-1">{t('latestUpdates.noCover')}</span>
-                            </div>
-                            {item.coverUrl ? (
-                              <img
-                                src={item.coverUrl}
-                                alt=""
-                                className="pointer-events-none absolute inset-0 size-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                loading="lazy"
-                                decoding="async"
-                                referrerPolicy="no-referrer"
-                                onError={(e) => {
-                                  e.currentTarget.style.display = 'none';
-                                }}
-                              />
-                            ) : null}
-
-                            {/* Top-Left: Modern Checkbox + Source Badge */}
+                          topLeft={
                             <div
-                              className="absolute left-2 top-2 z-[2] flex items-center gap-1.5 max-w-[calc(100%-3rem)]"
+                              className="pointer-events-auto flex items-center gap-1.5 min-w-0"
                               onClick={(e) => e.stopPropagation()}
                             >
                               <input
                                 type="checkbox"
                                 data-testid="bulk-scan-checkbox"
+                                tabIndex={-1}
+                                aria-hidden="true"
                                 className="sr-only"
                                 checked={checked}
                                 disabled={controlsBusy}
@@ -1395,120 +1368,56 @@ export default function BulkScanPanel({
                                 aria-label={checked ? t('bulkScan.unselectItem') : t('bulkScan.selectItem')}
                                 data-tooltip={checked ? t('bulkScan.unselectItem') : t('bulkScan.selectItem')}
                               >
-                                <span className="material-symbols-outlined text-[16px] leading-none font-bold">
+                                <span
+                                  aria-hidden="true"
+                                  className="material-symbols-outlined text-[16px] leading-none font-bold"
+                                >
                                   {checked ? 'check' : ''}
                                 </span>
                               </button>
-                              <span className="pointer-events-none truncate rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white flex items-center gap-1 backdrop-blur-sm shadow-md">
-                                {activeConnector?.icon ? (
-                                  <img src={activeConnector.icon} alt="" className="w-3 h-3 rounded shrink-0" />
-                                ) : null}
-                                <span className="truncate">{activeConnector?.label || selectedSiteId}</span>
-                              </span>
+                              <MangaCard.SourceBadge
+                                label={activeConnector?.label || selectedSiteId}
+                                icon={activeConnector?.icon}
+                                className="shadow-md"
+                              />
                             </div>
-
-                            {/* Top-Right: Bookmark Heart */}
-                            {typeof onToggleFavorite === 'function' ? (
-                              <button
-                                type="button"
-                                aria-pressed={isFavorite}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleToggleFavorite(item);
-                                }}
-                                className={`absolute right-2 top-2 z-[2] flex h-7 w-7 cursor-pointer items-center justify-center rounded-full shadow-md transition-all ${
-                                  isFavorite
-                                    ? 'bg-rose-500/80 text-white ring-1 ring-white/40 backdrop-blur-[2px] hover:bg-rose-500/90'
-                                    : 'border border-white/25 bg-black/40 text-white/95 shadow-black/10 backdrop-blur-sm hover:bg-black/50'
-                                }`}
-                                data-tooltip={
-                                  isFavorite
-                                    ? t('mangaInfo.favoriteRemove')
-                                    : t('mangaInfo.favoriteAdd')
-                                }
-                                aria-label={
-                                  isFavorite
-                                    ? t('mangaInfo.favoriteRemove')
-                                    : t('mangaInfo.favoriteAdd')
-                                }
-                              >
-                                <span
-                                  className="material-symbols-outlined block text-[15px] leading-none"
-                                  style={
-                                    isFavorite
-                                      ? { fontVariationSettings: "'FILL' 1, 'wght' 300, 'GRAD' 0, 'opsz' 20" }
-                                      : { fontVariationSettings: "'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 20" }
-                                  }
-                                >
-                                  {isFavorite ? 'favorite' : 'favorite_border'}
-                                </span>
-                              </button>
-                            ) : null}
-                          </div>
-
-                          {/* Card Body */}
-                          <div className="flex min-h-0 flex-1 flex-col gap-1 p-3">
-                            <p
-                              className="line-clamp-2 text-sm font-semibold leading-snug text-on-surface group-hover:text-primary transition-colors cursor-pointer"
-                              data-tooltip={item.title}
-                            >
-                              {item.title}
-                            </p>
-                            {item.latestChapterLabel ? (
+                          }
+                          topRight={
+                            typeof onToggleFavorite === 'function' ? (
+                              <MangaCard.FavoriteButton
+                                isFavorite={isFavorite}
+                                onClick={() => handleToggleFavorite(item)}
+                                tooltipAdd={t('mangaInfo.favoriteAdd')}
+                                tooltipRemove={t('mangaInfo.favoriteRemove')}
+                              />
+                            ) : null
+                          }
+                          heading={item.title}
+                          subtitle={
+                            item.latestChapterLabel ? (
                               <p className="text-xs text-on-surface-variant truncate">
                                 {item.latestChapterLabel}
                               </p>
-                            ) : null}
-
-                            <div
-                              className="mt-auto flex w-full items-center gap-1.5 pt-1"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <button
-                                type="button"
-                                disabled={openBusy || inlineBusy}
+                            ) : null
+                          }
+                          footer={
+                            <>
+                              <MangaCard.ChapterButton
+                                label={t('latestUpdates.openChapterList')}
+                                loading={openBusy}
+                                loadingLabel={t('latestUpdates.loading')}
+                                disabled={controlsBusy || openBusy || inlineBusy}
                                 onClick={() => handleOpenChapterList(item)}
-                                className="flex-1 min-w-0 h-8 rounded-lg bg-primary text-on-primary hover:opacity-90 text-xs font-semibold transition-all flex items-center justify-center gap-1.5 disabled:pointer-events-none disabled:opacity-45 cursor-pointer shadow-2xs"
-                              >
-                                {openBusy ? (
-                                  <span className="inline-flex items-center justify-center gap-1">
-                                    <span className="material-symbols-outlined animate-spin text-[14px] leading-none">
-                                      progress_activity
-                                    </span>
-                                    <span className="truncate">{t('latestUpdates.loading')}</span>
-                                  </span>
-                                ) : (
-                                  <>
-                                    <span className="material-symbols-outlined text-[15px] leading-none shrink-0">
-                                      format_list_bulleted
-                                    </span>
-                                    <span className="truncate whitespace-nowrap">
-                                      {t('latestUpdates.openChapterList')}
-                                    </span>
-                                  </>
-                                )}
-                              </button>
-                              <button
-                                type="button"
-                                disabled={enqBusy || inlineBusy}
-                                data-tooltip={t('latestUpdates.addToQueue')}
-                                aria-label={t('latestUpdates.addToQueue')}
+                              />
+                              <MangaCard.QueueButton
+                                loading={enqBusy}
+                                disabled={controlsBusy || enqBusy || inlineBusy}
+                                tooltip={t('latestUpdates.addToQueue')}
                                 onClick={() => handleEnqueueSingle(item)}
-                                className="h-8 w-8 shrink-0 rounded-lg bg-primary text-on-primary hover:opacity-90 transition-all flex items-center justify-center disabled:pointer-events-none disabled:opacity-45 cursor-pointer shadow-2xs"
-                              >
-                                {enqBusy ? (
-                                  <span className="material-symbols-outlined animate-spin text-[15px] leading-none">
-                                    progress_activity
-                                  </span>
-                                ) : (
-                                  <span className="material-symbols-outlined text-[17px] leading-none">
-                                    playlist_add
-                                  </span>
-                                )}
-                              </button>
-                            </div>
-                          </div>
-                        </div>
+                              />
+                            </>
+                          }
+                        />
                       );
                     })}
                   </div>

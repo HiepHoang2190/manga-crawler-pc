@@ -118,6 +118,7 @@ describe('Crawler Tab Explore-First Unified UI Standard', () => {
       'src/features/library/components/offline/OfflineLibraryFooter.jsx',
       'src/features/library/components/offline/OfflineListActions.jsx',
       'src/features/library/components/offline/FavoriteNotifyBell.jsx',
+      'src/features/download/components/ProgressPanel.jsx',
     ];
     for (const rel of files) {
       const code = read(rel);
@@ -127,5 +128,43 @@ describe('Crawler Tab Explore-First Unified UI Standard', () => {
       }).toEqual({ rel, hasTitle: false });
       expect({ rel, hasUnderline: /\b(?:hover:)?underline\b/.test(code) }).toEqual({ rel, hasUnderline: false });
     }
+  });
+
+  test('Crawler UX polish: inline footer ProgressPanel, Sidebar 3-row alignment, adaptive Start/Pause, edge-to-edge filter bars, status pills', () => {
+    const progress = read('src/features/download/components/ProgressPanel.jsx');
+    const queue = read('src/features/download/components/QueuePanel.jsx');
+    const selector = read('src/features/download/components/QueueWorkflowSelector.jsx');
+    const sidebar = read('src/features/download/components/Sidebar.jsx');
+    const history = read('src/features/library/HistoryTab.jsx');
+    const offlineToolbar = read('src/features/library/components/offline/OfflineLibraryToolbar.jsx');
+
+    expect(progress).toContain('compact = false');
+    expect(progress).toContain('bg-outline-variant/25');
+
+    // QueuePanel inline progress in slim bottom footer + adaptive CTA + contextual clearable + edge-to-edge search + status pills + unified expand
+    expect(queue).toContain('<ProgressPanel');
+    expect(queue).toContain('compact');
+    expect(queue).toContain('clearableCount');
+    expect(queue).toContain('hasClearable ?');
+    expect(queue).not.toContain('max-w-xl');
+    expect(queue).not.toContain('md:hidden');
+    expect(queue).toContain('bg-outline-variant/25');
+    expect(queue).toContain('border-amber-500/25 bg-amber-500/10');
+    expect(queue).toMatch(/queueProcessing \|\| hasActiveDownload \?/);
+
+    // QueueWorkflowSelector uses expand_more matching SearchableSelect
+    expect(selector).toContain('expand_more');
+    expect(selector).not.toContain('arrow_drop_down');
+
+    // Sidebar 3-row 5.5rem alignment + neutral/amber Cookie button + Open Site Homepage button
+    const siteMatches = sidebar.match(/grid-cols-\[minmax\(0,1fr\)_5\.5rem\]/g) || [];
+    expect(siteMatches.length).toBeGreaterThanOrEqual(3);
+    expect(sidebar).toContain("t('sidebar.openSiteHomepage')");
+    expect(sidebar).toContain('open_in_new');
+    expect(sidebar).toContain('selectedConnector?.requiresCookie');
+
+    // Full-width filter bars in History & Offline Library
+    expect(history).not.toContain('max-w-xl');
+    expect(offlineToolbar).not.toContain('max-w-xl');
   });
 });

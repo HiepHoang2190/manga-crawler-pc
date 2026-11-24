@@ -97,9 +97,12 @@ test('EbookToolsSubTab includes live split naming preview and expected parts lis
   expect(toolsSrc).toMatch(/splitPartList/);
 });
 
-test('EbookStudio.jsx passes sidebar resize props to all 4 subtabs', () => {
+test('EbookStudio.jsx omits left-sidebar toggle and passes sidebar resize props to all 4 subtabs', () => {
   const studioSrc = fs.readFileSync(path.join(dirname, 'EbookStudio.jsx'), 'utf8');
-  expect(studioSrc).toMatch(/showLeftSidebar=\{showLeftSidebar\}/);
+  expect(studioSrc).not.toContain('onToggleLeftSidebar');
+  expect(studioSrc).not.toContain('showLeftSidebar');
+  expect(studioSrc).toMatch(/showSidebar=\{true\}/);
+  expect(studioSrc).toMatch(/showCol1=\{true\}/);
   expect(studioSrc).toMatch(/<EbookToolsSubTab[\s\S]*sidebarWidth=\{sidebarWidth\}/);
   expect(studioSrc).toMatch(/<SendToKindleTab[\s\S]*sidebarWidth=\{sidebarWidth\}/);
 });

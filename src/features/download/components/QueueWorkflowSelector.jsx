@@ -283,13 +283,23 @@ export default function QueueWorkflowSelector({
         type="button"
         disabled={disabled}
         onClick={() => setIsOpen((prev) => !prev)}
-        className="h-10 px-3 rounded-xl border border-outline-variant/25 bg-surface-container-highest text-on-surface text-xs font-medium hover:border-outline-variant/50 transition-colors cursor-pointer flex items-center gap-2 shrink-0 select-none disabled:opacity-40 disabled:cursor-not-allowed max-w-[260px]"
+        className={`h-10 px-3 rounded-xl border bg-surface-container-highest text-on-surface text-xs font-medium transition-all cursor-pointer flex items-center gap-2 shrink-0 select-none disabled:opacity-40 disabled:cursor-not-allowed max-w-[260px] ${
+          isOpen
+            ? 'border-primary ring-2 ring-primary/20 shadow-xs'
+            : 'border-outline-variant/25 hover:border-outline-variant/50'
+        }`}
         data-tooltip={`${t('queue.workflowSelectorLabel') || 'Quy trình sau tải'}: ${activeLabel}`}
         aria-label={`${t('queue.workflowSelectorLabel') || 'Quy trình sau tải'}: ${activeLabel}`}
       >
         <span className="material-symbols-outlined text-[18px] text-primary leading-none shrink-0">schema</span>
         <span className="truncate font-semibold">{activeLabel}</span>
-        <span className="material-symbols-outlined text-[16px] leading-none shrink-0 opacity-70">arrow_drop_down</span>
+        <span
+          className={`material-symbols-outlined text-[18px] leading-none shrink-0 transition-transform duration-150 ${
+            isOpen ? 'rotate-180 text-primary' : 'text-on-surface-variant'
+          }`}
+        >
+          expand_more
+        </span>
       </button>
 
       {isOpen && (

@@ -18,8 +18,17 @@ function connectorHost(domain) {
 function connectorHomepageUrl(domain) {
   const raw_domain = String(domain || '').trim();
   if (!raw_domain) return '';
-  if (/^https?:\/\//i.test(raw_domain)) return raw_domain;
-  return `https://${raw_domain}`;
+  const candidate = /^https?:\/\//i.test(raw_domain) ? raw_domain : `https://${raw_domain}`;
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
+    if (!parsed.hostname || (!parsed.hostname.includes('.') && parsed.hostname !== 'localhost')) {
+      return '';
+    }
+    return parsed.href;
+  } catch {
+    return '';
+  }
 }
 
 /** Cùng độ rộng cột nút để input Source URL / Save To thẳng hàng (5.5rem = 88px = 2 icon w-10 + gap-2). */
@@ -27,8 +36,6 @@ const SIDEBAR_ACTION_BTN =
   'shrink-0 w-full h-10 px-2 rounded-xl text-sm inline-flex items-center justify-center gap-1.5 box-border';
 
 export default function Sidebar({
-  widthPx = 450,
-  onCollapse,
   connectors,
   sourceUrl = '',
   setSourceUrl,
@@ -151,6 +158,15 @@ export default function Sidebar({
   };
 
   const mangaInfoRef = useRef(null);
+
+  const handleOpenSiteHomepage = () => {
+    if (!selectedConnectorHomepage) return;
+    if (typeof window !== 'undefined' && window.electronAPI?.openExternal) {
+      Promise.resolve(window.electronAPI.openExternal(selectedConnectorHomepage)).catch(() => {});
+    } else if (typeof window !== 'undefined') {
+      window.open(selectedConnectorHomepage, '_blank', 'noopener,noreferrer');
+    }
+  };
 
   const urlLooksLikePage = sourceUrl.trim().length >= 8 && sourceUrl.trim().includes('.');
 
@@ -380,7 +396,7 @@ export default function Sidebar({
           <SectionTitle as="label" className="block">
             {t('sidebar.site')} ({(connectors || []).length})
           </SectionTitle>
-          <div className="grid grid-cols-[minmax(0,1fr)_2.5rem] gap-2 items-center">
+          <div className="grid grid-cols-[minmax(0,1fr)_5.5rem] gap-2 items-center">
             <SearchableSelect
               value={site}
               onChange={setSite}
@@ -391,16 +407,32 @@ export default function Sidebar({
               }))}
               placeholder={t('sidebar.siteSelectPlaceholder')}
             />
-            <div className="relative flex">
+            <div className="flex items-center gap-2 w-full justify-between">
               <button
                 type="button"
                 onClick={handleAutoExtractCookie}
                 disabled={extractBusy || !selectedConnectorHomepage}
-                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-on-primary hover:opacity-90 transition-all active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-xs"
+                className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition-all active:scale-95 cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed shadow-2xs ${
+                  selectedConnector?.requiresCookie
+                    ? 'border-amber-500/40 bg-amber-500/12 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20'
+                    : 'border-outline-variant/25 bg-surface-container-high text-on-surface hover:text-primary hover:border-primary/40 hover:bg-primary/10'
+                }`}
                 aria-label={t('sidebar.extractCookie') || 'Trích xuất Cookie tự động'}
                 data-tooltip={t('sidebar.extractCookie') || 'Trích xuất Cookie tự động'}
               >
-                <span className="material-symbols-outlined text-[18px] leading-none">cookie</span>
+                <span className={`material-symbols-outlined text-[18px] leading-none ${extractBusy ? 'animate-spin' : ''}`}>
+                  {extractBusy ? 'progress_activity' : 'cookie'}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenSiteHomepage}
+                disabled={!selectedConnectorHomepage}
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-outline-variant/25 bg-surface-container-high text-on-surface hover:text-primary hover:border-primary/40 hover:bg-primary/10 transition-all active:scale-95 cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed shadow-2xs"
+                aria-label={t('sidebar.openSiteHomepage')}
+                data-tooltip={t('sidebar.openSiteHomepage')}
+              >
+                <span className="material-symbols-outlined text-[18px] leading-none">open_in_new</span>
               </button>
             </div>
           </div>

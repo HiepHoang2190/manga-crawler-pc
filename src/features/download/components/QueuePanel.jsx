@@ -285,7 +285,7 @@ function QueueQueueMobileCard({
                 </button>
               ) : null}
             </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full border border-outline-variant/10 bg-surface-container-lowest">
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-outline-variant/25">
               {p.err > 0 ? (
                 <>
                   <div 
@@ -653,9 +653,14 @@ export default function QueuePanel({
       selectedIds.has(g.id) &&
       g.chapters.some((c) => c.status === 'waiting')
   );
-  const hasClearable = queue.some(
-    (g) => g.chapters.length > 0 && g.chapters.every((c) => c.status === 'done') && !g.chapters.some((c) => c.downloadError)
+  const clearableCount = useMemo(
+    () =>
+      queue.filter(
+        (g) => g.chapters.length > 0 && g.chapters.every((c) => c.status === 'done') && !g.chapters.some((c) => c.downloadError)
+      ).length,
+    [queue]
   );
+  const hasClearable = clearableCount > 0;
 
   const allSelected = queue.length > 0 && selectedIds.size === queue.length;
   const someSelected = selectedIds.size > 0;
@@ -672,10 +677,10 @@ export default function QueuePanel({
     return groups.every((g) => g.paused) ? 'resume' : 'pause';
   }, [queue, selectedIds]);
 
-  /** Tạm dừng khi đang xử lý hoặc còn chương treo ở trạng thái downloading. */
+  /** Tạm dừng khi đang xử lý hoặc còn chương treo ở trạng thái downloading; Tiếp tục chỉ bật khi có chương waiting. */
   const pauseResumeDisabled =
     selectedPauseMode === 'resume'
-      ? !someSelected
+      ? !someSelected || !hasWaiting
       : !queueProcessing && !hasActiveDownload;
 
   const pauseResumeTitle =
@@ -818,33 +823,42 @@ export default function QueuePanel({
     <div className="flex-1 flex flex-col bg-surface overflow-hidden min-h-0">
       <StudioPrimaryActionSlot>
         <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            data-testid="start-queue-btn"
-            disabled={queueProcessing || !hasWaiting || !someSelected}
-            data-tooltip={!someSelected ? t('queue.startNeedSelection') : undefined}
-            onClick={onStartQueue}
-            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-primary px-3.5 text-xs font-semibold text-on-primary shadow-2xs hover:opacity-95 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0 whitespace-nowrap"
-          >
-            <span className="material-symbols-outlined text-[16px] leading-none">play_arrow</span>
-            <span>{t('queue.start')}</span>
-          </button>
-          <button
-            type="button"
-            disabled={pauseResumeDisabled}
-            onClick={handlePauseToggle}
-            className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0 whitespace-nowrap ${
-              selectedPauseMode === 'resume'
-                ? 'border-primary/30 bg-primary/15 text-primary hover:bg-primary/25'
-                : 'border-outline-variant/25 bg-surface-container-highest text-on-surface hover:border-outline-variant/50'
-            }`}
-            data-tooltip={pauseResumeTitle}
-          >
-            <span className="material-symbols-outlined text-[16px] leading-none">
-              {selectedPauseMode === 'resume' ? 'play_circle' : 'pause'}
-            </span>
-            <span>{selectedPauseMode === 'resume' ? t('queue.resume') : t('queue.pause')}</span>
-          </button>
+          {selectedPauseMode === 'resume' && someSelected && hasWaiting ? (
+            <button
+              type="button"
+              data-testid="start-queue-btn"
+              disabled={pauseResumeDisabled}
+              onClick={handlePauseToggle}
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-primary px-3.5 text-xs font-semibold text-on-primary shadow-2xs hover:opacity-95 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0 whitespace-nowrap"
+              data-tooltip={t('queue.resumeTitle')}
+            >
+              <span className="material-symbols-outlined text-[16px] leading-none">play_circle</span>
+              <span>{t('queue.resume')}</span>
+            </button>
+          ) : queueProcessing || hasActiveDownload ? (
+            <button
+              type="button"
+              disabled={pauseResumeDisabled}
+              onClick={handlePauseToggle}
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/15 px-3.5 text-xs font-semibold text-amber-600 dark:text-amber-400 hover:bg-amber-500/25 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0 whitespace-nowrap"
+              data-tooltip={pauseResumeTitle}
+            >
+              <span className="material-symbols-outlined text-[16px] leading-none">pause</span>
+              <span>{t('queue.pause')}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              data-testid="start-queue-btn"
+              disabled={!hasWaiting || !someSelected}
+              data-tooltip={!someSelected ? t('queue.startNeedSelection') : undefined}
+              onClick={onStartQueue}
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-primary px-3.5 text-xs font-semibold text-on-primary shadow-2xs hover:opacity-95 active:scale-95 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0 whitespace-nowrap"
+            >
+              <span className="material-symbols-outlined text-[16px] leading-none">play_arrow</span>
+              <span>{t('queue.start')}</span>
+            </button>
+          )}
           {visibleSelectedIds.length > 0 && typeof removeSelectedGroups === 'function' ? (
             <button
               type="button"
@@ -876,21 +890,23 @@ export default function QueuePanel({
       </StudioPrimaryActionSlot>
 
       <StudioRightToolbarSlot>
-        <button
-          type="button"
-          disabled={!hasClearable}
-          onClick={onClearCompleted}
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-outline-variant/25 bg-surface-container-highest text-on-surface-variant hover:text-error hover:border-error/30 hover:bg-error/10 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-          data-tooltip={t('queue.clearCompletedTooltip') || t('queue.clearCompleted')}
-          aria-label={t('queue.clearCompletedTooltip') || t('queue.clearCompleted')}
-        >
-          <span className="material-symbols-outlined text-[17px] leading-none">delete_sweep</span>
-        </button>
+        {hasClearable ? (
+          <button
+            type="button"
+            onClick={onClearCompleted}
+            className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-outline-variant/25 bg-surface-container-highest px-2.5 text-xs font-semibold text-on-surface-variant hover:text-error hover:border-error/30 hover:bg-error/10 transition-colors cursor-pointer"
+            data-tooltip={t('queue.clearCompletedTooltip') || t('queue.clearCompleted')}
+            aria-label={t('queue.clearCompletedTooltip') || t('queue.clearCompleted')}
+          >
+            <span className="material-symbols-outlined text-[16px] leading-none">delete_sweep</span>
+            <span className="tabular-nums">{clearableCount}</span>
+          </button>
+        ) : null}
       </StudioRightToolbarSlot>
 
       <div className="flex-1 flex flex-col px-6 pt-4 pb-4 gap-4 sm:px-8 overflow-hidden min-h-0">
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-          <div className="flex-1 flex h-10 items-center gap-2 bg-surface-container-highest rounded-xl px-3 sm:px-3.5 max-w-xl border border-outline-variant/25 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/30 transition-colors min-w-[200px]">
+          <div className="flex-1 flex h-10 items-center gap-2 bg-surface-container-highest rounded-xl px-3 sm:px-3.5 border border-outline-variant/25 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/30 transition-colors min-w-[200px]">
             <span className="material-symbols-outlined text-outline shrink-0 text-[18px] leading-none">
               search
             </span>
@@ -985,11 +1001,11 @@ export default function QueuePanel({
             },
             {
               key: 'actions',
-              width: 'w-44 min-w-[170px]',
+              width: 'w-56 min-w-[224px]',
               header: '',
               ariaLabel: t('queue.col.actionsHeader'),
               align: 'right',
-              headerClassName: 'w-44 min-w-[170px] border-none p-3 pr-4 sm:pr-5 text-right',
+              headerClassName: 'w-56 min-w-[224px] border-none p-3 pr-4 sm:pr-5 text-right',
             },
           ]}
           data={filteredQueue}
@@ -1062,26 +1078,7 @@ export default function QueuePanel({
                   />
                 </td>
                 <td className="min-w-0 p-2 font-medium sm:p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="block truncate">{item.mangaTitle}</span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleGroupExpand(item.id);
-                      }}
-                      className="h-8 w-8 rounded-lg border border-outline-variant/20 bg-surface-container-highest text-on-surface-variant hover:text-primary hover:border-primary/40 hover:bg-primary/10 inline-flex items-center justify-center transition-colors active:scale-95 shrink-0 cursor-pointer"
-                      data-tooltip={t(isExpanded ? 'queue.collapseChapters' : 'queue.expandChapters')}
-                      aria-label={t(isExpanded ? 'queue.collapseChapters' : 'queue.expandChapters')}
-                    >
-                      <span 
-                        className="material-symbols-outlined text-[20px] leading-none transition-transform duration-200"
-                        style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
-                      >
-                        expand_more
-                      </span>
-                    </button>
-                  </div>
+                  <span className="block truncate">{item.mangaTitle}</span>
                 </td>
                 <td className="min-w-0 p-2 sm:p-3">
                   <div className="min-w-0 space-y-1.5">
@@ -1106,16 +1103,16 @@ export default function QueuePanel({
                         </button>
                       ) : null}
                     </div>
-                    <div className="h-1.5 w-full bg-surface-container-lowest rounded-full overflow-hidden border border-outline-variant/10">
+                    <div className="h-1.5 w-full bg-outline-variant/25 rounded-full overflow-hidden flex">
                       {p.err > 0 ? (
                         <>
-                          <div 
-                            className="h-full bg-green-500 transition-[width] duration-300 float-left" 
-                            style={{ width: `${Math.round((p.success / p.total) * 100)}%` }} 
+                          <div
+                            className="h-full bg-green-500 transition-[width] duration-300 shrink-0"
+                            style={{ width: `${(p.success / p.total) * 100}%` }}
                           />
-                          <div 
-                            className="h-full bg-error transition-[width] duration-300 float-left" 
-                            style={{ width: `${Math.round((p.err / p.total) * 100)}%` }} 
+                          <div
+                            className="h-full bg-error transition-[width] duration-300 shrink-0"
+                            style={{ width: `${(p.err / p.total) * 100}%` }}
                           />
                         </>
                       ) : (
@@ -1176,40 +1173,48 @@ export default function QueuePanel({
                       </button>
                     </div>
                   ) : statusPulse ? (
-                    <span className="flex min-w-0 items-center gap-1 text-primary sm:gap-2">
-                      <span className="h-2 w-2 shrink-0 rounded-full bg-primary animate-pulse" />
-                      <span className="min-w-0 truncate text-[11px] sm:text-sm">{statusText}</span>
+                    <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary animate-pulse" />
+                      <span className="min-w-0 truncate">{statusText}</span>
                     </span>
                   ) : (
                     <span
-                      className={`min-w-0 truncate text-[11px] sm:text-sm flex items-center gap-1 ${
+                      className={`inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${
                         p.err > 0
-                          ? 'text-error'
+                          ? 'text-error border-error/25 bg-error/10'
                           : p.allDone
-                            ? 'text-green-600 dark:text-green-400'
+                            ? 'text-emerald-600 dark:text-emerald-400 border-emerald-500/25 bg-emerald-500/10'
                             : isPaused
-                              ? 'text-amber-600 dark:text-amber-400'
-                              : 'text-on-surface-variant'
+                              ? 'text-amber-600 dark:text-amber-400 border-amber-500/25 bg-amber-500/10'
+                              : 'text-on-surface-variant border-outline-variant/25 bg-surface-container-highest/70'
                       }`}
                     >
-                      {p.err > 0 && (
+                      {p.err > 0 ? (
                         <span className="material-symbols-outlined text-[14px] leading-none shrink-0">error</span>
+                      ) : p.allDone ? (
+                        <span className="material-symbols-outlined text-[14px] leading-none shrink-0">check_circle</span>
+                      ) : (
+                        <span
+                          className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                            isPaused ? 'bg-amber-500' : 'bg-outline'
+                          }`}
+                        />
                       )}
                       <span className="min-w-0 truncate">{statusText}</span>
                     </span>
                   )}
                 </td>
-                <td className="p-2 sm:p-3 pr-4 sm:pr-5 w-44 min-w-[170px] align-middle" onClick={(e) => e.stopPropagation()}>
+                <td className="p-2 sm:p-3 pr-4 sm:pr-5 w-56 min-w-[224px] align-middle" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-end gap-1.5">
                     <button
                       type="button"
                       onClick={() => toggleGroupExpand(item.id)}
-                      className="h-8 w-8 rounded-lg border border-outline-variant/20 bg-surface-container-highest text-on-surface-variant hover:text-primary hover:border-primary/40 hover:bg-primary/10 md:hidden inline-flex items-center justify-center transition-colors active:scale-95 shrink-0 cursor-pointer"
+                      className="h-8 w-8 rounded-lg border border-outline-variant/20 bg-surface-container-highest text-on-surface-variant hover:text-primary hover:border-primary/40 hover:bg-primary/10 inline-flex items-center justify-center transition-colors active:scale-95 shrink-0 cursor-pointer"
                       data-tooltip={t(isExpanded ? 'queue.collapseChapters' : 'queue.expandChapters')}
                       aria-label={t(isExpanded ? 'queue.collapseChapters' : 'queue.expandChapters')}
                     >
-                      <span 
-                        className="material-symbols-outlined text-[20px] leading-none transition-transform duration-200"
+                      <span
+                        className="material-symbols-outlined text-[19px] leading-none transition-transform duration-200"
                         style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
                       >
                         expand_more
@@ -1219,7 +1224,7 @@ export default function QueuePanel({
                       type="button"
                       onClick={() => onToggleGroupDownloadOrder?.(item.id)}
                       disabled={p.hasDl}
-                      className="cursor-pointer h-8 w-8 rounded-lg border border-outline-variant/20 bg-surface-container-highest text-on-surface-variant hover:text-primary hover:border-primary/40 hover:bg-primary/10 inline-flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      className="cursor-pointer h-8 w-8 shrink-0 rounded-lg border border-outline-variant/20 bg-surface-container-highest text-on-surface-variant hover:text-primary hover:border-primary/40 hover:bg-primary/10 inline-flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                       data-tooltip={t(item.downloadOrder === 'desc' ? 'queue.downloadOrderDesc' : 'queue.downloadOrderAsc')}
                       aria-label={t(item.downloadOrder === 'desc' ? 'queue.downloadOrderDesc' : 'queue.downloadOrderAsc')}
                     >
@@ -1230,12 +1235,13 @@ export default function QueuePanel({
                       value={item.workflowId}
                       onChange={(newWfId) => setGroupWorkflow?.(item.id, newWfId)}
                       compact={true}
+                      className="shrink-0"
                     />
                     <button
                       type="button"
                       disabled={!(p.done > 0 || p.hasDl)}
                       onClick={() => onOpenMangaFolder?.(item.mangaTitle)}
-                      className="cursor-pointer h-8 w-8 rounded-lg border border-outline-variant/20 bg-surface-container-highest text-primary hover:border-primary/40 hover:bg-primary/10 inline-flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                      className="cursor-pointer h-8 w-8 shrink-0 rounded-lg border border-outline-variant/20 bg-surface-container-highest text-primary hover:border-primary/40 hover:bg-primary/10 inline-flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                       data-tooltip={p.done > 0 || p.hasDl ? t('queue.openTitle') : t('queue.folderNotReadyTooltip')}
                       aria-label={p.done > 0 || p.hasDl ? t('queue.openTitle') : t('queue.folderNotReadyTooltip')}
                     >
@@ -1245,7 +1251,7 @@ export default function QueuePanel({
                       type="button"
                       disabled={p.hasDl}
                       onClick={() => onRemoveItem(item.id)}
-                      className="cursor-pointer h-8 w-8 rounded-lg border border-outline-variant/20 bg-surface-container-highest text-error hover:border-error/30 hover:bg-error/10 inline-flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      className="cursor-pointer h-8 w-8 shrink-0 rounded-lg border border-outline-variant/20 bg-surface-container-highest text-error hover:border-error/30 hover:bg-error/10 inline-flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                       data-tooltip={t('queue.removeTitle')}
                       aria-label={t('queue.removeTitle')}
                     >
@@ -1401,37 +1407,39 @@ export default function QueuePanel({
             );
           }}
         />
-
-            <ProgressPanel
-              queue={queue}
-              downloadProgress={downloadProgress}
-              queueProcessing={queueProcessing}
-              activeChapterLabel={activeChapterLabel}
-            />
           </div>
           {queue.length > 0 ? (
-            <div className="border-t border-outline-variant/20 bg-surface-container-low/80 backdrop-blur-md px-4 py-2.5 flex items-center justify-between gap-2.5 select-none shrink-0">
-              <span className="inline-flex items-center rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary tabular-nums shadow-2xs">
+            <div className="border-t border-outline-variant/20 bg-surface-container-low/80 backdrop-blur-md px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 select-none shrink-0">
+              <span className="inline-flex items-center rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary tabular-nums shadow-2xs shrink-0">
                 {t('queue.summaryStats', {
                   mangas: queueStats.mangas,
                   done: queueStats.doneCh,
                   total: queueStats.totalCh,
                 })}
               </span>
-              {queueStats.errCh > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => setStatusFilter((prev) => (prev === 'error' ? 'all' : 'error'))}
-                  className={`cursor-pointer inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
-                    statusFilter === 'error'
-                      ? 'bg-error text-on-error'
-                      : 'border border-error/25 bg-error/10 text-error hover:bg-error/20'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-[14px] leading-none">error</span>
-                  <span>{t('queue.summaryFailedPill', { count: queueStats.errCh })}</span>
-                </button>
-              ) : null}
+              <div className="flex items-center gap-2.5 min-w-0 flex-1 justify-end">
+                <ProgressPanel
+                  compact
+                  queue={queue}
+                  downloadProgress={downloadProgress}
+                  queueProcessing={queueProcessing}
+                  activeChapterLabel={activeChapterLabel}
+                />
+                {queueStats.errCh > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setStatusFilter((prev) => (prev === 'error' ? 'all' : 'error'))}
+                    className={`cursor-pointer inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold transition-colors shrink-0 ${
+                      statusFilter === 'error'
+                        ? 'bg-error text-on-error'
+                        : 'border border-error/25 bg-error/10 text-error hover:bg-error/20'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[14px] leading-none">error</span>
+                    <span>{t('queue.summaryFailedPill', { count: queueStats.errCh })}</span>
+                  </button>
+                ) : null}
+              </div>
             </div>
           ) : null}
           <ConfirmModal

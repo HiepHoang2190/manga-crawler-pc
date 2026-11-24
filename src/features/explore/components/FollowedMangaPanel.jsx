@@ -171,8 +171,6 @@ export default function FollowedMangaPanel({
 
   // StudioLayout integration
   const {
-    showLeftSidebar,
-    toggleLeftSidebar,
     leftWidth,
     handleLeftResizeStart,
   } = useStudioLayout({
@@ -998,9 +996,6 @@ export default function FollowedMangaPanel({
     <StudioLayout>
       {/* Top Toolbar */}
       <StudioLayout.Toolbar
-        showLeftSidebar={showLeftSidebar}
-        onToggleLeftSidebar={toggleLeftSidebar}
-        leftSidebarTooltip={showLeftSidebar ? t('sidebar.hidePanel') : t('sidebar.showPanel')}
         leftSlot={
           <div className="flex items-center gap-2 min-w-0 overflow-x-auto no-scrollbar">
             {subtabsSlot}
@@ -1111,7 +1106,7 @@ export default function FollowedMangaPanel({
       <StudioLayout.Body>
         {/* Left Sidebar: Filters & Connectors */}
         <StudioLayout.LeftSidebar
-          open={showLeftSidebar}
+          open={true}
           width={leftWidth}
           onResizeStart={handleLeftResizeStart}
         >

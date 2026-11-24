@@ -10,7 +10,7 @@ export function OfflineLibraryToolbar({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-      <div className="flex-1 flex h-10 items-center gap-2 bg-surface-container-highest rounded-xl px-3 sm:px-3.5 max-w-xl border border-outline-variant/25 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/30 transition-colors min-w-[200px]">
+      <div className="flex-1 flex h-10 items-center gap-2 bg-surface-container-highest rounded-xl px-3 sm:px-3.5 border border-outline-variant/25 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/30 transition-colors min-w-[200px]">
         <span className="material-symbols-outlined text-outline shrink-0 text-[18px] leading-none">
           search
         </span>

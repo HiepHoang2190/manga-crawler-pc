@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useI18n } from '../../context/I18nContext';
-import { StudioLayout, useStudioLayout, useToolsSidebarResize } from '../../shared';
+import { StudioLayout, useStudioLayout } from '../../shared';
 import { ToolsStudioActionContext, ToolsStudioCenterContext } from './ToolsStudioActionSlot';
 import ImagePipelineTab from './image-pipeline/ImagePipelineTab';
 import { resolveInitialToolsTab } from './toolsTabs';
@@ -31,8 +31,6 @@ export default function ToolsStudio({ savePath = '', onRunningChange }) {
 
   // Đồng bộ layout co giãn theo chuẩn StudioLayout (kế thừa tương thích useToolsSidebarResize)
   const {
-    showLeftSidebar,
-    toggleLeftSidebar,
     leftWidth: sidebarWidth,
     handleLeftResizeStart: handleSplitPointerDown,
     showRightSidebar,
@@ -87,9 +85,6 @@ export default function ToolsStudio({ savePath = '', onRunningChange }) {
     <StudioLayout>
       {/* Top Header Toolbar */}
       <StudioLayout.Toolbar
-        showLeftSidebar={showLeftSidebar}
-        onToggleLeftSidebar={toggleLeftSidebar}
-        leftSidebarTooltip={showLeftSidebar ? t('sidebar.hidePanel') : t('sidebar.showPanel')}
         leftSlot={
           <div className="flex items-center gap-2 min-w-0 overflow-x-auto no-scrollbar">
             <div
@@ -160,7 +155,7 @@ export default function ToolsStudio({ savePath = '', onRunningChange }) {
               onRunningChange={(r) => handleTabRunningChange('duplicates', r)}
               sidebarWidth={sidebarWidth}
               handleSplitPointerDown={handleSplitPointerDown}
-              showSidebar={showLeftSidebar}
+              showSidebar={true}
             />
           </div>
 
@@ -173,7 +168,7 @@ export default function ToolsStudio({ savePath = '', onRunningChange }) {
               onRunningChange={(r) => handleTabRunningChange('rename', r)}
               sidebarWidth={sidebarWidth}
               handleSplitPointerDown={handleSplitPointerDown}
-              showSidebar={showLeftSidebar}
+              showSidebar={true}
             />
           </div>
 
@@ -186,7 +181,7 @@ export default function ToolsStudio({ savePath = '', onRunningChange }) {
               onRunningChange={(r) => handleTabRunningChange('imagePipeline', r)}
               sidebarWidth={sidebarWidth}
               handleSplitPointerDown={handleSplitPointerDown}
-              showSidebar={showLeftSidebar}
+              showSidebar={true}
               showRightSidebar={showRightSidebar}
               rightWidth={rightWidth}
               onRightResizeStart={handleRightResizeStart}
@@ -203,7 +198,7 @@ export default function ToolsStudio({ savePath = '', onRunningChange }) {
               onRunningChange={(r) => handleTabRunningChange('upscale', r)}
               sidebarWidth={sidebarWidth}
               handleSplitPointerDown={handleSplitPointerDown}
-              showSidebar={showLeftSidebar}
+              showSidebar={true}
             />
           </div>
         </StudioLayout.Body>

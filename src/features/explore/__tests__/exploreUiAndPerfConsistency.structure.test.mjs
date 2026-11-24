@@ -76,13 +76,12 @@ describe('Explore Subtabs Unified UI, i18n & Performance Standards', () => {
     expect(bulkSrc).not.toContain("'Chọn nguồn truyện từ thanh bên trái");
   });
 
-  test('all 3 subtabs synchronize sidebar collapse toggle and avoid duplicate ResizeSplitter/scrollbars', () => {
+  test('all 3 subtabs omit left-sidebar collapse toggle, keep LeftSidebar open with resize, and avoid duplicate ResizeSplitter', () => {
     for (const relPath of subtabFiles) {
       const src = read(relPath);
-      expect(src).toContain('showLeftSidebar');
-      expect(src).toContain('toggleLeftSidebar');
-      expect(src).toContain('onToggleLeftSidebar={toggleLeftSidebar}');
-      expect(src).toContain('open={showLeftSidebar}');
+      expect(src).not.toContain('onToggleLeftSidebar');
+      expect(src).not.toContain('showLeftSidebar');
+      expect(src).toContain('open={true}');
       expect(src).not.toContain('<ResizeSplitter');
     }
   });
@@ -93,9 +92,11 @@ describe('Explore Subtabs Unified UI, i18n & Performance Standards', () => {
       expect(src).toMatch(/<ViewModeToggle[\s\S]*?size="md"/);
       expect(src).toContain('grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6');
     }
-    expect(read('src/features/latest-updates/LatestUpdatesPanel.jsx')).toContain('group-hover:scale-105 transition-transform duration-300');
-    expect(read('src/features/explore/components/FollowedMangaCard.jsx')).toContain('group-hover:scale-105 transition-transform duration-300');
-    expect(read('src/features/bulk-scan/BulkScanPanel.jsx')).toContain('group-hover:scale-105 transition-transform duration-300');
+    const mangaCardSrc = read('src/shared/ui/MangaCard.jsx');
+    expect(mangaCardSrc).toContain('group-hover:scale-105 transition-transform duration-300');
+    expect(read('src/features/latest-updates/LatestUpdatesPanel.jsx')).toContain('<MangaCard');
+    expect(read('src/features/explore/components/FollowedMangaCard.jsx')).toContain('<MangaCard');
+    expect(read('src/features/bulk-scan/BulkScanPanel.jsx')).toContain('<MangaCard');
     const bulkSrc = read('src/features/bulk-scan/BulkScanPanel.jsx');
     expect(bulkSrc).toContain('<EmptyState');
     expect(bulkSrc).toContain('bulkScan.emptyFilteredTitle');
