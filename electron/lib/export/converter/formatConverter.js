@@ -77,6 +77,24 @@ async function copyImagesToFolder(images, outputDir, { onProgress = () => {}, si
   return { ok: true, outputPath: outputDir };
 }
 
+function computeExpectedOutputPath(resolvedInput, format, outputDir) {
+  const title = path.basename(resolvedInput, path.extname(resolvedInput));
+  const safeTitle = formatFolderName(title || 'book', 150) || 'book';
+  if (format === 'folder' || format === 'images') {
+    return path.join(outputDir, safeTitle);
+  }
+  return path.join(outputDir, `${safeTitle}.${format}`);
+}
+
+function resolveItemOutputDir(inputPath, outputDir, inPlace) {
+  if (!inPlace) return String(outputDir || '').trim();
+  const resolved = path.resolve(inputPath);
+  if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
+    return resolved;
+  }
+  return path.dirname(resolved);
+}
+
 /**
  * Chuyển đổi một tệp sách sang định dạng mong muốn.
  * @param {object} params
@@ -95,11 +113,15 @@ async function convertSingleBook({
   onProgress = () => {},
   signal,
 }) {
+  if (typeof inputPath !== 'string' || !inputPath.trim()) {
+    return { ok: false, error: 'Tệp nguồn không tồn tại.' };
+  }
   const resolvedInput = path.resolve(inputPath);
   if (!fs.existsSync(resolvedInput)) {
     return { ok: false, error: 'Tệp nguồn không tồn tại.' };
   }
-  if (!outputDir) {
+  const cleanOutputDir = String(outputDir || '').trim();
+  if (!cleanOutputDir) {
     return { ok: false, error: 'Thiếu thư mục đầu ra.' };
   }
 
@@ -108,6 +130,24 @@ async function convertSingleBook({
   if (!validFormats.includes(format)) {
     return { ok: false, error: `Định dạng đầu ra không hợp lệ: ${targetFormat}` };
   }
+
+  if (options.skipExisting) {
+    const expectedOut = computeExpectedOutputPath(resolvedInput, format, cleanOutputDir);
+    const alreadyExists =
+      format === 'folder' || format === 'images'
+        ? fs.existsSync(expectedOut) && fs.statSync(expectedOut).isDirectory() && fs.readdirSync(expectedOut).length > 0
+        : fs.existsSync(expectedOut) && fs.statSync(expectedOut).isFile();
+    if (alreadyExists) {
+      onProgress({ message: 'Bỏ qua (tệp đích đã tồn tại)', percent: 100 });
+      return { ok: true, skipped: true, outputPath: expectedOut };
+    }
+  }
+
+  if (!fs.existsSync(cleanOutputDir)) {
+    fs.mkdirSync(cleanOutputDir, { recursive: true });
+  }
+
+  outputDir = cleanOutputDir;
 
   const tempExtractDir = fs.mkdtempSync(path.join(os.tmpdir(), 'convert-extract-'));
   let rotateTempDir = null;
@@ -232,6 +272,7 @@ async function batchConvertBooks({
   inputPaths = [],
   targetFormat,
   outputDir,
+  inPlace = false,
   options = {},
   onItemProgress = () => {},
   signal,
@@ -250,18 +291,20 @@ async function batchConvertBooks({
     }
 
     const inputPath = inputPaths[i];
+    const displayName = typeof inputPath === 'string' ? path.basename(inputPath) : String(inputPath || '');
     onItemProgress({
       index: i + 1,
       total,
       item: inputPath,
-      message: `Đang xử lý (${i + 1}/${total}): ${path.basename(inputPath)}`,
+      message: `Đang xử lý (${i + 1}/${total}): ${displayName}`,
     });
 
     try {
+      const itemOutputDir = resolveItemOutputDir(inputPath, outputDir, Boolean(inPlace));
       const res = await convertSingleBook({
         inputPath,
         targetFormat,
-        outputDir,
+        outputDir: itemOutputDir,
         options,
         onProgress: (p) => {
           if (total === 1 && (p.done !== undefined || p.processed !== undefined) && p.total) {

@@ -1,16 +1,17 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import DualSourcePicker from './DualSourcePicker';
-import { ResizeSplitter, useToolsSidebarResize, SearchableSelect, EmptyState, SaveDirErrorModal, SectionTitle } from '../../../shared';
+import { ResizeSplitter, useToolsSidebarResize, SearchableSelect, EmptyState, SaveDirErrorModal, SectionTitle, OutputDestinationSelector } from '../../../shared';
 import { useI18n } from '../../../context/I18nContext';
 import KindleGenCompilerCard from './KindleGenCompilerCard';
+import { RotateDoublePageOption } from './forms/ConfigFormFields';
 import { EbookStudioActionSlot, EbookStudioCenterSlot } from '../EbookStudioActionSlot';
 
 const TARGET_FORMATS = [
-  { id: 'cbz', title: 'CBZ', desc: 'Comic Archive', icon: 'archive', color: 'text-amber-500 border-amber-500' },
-  { id: 'pdf', title: 'PDF', desc: 'Tài liệu di động', icon: 'picture_as_pdf', color: 'text-red-500 border-red-500' },
-  { id: 'epub', title: 'EPUB', desc: 'Sách chuẩn mở', icon: 'menu_book', color: 'text-emerald-500 border-emerald-500' },
-  { id: 'mobi', title: 'MOBI', desc: 'Kindle Ebook', icon: 'tablet_android', color: 'text-orange-500 border-orange-500' },
-  { id: 'folder', title: 'Thư Mục Ảnh', desc: 'Trích xuất ảnh gốc', icon: 'photo_library', color: 'text-cyan-400 border-cyan-400' },
+  { id: 'cbz', title: 'CBZ', icon: 'archive', iconColor: 'text-amber-500' },
+  { id: 'pdf', title: 'PDF', icon: 'picture_as_pdf', iconColor: 'text-red-500' },
+  { id: 'epub', title: 'EPUB', icon: 'menu_book', iconColor: 'text-emerald-500' },
+  { id: 'mobi', title: 'MOBI', icon: 'tablet_android', iconColor: 'text-orange-500' },
+  { id: 'folder', labelKey: 'ebookStudio.converter.folderTitle', icon: 'photo_library', iconColor: 'text-cyan-500' },
 ];
 
 export default function FormatConverterSubTab({
@@ -33,8 +34,11 @@ export default function FormatConverterSubTab({
   const [inputFiles, setInputFiles] = useState([]);
   const [sourceDir, setSourceDir] = useState('');
   const [targetFormat, setTargetFormat] = useState('epub');
+  const [sidebarTab, setSidebarTab] = useState('config'); // 'config' | 'output'
+  const [inPlace, setInPlace] = useState(true);
   const [outputDir, setOutputDir] = useState('');
-  const openFolderAfter = true;
+  const [skipExisting, setSkipExisting] = useState(true);
+  const [openFolderAfter, setOpenFolderAfter] = useState(true);
   const [options, setOptions] = useState({
     rotateDoublePage: false,
   });
@@ -42,13 +46,14 @@ export default function FormatConverterSubTab({
 
   const [queue, setQueue] = useState([]);
   const [converting, setConverting] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [globalProgress, setGlobalProgress] = useState(null);
 
   const [outputWarning, setOutputWarning] = useState(false);
   const [outputWarningMsg, setOutputWarningMsg] = useState('');
   const [saveDirErrorModal, setSaveDirErrorModal] = useState(null);
 
-  const effectiveOutputDir = (outputDir || savePath || '').trim();
+  const effectiveOutputDir = inPlace ? '' : (outputDir || '').trim();
 
   // Validate output directory existence like Crawler tab (validateSaveDir)
   useEffect(() => {
@@ -93,7 +98,7 @@ export default function FormatConverterSubTab({
 
   // Search, filter, and sort
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all'); // 'all' | 'pending' | 'processing' | 'completed' | 'error'
+  const [filterStatus, setFilterStatus] = useState('all'); // 'all' | 'pending' | 'processing' | 'completed' | 'skipped' | 'error'
   const [sortBy, setSortBy] = useState('name_asc'); // 'name_asc' | 'name_desc'
 
   // Error copy feedback
@@ -176,7 +181,10 @@ export default function FormatConverterSubTab({
   const handleSelectOutputDir = async () => {
     if (!api?.selectDirectory) return;
     const dir = await api.selectDirectory();
-    if (dir) setOutputDir(dir);
+    if (dir) {
+      setOutputDir(dir);
+      setInPlace(false);
+    }
   };
 
   const handleRemoveFromQueue = (indexToRemove) => {
@@ -187,10 +195,11 @@ export default function FormatConverterSubTab({
   const handleStartConvert = async () => {
     if (!queue.length || !api?.ebookBatchConvert) return;
 
-    const targetOut = (outputDir || savePath || '').trim();
-    if (!targetOut) {
+    const targetOut = inPlace ? '' : (outputDir || '').trim();
+    if (!inPlace && !targetOut) {
       const errMsg = t('app.log.needSavePathShort') || 'Vui lòng chọn thư mục lưu tệp.';
       setOutputWarning(true);
+      setSidebarTab('output');
       setOutputWarningMsg(errMsg);
       setSaveDirErrorModal({
         path: '',
@@ -199,7 +208,7 @@ export default function FormatConverterSubTab({
       return;
     }
 
-    if (api?.validateSaveDir) {
+    if (!inPlace && api?.validateSaveDir) {
       try {
         const valRes = await api.validateSaveDir(targetOut);
         if (valRes && !valRes.ok && !valRes.canCreate) {
@@ -208,6 +217,7 @@ export default function FormatConverterSubTab({
             t('sidebar.warning.invalidSavePath') ||
             'Thư mục không tồn tại hoặc ổ đĩa chưa kết nối';
           setOutputWarning(true);
+          setSidebarTab('output');
           setOutputWarningMsg(errMsg);
           setSaveDirErrorModal({
             path: targetOut,
@@ -222,6 +232,7 @@ export default function FormatConverterSubTab({
 
     setOutputWarning(false);
     setOutputWarningMsg('');
+    setCancelling(false);
     setConverting(true);
 
     const filePaths = queue.map((q) => q.path);
@@ -231,7 +242,8 @@ export default function FormatConverterSubTab({
         inputPaths: filePaths,
         targetFormat,
         outputDir: targetOut,
-        options,
+        inPlace,
+        options: { ...options, skipExisting },
       });
 
       if (res?.ok && Array.isArray(res.results)) {
@@ -241,7 +253,7 @@ export default function FormatConverterSubTab({
             if (match) {
               return {
                 ...item,
-                status: match.ok ? 'completed' : 'error',
+                status: match.ok ? (match.skipped ? 'skipped' : 'completed') : 'error',
                 outputPath: match.outputPath,
                 error: match.error,
               };
@@ -250,21 +262,39 @@ export default function FormatConverterSubTab({
           })
         );
 
-        if (openFolderAfter && api?.showItemInFolder && res.results[0]?.outputPath) {
-          api.showItemInFolder(res.results[0].outputPath);
+        if (openFolderAfter && api?.showItemInFolder) {
+          const firstOut =
+            res.results.find((r) => r.ok && !r.skipped && r.outputPath)?.outputPath ||
+            res.results.find((r) => r.outputPath)?.outputPath;
+          if (firstOut) {
+            api.showItemInFolder(firstOut);
+          }
         }
+      } else if (res?.error) {
+        setSaveDirErrorModal({
+          path: inPlace ? '' : targetOut,
+          message: res.error,
+        });
       }
     } catch (err) {
       console.error(err);
     } finally {
+      // Trả các mục còn kẹt "đang xử lý" (do huỷ / lỗi) về trạng thái chờ
+      setQueue((prev) =>
+        prev.map((item) => (item.status === 'processing' ? { ...item, status: 'pending', progressMsg: undefined } : item))
+      );
       setConverting(false);
+      setCancelling(false);
     }
   };
 
   const handleCancel = async () => {
-    if (api?.ebookCancel) {
+    if (!api?.ebookCancel || cancelling) return;
+    setCancelling(true);
+    try {
       await api.ebookCancel();
-      setConverting(false);
+    } catch {
+      setCancelling(false);
     }
   };
 
@@ -273,16 +303,18 @@ export default function FormatConverterSubTab({
     let pending = 0;
     let processing = 0;
     let completed = 0;
+    let skipped = 0;
     let error = 0;
 
     for (const it of queue) {
       if (it.status === 'processing') processing++;
       else if (it.status === 'completed') completed++;
+      else if (it.status === 'skipped') skipped++;
       else if (it.status === 'error') error++;
       else pending++;
     }
 
-    return { total: queue.length, pending, processing, completed, error };
+    return { total: queue.length, pending, processing, completed, skipped, error };
   }, [queue]);
 
   // Filtered & sorted queue
@@ -315,31 +347,30 @@ export default function FormatConverterSubTab({
       {/* ─── ACTION SLOT (TOOLBAR ĐỈNH) ─── */}
       <EbookStudioCenterSlot active={isActive}>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            data-testid="converter-start-btn"
-            onClick={handleStartConvert}
-            disabled={converting || queue.length === 0}
-            className="flex h-8 items-center justify-center gap-1.5 rounded-lg bg-primary px-3.5 text-xs font-semibold text-on-primary shadow-xs transition-all hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-[16px]">
-              {converting ? 'hourglass_top' : 'sync_alt'}
-            </span>
-            <span>
-              {converting
-                ? t('ebookStudio.packaging.processing')
-                : `${t('ebookStudio.converter.startBtn')} (${queue.length})`}
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={handleCancel}
-            disabled={!converting || !api?.ebookCancel}
-            className="flex h-8 items-center justify-center gap-1 rounded-lg border border-error/40 px-2.5 text-xs font-semibold text-error transition-colors hover:bg-error/10 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-[16px]">stop_circle</span>
-            <span>{t('ebookStudio.converter.cancelBtn') || 'Dừng'}</span>
-          </button>
+          {converting ? (
+            <button
+              type="button"
+              data-testid="converter-stop-btn"
+              onClick={handleCancel}
+              disabled={!api?.ebookCancel || cancelling}
+              aria-label={t('ebookStudio.stop')}
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-error/30 bg-error/15 px-3.5 text-xs font-semibold text-error transition-all hover:bg-error/25 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer shrink-0 whitespace-nowrap"
+            >
+              <span className="material-symbols-outlined text-[16px] leading-none">stop_circle</span>
+              <span>{cancelling ? t('ebookStudio.stopping') : t('ebookStudio.stop')}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              data-testid="converter-start-btn"
+              onClick={handleStartConvert}
+              disabled={queue.length === 0}
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-primary px-3.5 text-xs font-semibold text-on-primary shadow-2xs transition-all hover:opacity-95 active:scale-95 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer shrink-0 whitespace-nowrap"
+            >
+              <span className="material-symbols-outlined text-[16px] leading-none">sync_alt</span>
+              <span>{`${t('ebookStudio.converter.startBtn')} (${queue.length})`}</span>
+            </button>
+          )}
         </div>
       </EbookStudioCenterSlot>
       <EbookStudioActionSlot active={isActive}></EbookStudioActionSlot>
@@ -350,7 +381,52 @@ export default function FormatConverterSubTab({
           style={{ width: `${sidebarWidth}px` }}
           className="relative shrink-0 flex flex-col h-full border-r border-outline-variant/20 overflow-visible select-none"
         >
-          <div className="flex-1 overflow-y-auto custom-scrollbar px-4 py-5 space-y-5 mr-1.5">
+          {/* Sub-tab Navigation: Cấu hình / Thiết lập đầu ra (đồng bộ Xử lý ảnh / Upscale) */}
+          <div className="px-3.5 pt-3 pb-2.5 border-b border-outline-variant/15 shrink-0 bg-surface-container-low/40">
+            <div
+              role="tablist"
+              className="grid grid-cols-2 p-1 rounded-xl bg-surface-container-highest/60 border border-outline-variant/20 gap-1"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={sidebarTab === 'config'}
+                onClick={() => setSidebarTab('config')}
+                className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-semibold transition-all cursor-pointer select-none ${
+                  sidebarTab === 'config'
+                    ? 'bg-primary text-on-primary shadow-xs'
+                    : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[16px] leading-none">tune</span>
+                <span className="truncate">{t('ebookStudio.sidebarTab.config')}</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={sidebarTab === 'output'}
+                onClick={() => setSidebarTab('output')}
+                className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-semibold transition-all cursor-pointer select-none ${
+                  sidebarTab === 'output'
+                    ? 'bg-primary text-on-primary shadow-xs'
+                    : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[16px] leading-none">output</span>
+                <span className="truncate">{t('ebookStudio.sidebarTab.output')}</span>
+                {outputWarning && (
+                  <>
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 dark:bg-amber-400 shrink-0" aria-hidden="true" data-tooltip={outputWarningMsg} />
+                    <span className="sr-only">{outputWarningMsg}</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 flex flex-col overflow-y-auto custom-scrollbar px-4 py-5 space-y-5 mr-1.5">
+            {sidebarTab === 'config' && (
+            <>
             {/* 1. Nguồn file / folder */}
             <DualSourcePicker
               selectedPath={sourceDir}
@@ -369,30 +445,29 @@ export default function FormatConverterSubTab({
               <SectionTitle as="p">
                 {t('ebookStudio.converter.formatTitle', 'Định dạng')}
               </SectionTitle>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-4 gap-1.5">
                 {TARGET_FORMATS.map((fmt) => {
                   const isSelected = targetFormat === fmt.id;
+                  const label = fmt.labelKey ? t(fmt.labelKey) : fmt.title;
                   return (
                     <button
                       key={fmt.id}
                       type="button"
                       onClick={() => setTargetFormat(fmt.id)}
                       disabled={converting}
-                      className={`flex items-center gap-2.5 rounded-xl border p-2.5 transition-all text-left cursor-pointer active:scale-95 ${
-                        fmt.id === 'folder' ? 'col-span-2' : ''
+                      aria-pressed={isSelected}
+                      className={`h-9 rounded-xl border px-2 flex items-center justify-center gap-1.5 text-xs transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 active:scale-95 select-none ${
+                        fmt.id === 'folder' ? 'col-span-4' : ''
                       } ${
                         isSelected
-                          ? 'border-primary bg-primary/10 shadow-sm ring-1 ring-primary/30'
-                          : 'border-outline-variant/25 bg-surface-container-lowest hover:bg-surface-container-high'
+                          ? 'border-primary bg-primary/10 text-primary font-semibold shadow-2xs'
+                          : 'border-outline-variant/25 bg-surface-container-high/50 font-medium text-on-surface-variant hover:border-primary/40 hover:bg-surface-container-high hover:text-on-surface'
                       }`}
                     >
-                      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-container-high ${fmt.color}`}>
-                        <span className="material-symbols-outlined text-[20px]">{fmt.icon}</span>
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-on-surface">{fmt.title}</p>
-                        <p className="text-[10px] text-on-surface-variant/70 truncate">{fmt.desc}</p>
-                      </div>
+                      <span className={`material-symbols-outlined text-[16px] leading-none shrink-0 ${isSelected ? 'text-primary' : fmt.iconColor}`}>
+                        {fmt.icon}
+                      </span>
+                      <span className="truncate">{label}</span>
                     </button>
                   );
                 })}
@@ -400,68 +475,22 @@ export default function FormatConverterSubTab({
             </div>
 
             {/* 3. Cấu hình */}
-            <div className="space-y-2">
+            <div className="space-y-2.5 pt-3 border-t border-outline-variant/15">
               <SectionTitle as="p">
                 {t('ebookStudio.converter.configTitle', 'Cấu hình')}
               </SectionTitle>
-              <div className="space-y-3 rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-4">
-                {targetFormat === 'cbz' && (
-                  <div className="flex items-center gap-2 rounded-lg bg-amber-500/10 p-2.5 text-xs text-amber-600 dark:text-amber-400">
-                    <span className="material-symbols-outlined text-[18px]">archive</span>
-                    <span>{t('ebookStudio.converter.cbzDesc', 'Đóng gói lưu trữ truyện tranh chuẩn CBZ (Comic Archive), tương thích mọi phần mềm đọc truyện.')}</span>
-                  </div>
-                )}
-                {targetFormat === 'pdf' && (
-                  <div className="flex items-center gap-2 rounded-lg bg-red-500/10 p-2.5 text-xs text-red-600 dark:text-red-400">
-                    <span className="material-symbols-outlined text-[18px]">picture_as_pdf</span>
-                    <span>{t('ebookStudio.converter.pdfDesc', 'Xuất tệp tài liệu PDF chất lượng cao, tối ưu hiển thị trên mọi thiết bị và ứng dụng đọc.')}</span>
-                  </div>
-                )}
-                {targetFormat === 'epub' && (
-                  <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 p-2.5 text-xs text-emerald-600 dark:text-emerald-400">
-                    <span className="material-symbols-outlined text-[18px]">verified</span>
-                    <span>{t('ebookStudio.converter.epubDesc', 'Định dạng EPUB 3 chuẩn Reflowable, tối ưu 100% cho máy đọc sách Kindle (Send to Kindle), Kobo, Boox và Apple Books.')}</span>
-                  </div>
-                )}
-                {targetFormat === 'mobi' && (
-                  <div className="flex items-center gap-2 rounded-lg bg-orange-500/10 p-2.5 text-xs text-orange-600 dark:text-orange-400">
-                    <span className="material-symbols-outlined text-[18px]">tablet_android</span>
-                    <span>{t('ebookStudio.converter.mobiDesc', 'Định dạng MOBI chuyên dụng cho máy đọc sách Kindle đời cũ và ứng dụng Kindle.')}</span>
-                  </div>
-                )}
-                {targetFormat === 'folder' && (
-                  <div className="flex items-center gap-2 rounded-lg bg-cyan-500/10 p-2.5 text-xs text-cyan-600 dark:text-cyan-400">
-                    <span className="material-symbols-outlined text-[18px]">photo_library</span>
-                    <span>{t('ebookStudio.converter.folderDesc', 'Giải nén và trích xuất toàn bộ hình ảnh gốc từ tệp sách vào thư mục tương ứng.')}</span>
-                  </div>
-                )}
 
-                <div className="space-y-0.5 pt-2 border-t border-outline-variant/15">
-                  <label className="flex cursor-pointer items-center gap-2 text-xs text-on-surface hover:text-primary transition-colors select-none">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(options.rotateDoublePage)}
-                      onChange={(e) => setOptions((prev) => ({ ...prev, rotateDoublePage: e.target.checked }))}
-                      disabled={converting}
-                      className="rounded accent-primary"
-                    />
-                    <span className="font-medium">
-                      {t('ebookStudio.packaging.rotateDoublePage', 'Tự động xoay trang đôi theo chiều ngang')}
-                    </span>
-                  </label>
-                  <p className="text-[11px] text-on-surface-variant/60 pl-5 leading-normal">
-                    {t(
-                      'ebookStudio.packaging.rotateDoublePageDesc',
-                      'Tự động nhận diện trang đôi (tỷ lệ rộng/cao ≥ 1.2) và xoay ngang 90° tối ưu khi đọc truyện.'
-                    )}
-                  </p>
-                </div>
-              </div>
+              <RotateDoublePageOption
+                checked={Boolean(options.rotateDoublePage)}
+                onChange={(rotateDoublePage) => setOptions((prev) => ({ ...prev, rotateDoublePage }))}
+                disabled={converting}
+                bordered={false}
+              />
             </div>
 
             {/* 3.5. Công cụ biên dịch MOBI */}
             {targetFormat === 'mobi' && (
-              <div className="space-y-2">
+              <div className="space-y-2 pt-3 border-t border-outline-variant/15">
                 <SectionTitle as="p">
                   {t('ebookStudio.converter.compilerSectionTitle', 'Công cụ biên dịch')}
                 </SectionTitle>
@@ -469,55 +498,103 @@ export default function FormatConverterSubTab({
               </div>
             )}
 
-            {/* 4. Thư mục đích */}
-            <div className={`space-y-2 rounded-xl border p-3.5 transition-colors ${
-              outputWarning
-                ? 'border-amber-500/40 bg-amber-500/5'
-                : 'border-outline-variant/20 bg-surface-container-low/50'
-            }`}>
-              <div className="flex items-center justify-between">
-                <SectionTitle as="span">
-                  {t('ebookStudio.converter.outputDest')}
-                </SectionTitle>
-                {outputWarning && (
-                  <span className="flex items-center gap-1 text-[11px] font-medium text-amber-600 dark:text-amber-400">
-                    <span className="material-symbols-outlined text-[14px]">warning</span>
-                    <span>{outputWarningMsg}</span>
-                  </span>
-                )}
-              </div>
-              <div className="flex gap-1.5">
-                <input
-                  type="text"
-                  value={outputDir}
-                  onChange={(e) => setOutputDir(e.target.value)}
-                  placeholder={savePath || t('ebookStudio.packaging.defaultSaveDir')}
+            </>
+
+            )}
+
+
+            {sidebarTab === 'output' && (
+              <>
+                {/* 4. Thư mục xuất & tùy chọn đầu ra (đồng bộ OutputDestinationSelector) */}
+                <OutputDestinationSelector
+                  inPlace={inPlace}
+                  onInPlaceChange={(next) => {
+                    setInPlace(next);
+                    setOutputWarning(false);
+                    setOutputWarningMsg('');
+                  }}
+                  inPlaceLabel={t('outputDestination.sameAsSource')}
+                  outputDir={outputDir}
+                  onOutputDirChange={setOutputDir}
+                  onBrowse={handleSelectOutputDir}
+                  placeholder={t('outputDestination.browse')}
                   disabled={converting}
-                  className={`h-9 min-w-0 flex-1 rounded-md border-none bg-surface-container-highest px-3 text-xs text-on-surface outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 font-mono truncate transition-colors ${
-                    outputWarning
-                      ? 'ring-1 ring-amber-500/80 bg-amber-500/10'
-                      : ''
-                  }`}
+                  radioName="converter-output-destination"
+                  showOpenFolderAfter={true}
+                  openFolderAfter={openFolderAfter}
+                  onOpenFolderAfterChange={setOpenFolderAfter}
+                  warning={outputWarning}
+                  warningMessage={outputWarningMsg}
+                  extraOptions={
+                    <div className="pt-1">
+                      <label className="flex cursor-pointer items-center gap-2 text-sm text-on-surface-variant hover:text-on-surface select-none">
+                        <input
+                          type="checkbox"
+                          checked={skipExisting}
+                          onChange={(e) => setSkipExisting(e.target.checked)}
+                          disabled={converting}
+                          className="rounded accent-primary"
+                        />
+                        <span>{t('ebookStudio.converter.skipExisting')}</span>
+                      </label>
+                      <p className="ml-5 text-[10px] text-on-surface-variant/70">
+                        {t('ebookStudio.converter.skipExistingDesc')}
+                      </p>
+                    </div>
+                  }
                 />
-                {outputDir && !converting && (
-                  <button
-                    type="button"
-                    onClick={() => setOutputDir('')}
-                    aria-label={t('outputDestination.clear') || 'Xóa thư mục đã chọn'}
-                    className="inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-md bg-surface-container-high text-on-surface-variant/70 hover:text-on-surface transition-colors hover:bg-surface-bright"
-                  >
-                    <span className="material-symbols-outlined text-[18px] leading-none">close</span>
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={handleSelectOutputDir}
-                  disabled={converting}
-                  aria-label={t('sourcePicker.selectFolder') || 'Chọn thư mục'}
-                  className="inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-md bg-surface-container-high text-on-surface transition-colors hover:bg-surface-bright disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <span className="material-symbols-outlined text-[18px] leading-none">folder_open</span>
-                </button>
+              </>
+            )}
+
+
+            {/* 5. Thẻ thống kê tổng quan (đồng bộ Tools Studio) */}
+            <div className="mt-auto pt-2">
+              <div
+                data-testid="converter-overview-card"
+                className="rounded-xl border border-primary/15 bg-primary/5 p-3"
+              >
+                <div className="text-[10px] font-bold text-primary mb-2 flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-[13px]">bar_chart</span>
+                  <span>{t('ebookStudio.overview.title')}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+                  <span className="text-on-surface-variant">{t('ebookStudio.overview.totalFiles')}</span>
+                  <span className="font-bold text-on-surface text-right tabular-nums">
+                    {stats.total > 0 ? stats.total : '—'}
+                  </span>
+                  <span className="text-on-surface-variant">{t('ebookStudio.overview.pending')}</span>
+                  <span className="font-bold text-primary text-right tabular-nums">
+                    {stats.total > 0 ? stats.pending : '—'}
+                  </span>
+                  <span className="text-on-surface-variant">{t('ebookStudio.overview.completed')}</span>
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400 text-right tabular-nums">
+                    {stats.total > 0 ? stats.completed : '—'}
+                  </span>
+                  {stats.skipped > 0 && (
+                    <>
+                      <span className="text-on-surface-variant">{t('ebookStudio.overview.skipped')}</span>
+                      <span className="font-bold text-amber-600 dark:text-amber-400 text-right tabular-nums">
+                        {stats.skipped}
+                      </span>
+                    </>
+                  )}
+                  {stats.error > 0 && (
+                    <>
+                      <span className="text-on-surface-variant">{t('ebookStudio.overview.errors')}</span>
+                      <span className="font-bold text-rose-600 dark:text-rose-400 text-right tabular-nums">
+                        {stats.error}
+                      </span>
+                    </>
+                  )}
+                </div>
+                <div className="mt-2.5 pt-2 border-t border-primary/10 text-[10px] text-on-surface-variant/75 leading-relaxed">
+                  <div className="flex items-start gap-1.5">
+                    <span className="w-4 h-4 flex items-center justify-center shrink-0 text-primary/70">
+                      <span className="material-symbols-outlined text-[13px] leading-none">touch_app</span>
+                    </span>
+                    <span className="flex-1 min-w-0 leading-snug pt-0.5">{t('ebookStudio.overview.converterTip')}</span>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -563,29 +640,21 @@ export default function FormatConverterSubTab({
           <div className="mb-3 space-y-2 shrink-0">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-2">
-                <div className="flex items-center gap-1 rounded-lg bg-surface-container-highest/60 p-1 text-xs">
-                  {[
-                    { key: 'all', label: t('ebookStudio.converter.filterAll'), count: stats.total },
-                    { key: 'pending', label: t('ebookStudio.converter.filterPending'), count: stats.pending },
-                    { key: 'processing', label: t('ebookStudio.converter.filterProcessing'), count: stats.processing },
-                    { key: 'completed', label: t('ebookStudio.converter.filterCompleted'), count: stats.completed },
-                    { key: 'error', label: t('ebookStudio.converter.filterError'), count: stats.error },
-                  ].map((f) => (
-                    <button
-                      key={f.key}
-                      type="button"
-                      onClick={() => setFilterStatus(f.key)}
-                      className={[
-                        'rounded-md px-2 py-1 font-medium transition-colors cursor-pointer',
-                        filterStatus === f.key
-                          ? 'bg-primary/15 text-primary font-semibold shadow-xs'
-                          : 'text-on-surface-variant hover:text-on-surface',
-                      ].join(' ')}
-                    >
-                      {f.label} ({f.count})
-                    </button>
-                  ))}
-                </div>
+                <SearchableSelect
+                  value={filterStatus}
+                  onChange={setFilterStatus}
+                  size="sm"
+                  showPlaceholderOption={false}
+                  className="min-w-[11.5rem]"
+                  options={[
+                    { value: 'all', label: `${t('ebookStudio.converter.filterAll')} (${stats.total})`, icon: 'filter_list' },
+                    { value: 'pending', label: `${t('ebookStudio.converter.filterPending')} (${stats.pending})`, icon: 'hourglass_empty' },
+                    { value: 'processing', label: `${t('ebookStudio.converter.filterProcessing')} (${stats.processing})`, icon: 'progress_activity' },
+                    { value: 'completed', label: `${t('ebookStudio.converter.filterCompleted')} (${stats.completed})`, icon: 'check_circle' },
+                    { value: 'skipped', label: `${t('ebookStudio.converter.filterSkipped')} (${stats.skipped})`, icon: 'skip_next' },
+                    { value: 'error', label: `${t('ebookStudio.converter.filterError')} (${stats.error})`, icon: 'error' },
+                  ]}
+                />
               </div>
 
               <div className="flex items-center gap-2">
@@ -599,12 +668,14 @@ export default function FormatConverterSubTab({
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder={t('ebookStudio.packaging.searchPlaceholder')}
+                    aria-label={t('ebookStudio.packaging.searchPlaceholder')}
                     className="h-8 w-44 sm:w-52 rounded-lg bg-surface-container-highest/80 pl-7 pr-7 text-xs text-on-surface placeholder:text-on-surface-variant/50 focus:bg-surface-container-highest focus:outline-none focus:ring-1 focus:ring-primary"
                   />
                   {searchQuery && (
                     <button
                       type="button"
                       onClick={() => setSearchQuery('')}
+                      aria-label={t('tools.remove')}
                       className="material-symbols-outlined absolute right-1.5 top-1/2 -translate-y-1/2 text-[14px] text-on-surface-variant/60 hover:text-on-surface cursor-pointer p-0.5"
                     >
                       close
@@ -620,7 +691,9 @@ export default function FormatConverterSubTab({
                     { value: 'name_asc', label: t('ebookStudio.converter.sortNameAsc'), materialIcon: 'sort_by_alpha' },
                     { value: 'name_desc', label: t('ebookStudio.converter.sortNameDesc'), materialIcon: 'sort_by_alpha' },
                   ]}
-                  className="min-w-[10.5rem]"
+                  size="sm"
+                  showPlaceholderOption={false}
+                  className="min-w-[11.5rem]"
                 />
               </div>
             </div>
@@ -679,6 +752,11 @@ export default function FormatConverterSubTab({
                     {item.status === 'completed' && (
                       <span className="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
                         ✓ {t('ebookStudio.converter.statusCompleted')}
+                      </span>
+                    )}
+                    {item.status === 'skipped' && (
+                      <span className="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                        {t('ebookStudio.converter.statusSkipped')}
                       </span>
                     )}
                     {item.status === 'error' && (

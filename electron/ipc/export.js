@@ -982,14 +982,17 @@ function registerExportIpc(ipc_context) {
   });
 
   ipcMain.handle('ebook:batchConvert', async (_event, payload) => {
+    const inPlace = Boolean(payload?.inPlace);
     const effectiveOutputDir = String(payload?.outputDir || '').trim();
-    if (!effectiveOutputDir) {
-      return { ok: false, error: 'Thiếu thư mục đầu ra.' };
-    }
-    const { validateDirectory } = require('../lib/utils/pathValidator');
-    const valRes = validateDirectory(effectiveOutputDir);
-    if (!valRes.ok && !valRes.canCreate) {
-      return { ok: false, error: valRes.error || 'Thư mục đầu ra không tồn tại hoặc ổ đĩa chưa kết nối.' };
+    if (!inPlace) {
+      if (!effectiveOutputDir) {
+        return { ok: false, error: 'Thiếu thư mục đầu ra.' };
+      }
+      const { validateDirectory } = require('../lib/utils/pathValidator');
+      const valRes = validateDirectory(effectiveOutputDir);
+      if (!valRes.ok && !valRes.canCreate) {
+        return { ok: false, error: valRes.error || 'Thư mục đầu ra không tồn tại hoặc ổ đĩa chưa kết nối.' };
+      }
     }
 
     activeEbookAbortController = new AbortController();
@@ -999,7 +1002,8 @@ function registerExportIpc(ipc_context) {
       const results = await batchConvertBooks({
         inputPaths: payload?.inputPaths || [],
         targetFormat: payload?.targetFormat,
-        outputDir: effectiveOutputDir,
+        outputDir: inPlace ? '' : effectiveOutputDir,
+        inPlace,
         options: payload?.options || {},
         onItemProgress: (p) => {
           if (win && !win.isDestroyed()) {

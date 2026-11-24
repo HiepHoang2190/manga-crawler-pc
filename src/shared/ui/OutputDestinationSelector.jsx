@@ -5,9 +5,11 @@ import SectionTitle from './SectionTitle.jsx';
 export default function OutputDestinationSelector({
   inPlace = true,
   onInPlaceChange,
+  inPlaceLabel,
   outputDir = '',
   onOutputDirChange,
   onBrowse,
+  placeholder,
   disabled = false,
   openFolderAfter = true,
   onOpenFolderAfterChange,
@@ -30,6 +32,8 @@ export default function OutputDestinationSelector({
 
   // Validate output directory existence like Crawler tab (validateSaveDir)
   useEffect(() => {
+    if (warning !== undefined) return undefined;
+
     if (inPlace) {
       setInternalWarning(false);
       setInternalWarningMsg('');
@@ -77,7 +81,7 @@ export default function OutputDestinationSelector({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [inPlace, outputDir, api, onValidationChange]);
+  }, [warning, inPlace, outputDir, api, onValidationChange]);
 
   const hasWarning = warning ?? internalWarning;
   const activeWarningMsg =
@@ -102,7 +106,7 @@ export default function OutputDestinationSelector({
             disabled={disabled}
             className="accent-primary"
           />
-          {t('outputDestination.overwrite') || 'Ghi đè vào thư mục gốc'}
+          {inPlaceLabel || t('outputDestination.overwrite') || 'Ghi đè vào thư mục gốc'}
         </label>
 
         <label className="flex cursor-pointer items-center gap-2 text-sm text-on-surface-variant hover:text-on-surface select-none">
@@ -125,10 +129,12 @@ export default function OutputDestinationSelector({
                   type="text"
                   value={outputDir}
                   onChange={(e) => onOutputDirChange?.(e.target.value)}
-                  placeholder={t('outputDestination.browse') || 'Chọn thư mục…'}
+                  placeholder={placeholder || t('outputDestination.browse') || 'Chọn thư mục…'}
                   disabled={disabled}
-                  className={`h-9 min-w-0 w-full rounded-md border-none bg-surface-container-highest text-sm outline-none transition-all ${
-                    hasWarning ? 'pl-3 pr-8 ring-1 ring-amber-500/60' : 'px-3 focus:ring-1 focus:ring-primary'
+                  className={`h-10 min-w-0 w-full rounded-xl border bg-surface-container-highest text-xs sm:text-sm text-on-surface outline-none transition-all ${
+                    hasWarning
+                      ? 'pl-3.5 pr-8 border-amber-500/60 ring-1 ring-amber-500/40'
+                      : 'px-3.5 border-outline-variant/25 focus:border-primary focus:ring-2 focus:ring-primary/20'
                   } disabled:opacity-50`}
                 />
                 {hasWarning && (
@@ -145,7 +151,7 @@ export default function OutputDestinationSelector({
                   type="button"
                   onClick={() => onOutputDirChange?.('')}
                   aria-label={t('outputDestination.clear') || 'Xóa thư mục đã chọn'}
-                  className="inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-md bg-surface-container-high text-on-surface-variant/70 hover:text-on-surface transition-colors hover:bg-surface-bright"
+                  className="inline-flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-outline-variant/25 bg-surface-container-high text-on-surface-variant/70 hover:text-on-surface transition-colors hover:bg-surface-bright"
                 >
                   <span className="material-symbols-outlined text-[18px] leading-none">close</span>
                 </button>
@@ -155,7 +161,7 @@ export default function OutputDestinationSelector({
                 onClick={onBrowse}
                 disabled={disabled}
                 aria-label={t('outputDestination.browse') || 'Chọn thư mục…'}
-                className="inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-md bg-surface-container-high text-on-surface transition-colors hover:bg-surface-bright disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-outline-variant/25 bg-surface-container-high text-on-surface transition-colors hover:bg-surface-bright disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <span className="material-symbols-outlined text-[18px] leading-none">folder_open</span>
               </button>
@@ -167,6 +173,13 @@ export default function OutputDestinationSelector({
               </p>
             )}
           </div>
+        )}
+
+        {inPlace && hasWarning && (
+          <p className="ml-5 text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1.5 font-medium select-none">
+            <span className="material-symbols-outlined text-[14px] shrink-0">warning</span>
+            <span>{activeWarningMsg}</span>
+          </p>
         )}
 
         {inPlace && overwriteWarning && (

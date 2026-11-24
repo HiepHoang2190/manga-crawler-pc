@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useI18n } from '../../../context/I18nContext';
 import DualSourcePicker from './DualSourcePicker';
-import { ResizeSplitter, useToolsSidebarResize, SearchableSelect, EmptyState, SaveDirErrorModal, SectionTitle } from '../../../shared';
+import { ResizeSplitter, useToolsSidebarResize, SearchableSelect, EmptyState, SaveDirErrorModal, SectionTitle, OutputDestinationSelector } from '../../../shared';
 import CbzConfigForm from './forms/CbzConfigForm';
 import PdfConfigForm from './forms/PdfConfigForm';
 import EpubConfigForm from './forms/EpubConfigForm';
@@ -10,11 +10,20 @@ import KindleGenCompilerCard from './KindleGenCompilerCard';
 import { EbookStudioActionSlot, EbookStudioCenterSlot } from '../EbookStudioActionSlot';
 
 const FORMATS = [
-  { id: 'cbz', title: 'CBZ', desc: 'Comic Archive', icon: 'archive', color: 'text-amber-500 border-amber-500' },
-  { id: 'pdf', title: 'PDF', desc: 'Tài liệu di động', icon: 'picture_as_pdf', color: 'text-red-500 border-red-500' },
-  { id: 'epub', title: 'EPUB', desc: 'Sách chuẩn mở', icon: 'menu_book', color: 'text-emerald-500 border-emerald-500' },
-  { id: 'mobi', title: 'MOBI', desc: 'Kindle Ebook', icon: 'tablet_android', color: 'text-orange-500 border-orange-500' },
+  { id: 'cbz', title: 'CBZ', icon: 'archive', iconColor: 'text-amber-500' },
+  { id: 'pdf', title: 'PDF', icon: 'picture_as_pdf', iconColor: 'text-red-500' },
+  { id: 'epub', title: 'EPUB', icon: 'menu_book', iconColor: 'text-emerald-500' },
+  { id: 'mobi', title: 'MOBI', icon: 'tablet_android', iconColor: 'text-orange-500' },
 ];
+
+function getParentDir(filePath) {
+  if (!filePath || typeof filePath !== 'string') return '';
+  const sep = filePath.includes('/') ? '/' : '\\';
+  const idx = filePath.lastIndexOf(sep);
+  if (idx < 0) return '';
+  if (sep === '\\' && idx === 2 && filePath[1] === ':') return filePath.slice(0, 3);
+  return filePath.slice(0, idx) || sep;
+}
 
 export default function MangaPackagingSubTab({
   isActive = true,
@@ -43,17 +52,20 @@ export default function MangaPackagingSubTab({
   const [searchFilter, setSearchFilter] = useState('');
   const [filterStatus, setFilterStatus] = useState('all'); // 'all' | 'selected' | 'unselected'
   const [sortBy, setSortBy] = useState('natural'); // 'natural' | 'name_asc' | 'name_desc'
+  const [sidebarTab, setSidebarTab] = useState('config'); // 'config' | 'output'
 
   const [targetFormat, setTargetFormat] = useState('cbz');
+  const [inPlace, setInPlace] = useState(true);
   const [outputDir, setOutputDir] = useState('');
   const [outputBaseName, setOutputBaseName] = useState('');
-  const openFolderAfter = true;
+  const [openFolderAfter, setOpenFolderAfter] = useState(true);
 
   const [outputWarning, setOutputWarning] = useState(false);
   const [outputWarningMsg, setOutputWarningMsg] = useState('');
   const [saveDirErrorModal, setSaveDirErrorModal] = useState(null);
 
-  const effectiveOutputDir = (outputDir || (sourceDir ? sourceDir : savePath) || '').trim();
+  const inPlaceTargetDir = (sourceDir || getParentDir(sourceFiles[0]) || savePath || '').trim();
+  const effectiveOutputDir = inPlace ? inPlaceTargetDir : (outputDir || '').trim();
 
   // Validate output directory existence like Crawler tab (validateSaveDir)
   useEffect(() => {
@@ -99,9 +111,11 @@ export default function MangaPackagingSubTab({
   const [mobiOptions, setMobiOptions] = useState({ packMode: 'singleVolume', maxMbPerFile: 200, rotateDoublePage: false });
 
   const [processing, setProcessing] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [progressMsg, setProgressMsg] = useState('');
   const [progressPercent, setProgressPercent] = useState(null);
   const [resultMsg, setResultMsg] = useState('');
+  const [resultOk, setResultOk] = useState(true);
   const [resultFiles, setResultFiles] = useState([]);
   const [copiedResultMsg, setCopiedResultMsg] = useState(false);
 
@@ -131,9 +145,8 @@ export default function MangaPackagingSubTab({
     }
   }, [resultMsg]);
 
-  // Shift-click & drag selection refs
+  // Shift-click selection ref
   const lastClickedIndexRef = useRef(null);
-  const suppressNextClickRef = useRef(false);
 
   useEffect(() => {
     if (!api?.subscribeEbookPackProgress) return;
@@ -167,7 +180,7 @@ export default function MangaPackagingSubTab({
     } catch (err) {
       setChapters([]);
       setSelectedTitles(new Set());
-      setLoadError(err.message || 'Lỗi quét thư mục');
+      setLoadError(err.message || t('ebookStudio.packaging.scanError'));
     } finally {
       setLoadingChapters(false);
     }
@@ -219,7 +232,10 @@ export default function MangaPackagingSubTab({
   const handleSelectOutputDir = async () => {
     if (!api?.selectDirectory) return;
     const dir = await api.selectDirectory();
-    if (dir) setOutputDir(dir);
+    if (dir) {
+      setOutputDir(dir);
+      setInPlace(false);
+    }
   };
 
   // Filter & sort chapters
@@ -268,8 +284,6 @@ export default function MangaPackagingSubTab({
   };
 
   const handleRowClick = (e, chapter, idx) => {
-    if (suppressNextClickRef.current) return;
-
     if (e.shiftKey && lastClickedIndexRef.current !== null) {
       const start = Math.min(lastClickedIndexRef.current, idx);
       const end = Math.max(lastClickedIndexRef.current, idx);
@@ -295,10 +309,11 @@ export default function MangaPackagingSubTab({
   const handleExecuteExport = async () => {
     if (!selectedTitles.size) return;
 
-    const targetOut = (outputDir || (sourceDir ? sourceDir : savePath) || '').trim();
+    const targetOut = inPlace ? inPlaceTargetDir : (outputDir || '').trim();
     if (!targetOut) {
       const errMsg = t('app.log.needSavePathShort') || 'Vui lòng chọn thư mục lưu tệp.';
       setOutputWarning(true);
+      setSidebarTab('output');
       setOutputWarningMsg(errMsg);
       setSaveDirErrorModal({
         path: '',
@@ -316,6 +331,7 @@ export default function MangaPackagingSubTab({
             t('sidebar.warning.invalidSavePath') ||
             'Thư mục không tồn tại hoặc ổ đĩa chưa kết nối';
           setOutputWarning(true);
+          setSidebarTab('output');
           setOutputWarningMsg(errMsg);
           setSaveDirErrorModal({
             path: targetOut,
@@ -330,26 +346,38 @@ export default function MangaPackagingSubTab({
 
     setOutputWarning(false);
     setOutputWarningMsg('');
+    setCancelling(false);
+    setCopiedResultMsg(false);
     setProcessing(true);
     setProgressMsg(t('ebookStudio.packaging.processing'));
     setProgressPercent(null);
     setResultMsg('');
     setResultFiles([]);
 
-    const selectedChapterObjs = filteredAndSortedChapters.filter((c) => selectedTitles.has(c.title));
-    const effectiveOutputDir = targetOut;
+    // Đóng gói toàn bộ chương đã chọn (không phụ thuộc bộ lọc/tìm kiếm đang hiển thị), giữ thứ tự sắp xếp
+    const orderedChapters =
+      sortBy === 'name_asc'
+        ? chapters.slice().sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' }))
+        : sortBy === 'name_desc'
+        ? chapters.slice().sort((a, b) => b.title.localeCompare(a.title, undefined, { numeric: true, sensitivity: 'base' }))
+        : chapters;
+    const selectedChapterObjs = orderedChapters.filter((c) => selectedTitles.has(c.title));
+    const targetOutputDir = targetOut;
+    const rawFormatOpts =
+      targetFormat === 'cbz' ? cbzOptions :
+      targetFormat === 'pdf' ? pdfOptions :
+      targetFormat === 'epub' ? epubOptions :
+      mobiOptions;
+    const clampedMaxMb = Math.min(2048, Math.max(10, Math.round(Number(rawFormatOpts.maxMbPerFile) || 200)));
+    const normalizedOpts = { ...rawFormatOpts, maxMbPerFile: clampedMaxMb };
 
     const payload = {
       sourceDir,
       chapters: selectedChapterObjs,
       targetFormat,
-      outputDir: effectiveOutputDir,
+      outputDir: targetOutputDir,
       outputBaseName,
-      options:
-        targetFormat === 'cbz' ? cbzOptions :
-        targetFormat === 'pdf' ? pdfOptions :
-        targetFormat === 'epub' ? epubOptions :
-        mobiOptions,
+      options: normalizedOpts,
     };
 
     try {
@@ -360,21 +388,21 @@ export default function MangaPackagingSubTab({
         res = await api.exportCbz({
           absoluteMangaDir: sourceDir,
           chapters: selectedChapterObjs,
-          mode: cbzOptions.packMode || 'singleVolume',
-          maxMbPerFile: cbzOptions.maxMbPerFile || 200,
-          rotateDoublePage: Boolean(cbzOptions.rotateDoublePage),
-          outputDir: effectiveOutputDir,
+          mode: normalizedOpts.packMode || 'singleVolume',
+          maxMbPerFile: clampedMaxMb,
+          rotateDoublePage: Boolean(normalizedOpts.rotateDoublePage),
+          outputDir: targetOutputDir,
           outputBaseName,
         });
       } else if (targetFormat === 'pdf' && api?.exportPdfFromDir) {
         res = await api.exportPdfFromDir({
           mangaDir: sourceDir,
           chapters: selectedChapterObjs,
-          mode: pdfOptions.packMode || 'singleVolume',
-          maxMbPerFile: pdfOptions.maxMbPerFile || 200,
-          rotateDoublePage: Boolean(pdfOptions.rotateDoublePage),
-          pdfSeamless: Boolean(pdfOptions.pdfSeamless),
-          outputDir: effectiveOutputDir,
+          mode: normalizedOpts.packMode || 'singleVolume',
+          maxMbPerFile: clampedMaxMb,
+          rotateDoublePage: Boolean(normalizedOpts.rotateDoublePage),
+          pdfSeamless: Boolean(normalizedOpts.pdfSeamless),
+          outputDir: targetOutputDir,
           outputBaseName,
         });
       } else if (targetFormat === 'pdf' && api?.exportpdf) {
@@ -382,28 +410,34 @@ export default function MangaPackagingSubTab({
       }
 
       if (res?.ok) {
-        setResultMsg(res.message || 'Đóng gói thành công!');
+        setResultOk(true);
+        setResultMsg(res.message || t('ebookStudio.packaging.successDefault'));
         setResultFiles(res.files || (res.filePath ? [res.filePath] : []));
         if (openFolderAfter && api?.showItemInFolder && res.files?.[0]) {
           api.showItemInFolder(res.files[0]);
         }
       } else {
-        setResultMsg(res?.error || 'Đóng gói thất bại');
+        setResultOk(false);
+        setResultMsg(res?.error || t('ebookStudio.packaging.failedDefault'));
       }
     } catch (err) {
-      setResultMsg(err.message || 'Lỗi không xác định khi xuất bản');
+      setResultOk(false);
+      setResultMsg(err.message || t('ebookStudio.packaging.unknownError'));
     } finally {
       setProcessing(false);
+      setCancelling(false);
       setProgressMsg('');
     }
   };
 
   const handleCancel = async () => {
-    if (api?.ebookCancel) {
+    if (!api?.ebookCancel || cancelling) return;
+    setCancelling(true);
+    try {
       await api.ebookCancel();
+    } catch {
+      setCancelling(false);
     }
-    setProcessing(false);
-    setProgressMsg('');
   };
 
   return (
@@ -411,31 +445,30 @@ export default function MangaPackagingSubTab({
       {/* ─── ACTION SLOT (TOOLBAR ĐỈNH) ─── */}
       <EbookStudioCenterSlot active={isActive}>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            data-testid="packaging-start-btn"
-            onClick={handleExecuteExport}
-            disabled={processing || selectedTitles.size === 0}
-            className="flex h-8 items-center justify-center gap-1.5 rounded-lg bg-primary px-3.5 text-xs font-semibold text-on-primary shadow-xs transition-all hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-[16px]">
-              {processing ? 'hourglass_top' : 'archive'}
-            </span>
-            <span>
-              {processing
-                ? t('ebookStudio.packaging.processing')
-                : `${t('ebookStudio.packaging.startBtn')} (${selectedTitles.size})`}
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={handleCancel}
-            disabled={!processing}
-            className="flex h-8 items-center justify-center gap-1 rounded-lg border border-error/40 px-2.5 text-xs font-semibold text-error transition-colors hover:bg-error/10 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-[16px]">stop_circle</span>
-            <span>{t('ebookStudio.converter.cancelBtn') || 'Dừng'}</span>
-          </button>
+          {processing ? (
+            <button
+              type="button"
+              data-testid="packaging-stop-btn"
+              onClick={handleCancel}
+              disabled={!api?.ebookCancel || cancelling}
+              aria-label={t('ebookStudio.stop')}
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-error/30 bg-error/15 px-3.5 text-xs font-semibold text-error transition-all hover:bg-error/25 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer shrink-0 whitespace-nowrap"
+            >
+              <span className="material-symbols-outlined text-[16px] leading-none">stop_circle</span>
+              <span>{cancelling ? t('ebookStudio.stopping') : t('ebookStudio.stop')}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              data-testid="packaging-start-btn"
+              onClick={handleExecuteExport}
+              disabled={selectedTitles.size === 0}
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-primary px-3.5 text-xs font-semibold text-on-primary shadow-2xs transition-all hover:opacity-95 active:scale-95 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer shrink-0 whitespace-nowrap"
+            >
+              <span className="material-symbols-outlined text-[16px] leading-none">archive</span>
+              <span>{`${t('ebookStudio.packaging.startBtn')} (${selectedTitles.size})`}</span>
+            </button>
+          )}
         </div>
       </EbookStudioCenterSlot>
       <EbookStudioActionSlot active={isActive}></EbookStudioActionSlot>
@@ -446,7 +479,52 @@ export default function MangaPackagingSubTab({
           style={{ width: `${sidebarWidth}px` }}
           className="relative shrink-0 flex flex-col h-full border-r border-outline-variant/20 overflow-visible select-none"
         >
-          <div className="flex-1 overflow-y-auto custom-scrollbar px-4 py-5 space-y-5 mr-1.5">
+          {/* Sub-tab Navigation: Cấu hình / Thiết lập đầu ra (đồng bộ Xử lý ảnh / Upscale) */}
+          <div className="px-3.5 pt-3 pb-2.5 border-b border-outline-variant/15 shrink-0 bg-surface-container-low/40">
+            <div
+              role="tablist"
+              className="grid grid-cols-2 p-1 rounded-xl bg-surface-container-highest/60 border border-outline-variant/20 gap-1"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={sidebarTab === 'config'}
+                onClick={() => setSidebarTab('config')}
+                className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-semibold transition-all cursor-pointer select-none ${
+                  sidebarTab === 'config'
+                    ? 'bg-primary text-on-primary shadow-xs'
+                    : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[16px] leading-none">tune</span>
+                <span className="truncate">{t('ebookStudio.sidebarTab.config')}</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={sidebarTab === 'output'}
+                onClick={() => setSidebarTab('output')}
+                className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-semibold transition-all cursor-pointer select-none ${
+                  sidebarTab === 'output'
+                    ? 'bg-primary text-on-primary shadow-xs'
+                    : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[16px] leading-none">output</span>
+                <span className="truncate">{t('ebookStudio.sidebarTab.output')}</span>
+                {outputWarning && (
+                  <>
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 dark:bg-amber-400 shrink-0" aria-hidden="true" data-tooltip={outputWarningMsg} />
+                    <span className="sr-only">{outputWarningMsg}</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 flex flex-col overflow-y-auto custom-scrollbar px-4 py-5 space-y-5 mr-1.5">
+            {sidebarTab === 'config' && (
+            <>
             {/* 1. Nguồn ảnh / manga */}
             <DualSourcePicker
               selectedPath={sourceDir}
@@ -465,7 +543,7 @@ export default function MangaPackagingSubTab({
               <SectionTitle as="p">
                 {t('ebookStudio.packaging.formatTitle', 'Định dạng')}
               </SectionTitle>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-4 gap-1.5">
                 {FORMATS.map((fmt) => {
                   const isSelected = targetFormat === fmt.id;
                   return (
@@ -474,19 +552,17 @@ export default function MangaPackagingSubTab({
                       type="button"
                       onClick={() => setTargetFormat(fmt.id)}
                       disabled={processing}
-                      className={`flex items-center gap-2.5 rounded-xl border p-2.5 transition-all text-left cursor-pointer active:scale-95 ${
+                      aria-pressed={isSelected}
+                      className={`h-9 rounded-xl border px-2 flex items-center justify-center gap-1.5 text-xs transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 active:scale-95 select-none ${
                         isSelected
-                          ? 'border-primary bg-primary/10 shadow-sm ring-1 ring-primary/30'
-                          : 'border-outline-variant/25 bg-surface-container-lowest hover:bg-surface-container-high'
+                          ? 'border-primary bg-primary/10 text-primary font-semibold shadow-2xs'
+                          : 'border-outline-variant/25 bg-surface-container-high/50 font-medium text-on-surface-variant hover:border-primary/40 hover:bg-surface-container-high hover:text-on-surface'
                       }`}
                     >
-                      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-container-high ${fmt.color}`}>
-                        <span className="material-symbols-outlined text-[20px]">{fmt.icon}</span>
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-on-surface">{fmt.title}</p>
-                        <p className="text-[10px] text-on-surface-variant/70 truncate">{fmt.desc}</p>
-                      </div>
+                      <span className={`material-symbols-outlined text-[16px] leading-none shrink-0 ${isSelected ? 'text-primary' : fmt.iconColor}`}>
+                        {fmt.icon}
+                      </span>
+                      <span className="truncate">{fmt.title}</span>
                     </button>
                   );
                 })}
@@ -494,7 +570,7 @@ export default function MangaPackagingSubTab({
             </div>
 
             {/* 3. Cấu hình định dạng tương ứng */}
-            <div className="space-y-2">
+            <div className="space-y-2.5 pt-3 border-t border-outline-variant/15">
               <SectionTitle as="p">
                 {t('ebookStudio.packaging.configTitle', 'Cấu hình')}
               </SectionTitle>
@@ -514,7 +590,7 @@ export default function MangaPackagingSubTab({
 
             {/* 3.5. Công cụ biên dịch MOBI */}
             {targetFormat === 'mobi' && (
-              <div className="space-y-2">
+              <div className="space-y-2 pt-3 border-t border-outline-variant/15">
                 <SectionTitle as="p">
                   {t('ebookStudio.converter.compilerSectionTitle', 'Công cụ biên dịch')}
                 </SectionTitle>
@@ -522,102 +598,120 @@ export default function MangaPackagingSubTab({
               </div>
             )}
 
-            {/* 4. Thư mục và tên file xuất */}
-            <div className={`space-y-2.5 rounded-xl border p-3.5 transition-colors ${
-              outputWarning
-                ? 'border-amber-500/40 bg-amber-500/5'
-                : 'border-outline-variant/20 bg-surface-container-low/50'
-            }`}>
-              <div className="flex items-center justify-between">
-                <SectionTitle as="span">
-                  {t('ebookStudio.packaging.outputDest')}
-                </SectionTitle>
-                {outputWarning && (
-                  <span className="flex items-center gap-1 text-[11px] font-medium text-amber-600 dark:text-amber-400">
-                    <span className="material-symbols-outlined text-[14px]">warning</span>
-                    <span>{outputWarningMsg}</span>
-                  </span>
-                )}
-              </div>
+            </>
 
-              <div className="flex gap-1.5">
-                <input
-                  type="text"
-                  value={outputDir}
-                  onChange={(e) => setOutputDir(e.target.value)}
-                  placeholder={sourceDir || savePath || t('ebookStudio.packaging.defaultSaveDir')}
+            )}
+
+
+            {sidebarTab === 'output' && (
+              <>
+                {/* 4. Thư mục và tên file xuất (đồng bộ OutputDestinationSelector) */}
+                <OutputDestinationSelector
+                  inPlace={inPlace}
+                  onInPlaceChange={(next) => {
+                    setInPlace(next);
+                    setOutputWarning(false);
+                    setOutputWarningMsg('');
+                  }}
+                  inPlaceLabel={t('outputDestination.sameAsSource')}
+                  outputDir={outputDir}
+                  onOutputDirChange={setOutputDir}
+                  onBrowse={handleSelectOutputDir}
+                  placeholder={t('outputDestination.browse')}
                   disabled={processing}
-                  className={`h-9 min-w-0 flex-1 rounded-md border-none bg-surface-container-highest px-3 text-xs text-on-surface outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 font-mono truncate transition-colors ${
-                    outputWarning
-                      ? 'ring-1 ring-amber-500/80 bg-amber-500/10'
-                      : ''
-                  }`}
+                  radioName="packaging-output-destination"
+                  showOpenFolderAfter={true}
+                  openFolderAfter={openFolderAfter}
+                  onOpenFolderAfterChange={setOpenFolderAfter}
+                  warning={outputWarning}
+                  warningMessage={outputWarningMsg}
                 />
-                {outputDir && !processing && (
-                  <button
-                    type="button"
-                    onClick={() => setOutputDir('')}
-                    aria-label={t('outputDestination.clear') || 'Xóa thư mục đã chọn'}
-                    className="inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-md bg-surface-container-high text-on-surface-variant/70 hover:text-on-surface transition-colors hover:bg-surface-bright"
-                  >
-                    <span className="material-symbols-outlined text-[18px] leading-none">close</span>
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={handleSelectOutputDir}
-                  disabled={processing}
-                  aria-label={t('sourcePicker.selectFolder') || 'Chọn thư mục'}
-                  className="inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-md bg-surface-container-high text-on-surface transition-colors hover:bg-surface-bright disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <span className="material-symbols-outlined text-[18px] leading-none">folder_open</span>
-                </button>
-              </div>
 
-              <input
-                type="text"
-                placeholder={t('ebookStudio.packaging.outputNamePlaceholder')}
-                value={outputBaseName}
-                onChange={(e) => setOutputBaseName(e.target.value)}
-                disabled={processing}
-                className="h-9 w-full rounded-md border-none bg-surface-container-highest px-3 text-xs text-on-surface outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
-              />
-            </div>
+                <div className="space-y-2 pt-3 border-t border-outline-variant/15">
+                  <SectionTitle as="label" htmlFor="packaging-output-basename" className="block">
+                    {t('ebookStudio.packaging.outputNameLabel')}
+                  </SectionTitle>
+                  <input
+                    id="packaging-output-basename"
+                    type="text"
+                    placeholder={t('ebookStudio.packaging.outputNamePlaceholder')}
+                    value={outputBaseName}
+                    onChange={(e) => setOutputBaseName(e.target.value)}
+                    disabled={processing}
+                    className="h-10 w-full rounded-xl border border-outline-variant/25 bg-surface-container-highest px-3.5 text-xs sm:text-sm text-on-surface outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
+                  />
+                </div>
+              </>
+            )}
+
 
             {/* 5. Thông báo kết quả */}
-            {resultMsg && (
-              <div className="space-y-2 pt-2">
-                <div
-                  className={`rounded-lg p-2.5 text-xs border ${
-                    resultMsg.includes('Lỗi') || resultMsg.includes('thất bại')
-                      ? 'bg-error/10 text-error border-error/20'
-                      : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
-                  }`}
+            {resultMsg && !resultOk ? (
+              <div
+                data-testid="packaging-status-error"
+                role="alert"
+                className="flex items-start justify-between gap-2 text-xs text-error whitespace-pre-wrap"
+              >
+                <p className="select-text break-words flex-1">{resultMsg}</p>
+                <button
+                  type="button"
+                  onClick={handleCopyResultMsg}
+                  data-tooltip={copiedResultMsg ? (t('ebookStudio.converter.copiedError') || 'Đã sao chép lỗi') : (t('ebookStudio.converter.copyError') || 'Sao chép lỗi')}
+                  aria-label={t('ebookStudio.converter.copyError') || 'Sao chép lỗi'}
+                  className="flex items-center justify-center w-6 h-6 rounded-md hover:bg-error/15 text-error shrink-0 transition-colors cursor-pointer"
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="font-medium select-text break-words flex-1">{resultMsg}</p>
-                    {(resultMsg.includes('Lỗi') || resultMsg.includes('thất bại')) && (
-                      <button
-                        type="button"
-                        onClick={handleCopyResultMsg}
-                        data-tooltip={copiedResultMsg ? (t('ebookStudio.converter.copiedError') || 'Đã sao chép lỗi') : (t('ebookStudio.converter.copyError') || 'Sao chép lỗi')}
-                        aria-label={t('ebookStudio.converter.copyError') || 'Sao chép lỗi'}
-                        className="flex items-center justify-center w-6 h-6 rounded hover:bg-error/20 text-error shrink-0 transition-colors cursor-pointer"
-                      >
-                        <span className="material-symbols-outlined text-[15px]">
-                          {copiedResultMsg ? 'check' : 'content_copy'}
-                        </span>
-                      </button>
-                    )}
+                  <span className="material-symbols-outlined text-[15px]">
+                    {copiedResultMsg ? 'check' : 'content_copy'}
+                  </span>
+                </button>
+              </div>
+            ) : resultMsg ? (
+              <div
+                data-testid="packaging-status-message"
+                role="status"
+                className="text-xs text-on-surface whitespace-pre-wrap border border-outline-variant/20 rounded-xl p-3 bg-surface-container-highest/50"
+              >
+                <p className="select-text break-words">{resultMsg}</p>
+                {resultFiles.length > 0 && (
+                  <p className="text-[11px] text-on-surface-variant mt-1">
+                    {t('ebookStudio.packaging.filesCreated', { count: resultFiles.length })}
+                  </p>
+                )}
+              </div>
+            ) : null}
+
+            {/* 6. Thẻ thống kê tổng quan (đồng bộ Tools Studio) */}
+            <div className="mt-auto pt-2">
+              <div
+                data-testid="packaging-overview-card"
+                className="rounded-xl border border-primary/15 bg-primary/5 p-3"
+              >
+                <div className="text-[10px] font-bold text-primary mb-2 flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-[13px]">bar_chart</span>
+                  <span>{t('ebookStudio.overview.title')}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+                  <span className="text-on-surface-variant">{t('ebookStudio.overview.totalChapters')}</span>
+                  <span className="font-bold text-on-surface text-right tabular-nums">
+                    {chapters.length > 0 ? chapters.length : '—'}
+                  </span>
+                  <span className="text-on-surface-variant">{t('ebookStudio.overview.selected')}</span>
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400 text-right tabular-nums">
+                    {chapters.length > 0 ? selectedTitles.size : '—'}
+                  </span>
+                  <span className="text-on-surface-variant">{t('ebookStudio.overview.format')}</span>
+                  <span className="font-bold text-primary text-right uppercase">{targetFormat}</span>
+                </div>
+                <div className="mt-2.5 pt-2 border-t border-primary/10 text-[10px] text-on-surface-variant/75 leading-relaxed">
+                  <div className="flex items-start gap-1.5">
+                    <span className="w-4 h-4 flex items-center justify-center shrink-0 text-primary/70">
+                      <span className="material-symbols-outlined text-[13px] leading-none">touch_app</span>
+                    </span>
+                    <span className="flex-1 min-w-0 leading-snug pt-0.5">{t('ebookStudio.overview.packagingTip')}</span>
                   </div>
-                  {resultFiles.length > 0 && (
-                    <p className="text-[11px] text-on-surface-variant mt-0.5">
-                      {resultFiles.length} file đã được tạo tại thư mục đích.
-                    </p>
-                  )}
                 </div>
               </div>
-            )}
+            </div>
           </div>
 
           <ResizeSplitter
@@ -667,27 +761,18 @@ export default function MangaPackagingSubTab({
                   </span>
                 </button>
 
-                <div className="flex items-center gap-1 rounded-lg bg-surface-container-highest/60 p-1 text-xs">
-                  {[
-                    { key: 'all', label: t('ebookStudio.packaging.filterAll'), count: chapters.length },
-                    { key: 'selected', label: t('ebookStudio.packaging.filterSelected'), count: selectedTitles.size },
-                    { key: 'unselected', label: t('ebookStudio.packaging.filterUnselected'), count: chapters.length - selectedTitles.size },
-                  ].map((f) => (
-                    <button
-                      key={f.key}
-                      type="button"
-                      onClick={() => setFilterStatus(f.key)}
-                      className={[
-                        'rounded-md px-2 py-1 font-medium transition-colors cursor-pointer',
-                        filterStatus === f.key
-                          ? 'bg-primary/15 text-primary font-semibold shadow-xs'
-                          : 'text-on-surface-variant hover:text-on-surface',
-                      ].join(' ')}
-                    >
-                      {f.label} ({f.count})
-                    </button>
-                  ))}
-                </div>
+                <SearchableSelect
+                  value={filterStatus}
+                  onChange={setFilterStatus}
+                  size="sm"
+                  showPlaceholderOption={false}
+                  className="min-w-[11.5rem]"
+                  options={[
+                    { value: 'all', label: `${t('ebookStudio.packaging.filterAll')} (${chapters.length})`, icon: 'filter_list' },
+                    { value: 'selected', label: `${t('ebookStudio.packaging.filterSelected')} (${selectedTitles.size})`, icon: 'check_box' },
+                    { value: 'unselected', label: `${t('ebookStudio.packaging.filterUnselected')} (${chapters.length - selectedTitles.size})`, icon: 'check_box_outline_blank' },
+                  ]}
+                />
               </div>
 
               <div className="flex items-center gap-2">
@@ -701,12 +786,14 @@ export default function MangaPackagingSubTab({
                     value={searchFilter}
                     onChange={(e) => setSearchFilter(e.target.value)}
                     placeholder={t('ebookStudio.packaging.searchPlaceholder')}
+                    aria-label={t('ebookStudio.packaging.searchPlaceholder')}
                     className="h-8 w-44 sm:w-52 rounded-lg bg-surface-container-highest/80 pl-7 pr-7 text-xs text-on-surface placeholder:text-on-surface-variant/50 focus:bg-surface-container-highest focus:outline-none focus:ring-1 focus:ring-primary"
                   />
                   {searchFilter && (
                     <button
                       type="button"
                       onClick={() => setSearchFilter('')}
+                      aria-label={t('tools.remove')}
                       className="material-symbols-outlined absolute right-1.5 top-1/2 -translate-y-1/2 text-[14px] text-on-surface-variant/60 hover:text-on-surface cursor-pointer p-0.5"
                     >
                       close
@@ -723,6 +810,8 @@ export default function MangaPackagingSubTab({
                     { value: 'name_asc', label: t('ebookStudio.packaging.sortNameAsc'), materialIcon: 'sort_by_alpha' },
                     { value: 'name_desc', label: t('ebookStudio.packaging.sortNameDesc'), materialIcon: 'sort_by_alpha' },
                   ]}
+                  size="sm"
+                  showPlaceholderOption={false}
                   className="min-w-[11.5rem]"
                 />
               </div>

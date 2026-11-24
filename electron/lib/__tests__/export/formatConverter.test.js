@@ -200,4 +200,116 @@ describe('Format Converter', () => {
     expect(pageEvents[2].total).toBe(3);
     expect(pageEvents[2].percent).toBe(100);
   });
+
+  test('convertSingleBook skips conversion when options.skipExisting is true and target file already exists', async () => {
+    const cbzPath = path.join(dir, 'manga.cbz');
+    await createDummyCbz(cbzPath, ['01.png', '02.png']);
+
+    const outDir = path.join(dir, 'output_skip');
+    fs.mkdirSync(outDir, { recursive: true });
+    const existingTarget = path.join(outDir, 'manga.epub');
+    fs.writeFileSync(existingTarget, 'sentinel-existing-epub');
+
+    const result = await convertSingleBook({
+      inputPath: cbzPath,
+      targetFormat: 'epub',
+      outputDir: outDir,
+      options: { skipExisting: true },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.skipped).toBe(true);
+    expect(result.outputPath).toBe(existingTarget);
+    expect(fs.readFileSync(existingTarget, 'utf8')).toBe('sentinel-existing-epub');
+  });
+
+  test('convertSingleBook skips folder export when options.skipExisting is true and target folder is non-empty', async () => {
+    const cbzPath = path.join(dir, 'manga.cbz');
+    await createDummyCbz(cbzPath, ['01.png', '02.png']);
+
+    const outDir = path.join(dir, 'output_skip_folder');
+    const existingFolder = path.join(outDir, 'manga');
+    fs.mkdirSync(existingFolder, { recursive: true });
+    const sentinelFile = path.join(existingFolder, 'keep.txt');
+    fs.writeFileSync(sentinelFile, 'keep');
+
+    const result = await convertSingleBook({
+      inputPath: cbzPath,
+      targetFormat: 'folder',
+      outputDir: outDir,
+      options: { skipExisting: true },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.skipped).toBe(true);
+    expect(result.outputPath).toBe(existingFolder);
+    expect(fs.readdirSync(existingFolder)).toEqual(['keep.txt']);
+  });
+
+  test('batchConvertBooks with inPlace: true saves each converted file in its own source directory', async () => {
+    const subA = path.join(dir, 'seriesA');
+    const subB = path.join(dir, 'seriesB');
+    fs.mkdirSync(subA, { recursive: true });
+    fs.mkdirSync(subB, { recursive: true });
+
+    const cbzA = path.join(subA, 'bookA.cbz');
+    const cbzB = path.join(subB, 'bookB.cbz');
+    await createDummyCbz(cbzA, ['01.png']);
+    await createDummyCbz(cbzB, ['01.png']);
+
+    const results = await batchConvertBooks({
+      inputPaths: [cbzA, cbzB],
+      targetFormat: 'epub',
+      outputDir: '',
+      inPlace: true,
+    });
+
+    expect(results.length).toBe(2);
+    expect(results[0].ok).toBe(true);
+    expect(results[0].outputPath).toBe(path.join(subA, 'bookA.epub'));
+    expect(fs.existsSync(path.join(subA, 'bookA.epub'))).toBe(true);
+    expect(results[1].ok).toBe(true);
+    expect(results[1].outputPath).toBe(path.join(subB, 'bookB.epub'));
+    expect(fs.existsSync(path.join(subB, 'bookB.epub'))).toBe(true);
+  });
+
+  test('batchConvertBooks handles invalid inputPath safely when inPlace is true and converts directory input in-place', async () => {
+    const imgFolder = path.join(dir, 'comicFolder');
+    fs.mkdirSync(imgFolder, { recursive: true });
+    writeTinyPng(path.join(imgFolder, '01.png'));
+
+    const results = await batchConvertBooks({
+      inputPaths: [null, imgFolder],
+      targetFormat: 'cbz',
+      outputDir: '',
+      inPlace: true,
+    });
+
+    expect(results.length).toBe(2);
+    expect(results[0].ok).toBe(false);
+    expect(typeof results[0].error).toBe('string');
+    expect(results[1].ok).toBe(true);
+    expect(results[1].outputPath).toBe(path.join(imgFolder, 'comicFolder.cbz'));
+    expect(fs.existsSync(path.join(imgFolder, 'comicFolder.cbz'))).toBe(true);
+  });
+
+  test('convertSingleBook does not skip folder export when target folder is empty', async () => {
+    const cbzPath = path.join(dir, 'manga.cbz');
+    await createDummyCbz(cbzPath, ['01.png']);
+
+    const outDir = path.join(dir, 'output_empty_folder');
+    const emptyFolder = path.join(outDir, 'manga');
+    fs.mkdirSync(emptyFolder, { recursive: true });
+
+    const result = await convertSingleBook({
+      inputPath: cbzPath,
+      targetFormat: 'folder',
+      outputDir: outDir,
+      options: { skipExisting: true },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.skipped).toBeUndefined();
+    expect(fs.readdirSync(emptyFolder)).toEqual(['0001.png']);
+  });
 });

@@ -29,3 +29,14 @@ test('OutputDestinationSelector checks directory existence like Crawler tab with
   expect(src).not.toMatch(/<(button|a|span|div|input)\b[^>]*\stitle=/);
 });
 
+test('OutputDestinationSelector supports inPlaceLabel/placeholder, guards controlled warning, and follows h-10 rounded-xl standard', () => {
+  const src = fs.readFileSync(path.join(dirname, 'OutputDestinationSelector.jsx'), 'utf8');
+  expect(src).toContain('inPlaceLabel');
+  expect(src).toContain('placeholder');
+  expect(src).toContain('if (warning !== undefined) return undefined;');
+  expect(src).toContain('h-10');
+  expect(src).toContain('rounded-xl');
+  expect(src).not.toContain('h-9');
+  expect(src).not.toContain('w-9');
+});
+

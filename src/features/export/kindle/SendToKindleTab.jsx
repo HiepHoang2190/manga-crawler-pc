@@ -255,7 +255,7 @@ export default function SendToKindleTab({
             data-testid="kindle-send-btn"
             onClick={handleSendPending}
             disabled={!pendingCount || !loggedIn || running}
-            className="flex h-8 items-center justify-center gap-1.5 rounded-lg bg-primary px-3.5 text-xs font-semibold text-on-primary shadow-xs transition-all hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-primary px-3.5 text-xs font-semibold text-on-primary shadow-2xs transition-all hover:opacity-95 active:scale-95 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer shrink-0 whitespace-nowrap"
           >
             <span className="material-symbols-outlined text-[16px]">
               {running ? 'hourglass_top' : 'send'}
@@ -385,7 +385,9 @@ export default function SendToKindleTab({
               value={filterStatus}
               onChange={setFilterStatus}
               options={filterOptions}
-              className="min-w-[12rem] sm:min-w-[13.5rem]"
+              size="sm"
+              showPlaceholderOption={false}
+              className="min-w-[11.5rem]"
             />
 
             <div className="flex items-center gap-2">
