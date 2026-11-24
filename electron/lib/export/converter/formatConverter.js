@@ -86,10 +86,55 @@ function computeExpectedOutputPath(resolvedInput, format, outputDir) {
   return path.join(outputDir, `${safeTitle}.${format}`);
 }
 
-function resolveItemOutputDir(inputPath, outputDir, inPlace) {
+function isSameFilesystemPath(a, b) {
+  const pa = path.resolve(a);
+  const pb = path.resolve(b);
+  if (process.platform === 'win32' || process.platform === 'darwin') {
+    return pa.toLowerCase() === pb.toLowerCase();
+  }
+  return pa === pb;
+}
+
+async function writeFileWithAtomicSamePathGuard(outPath, resolvedInput, writeFn) {
+  if (!isSameFilesystemPath(outPath, resolvedInput)) {
+    return await writeFn(outPath);
+  }
+
+  const ext = path.extname(outPath);
+  const stem = ext ? outPath.slice(0, -ext.length) : outPath;
+  const tmpOutPath = `${stem}.converting-${process.pid}-${Date.now()}${ext}`;
+
+  try {
+    const res = await writeFn(tmpOutPath);
+    if (res && res.ok !== false && fs.existsSync(tmpOutPath)) {
+      try {
+        fs.renameSync(tmpOutPath, outPath);
+      } catch {
+        fs.copyFileSync(tmpOutPath, outPath);
+        fs.rmSync(tmpOutPath, { force: true });
+      }
+      return { ...res, outputPath: outPath };
+    }
+    return res;
+  } finally {
+    try {
+      if (fs.existsSync(tmpOutPath)) {
+        fs.rmSync(tmpOutPath, { force: true });
+      }
+    } catch {
+      // ignore cleanup failure
+    }
+  }
+}
+
+function resolveItemOutputDir(inputPath, outputDir, inPlace, targetFormat) {
   if (!inPlace) return String(outputDir || '').trim();
   const resolved = path.resolve(inputPath);
   if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
+    const fmt = String(targetFormat || '').toLowerCase();
+    if (fmt === 'folder' || fmt === 'images') {
+      return path.dirname(resolved);
+    }
     return resolved;
   }
   return path.dirname(resolved);
@@ -186,64 +231,75 @@ async function convertSingleBook({
     if (format === 'cbz' || format === 'zip') {
       const outPath = path.join(outputDir, `${safeTitle}.${format}`);
       onProgress({ message: `Đang đóng gói file ${format.toUpperCase()}...`, percent: 60 });
-      return await buildCbzArchive(imagesToUse, outPath, { onProgress, signal });
+      return await writeFileWithAtomicSamePathGuard(outPath, resolvedInput, (targetPath) =>
+        buildCbzArchive(imagesToUse, targetPath, { onProgress, signal })
+      );
     }
 
     // 2. Chuyển sang EPUB
     if (format === 'epub') {
       const outPath = path.join(outputDir, `${safeTitle}.epub`);
       onProgress({ message: 'Đang tạo file EPUB...', percent: 60 });
-      return await buildEpubFromImages({
-        images: imagesToUse,
-        outputPath: outPath,
-        metadata: { title },
-        onProgress,
-        signal,
-      });
+      return await writeFileWithAtomicSamePathGuard(outPath, resolvedInput, (targetPath) =>
+        buildEpubFromImages({
+          images: imagesToUse,
+          outputPath: targetPath,
+          metadata: { title },
+          onProgress,
+          signal,
+        })
+      );
     }
 
     // 3. Chuyển sang MOBI
     if (format === 'mobi') {
       const outPath = path.join(outputDir, `${safeTitle}.mobi`);
       onProgress({ message: 'Đang tạo file MOBI...', percent: 60 });
-      return await buildMobiFromImages({
-        images: imagesToUse,
-        outputPath: outPath,
-        metadata: { title },
-        compilerOpts: options.compilerOpts || {},
-        onProgress,
-        signal,
-      });
+      return await writeFileWithAtomicSamePathGuard(outPath, resolvedInput, (targetPath) =>
+        buildMobiFromImages({
+          images: imagesToUse,
+          outputPath: targetPath,
+          metadata: { title },
+          compilerOpts: options.compilerOpts || {},
+          onProgress,
+          signal,
+        })
+      );
     }
 
     // 4. Chuyển sang PDF
     if (format === 'pdf') {
       const outPath = path.join(outputDir, `${safeTitle}.pdf`);
       onProgress({ message: 'Đang tạo file PDF...', percent: 0 });
-      await generatePdf({
-        images: imagesToUse.map((img) => ({ path: img.path, title: img.name || title })),
-        outputPath: outPath,
-        metadata: { title },
-        onProgress: (p) => {
-          const done = p.done || 0;
-          const tot = p.total || imagesToUse.length;
-          const label = p.label ? `: ${p.label}` : '';
-          const percent = tot > 0 ? Math.round((done / tot) * 100) : 0;
-          onProgress({
-            message: `Đang tạo trang PDF (${done}/${tot})${label}`,
-            done,
-            total: tot,
-            index: done,
-            percent,
-          });
-        },
+      return await writeFileWithAtomicSamePathGuard(outPath, resolvedInput, async (targetPath) => {
+        await generatePdf({
+          images: imagesToUse.map((img) => ({ path: img.path, title: img.name || title })),
+          outputPath: targetPath,
+          metadata: { title },
+          onProgress: (p) => {
+            const done = p.done || 0;
+            const tot = p.total || imagesToUse.length;
+            const label = p.label ? `: ${p.label}` : '';
+            const percent = tot > 0 ? Math.round((done / tot) * 100) : 0;
+            onProgress({
+              message: `Đang tạo trang PDF (${done}/${tot})${label}`,
+              done,
+              total: tot,
+              index: done,
+              percent,
+            });
+          },
+        });
+        return { ok: true, outputPath: targetPath };
       });
-      return { ok: true, outputPath: outPath };
     }
 
     // 5. Trích xuất ra Thư mục ảnh
     if (format === 'folder' || format === 'images') {
       const targetFolder = path.join(outputDir, safeTitle);
+      if (isSameFilesystemPath(targetFolder, resolvedInput)) {
+        return { ok: false, error: 'Thư mục đầu ra trùng với thư mục nguồn.' };
+      }
       onProgress({ message: 'Đang xuất các file ảnh...', percent: 60 });
       return await copyImagesToFolder(imagesToUse, targetFolder, { onProgress, signal });
     }
@@ -300,7 +356,7 @@ async function batchConvertBooks({
     });
 
     try {
-      const itemOutputDir = resolveItemOutputDir(inputPath, outputDir, Boolean(inPlace));
+      const itemOutputDir = resolveItemOutputDir(inputPath, outputDir, Boolean(inPlace), targetFormat);
       const res = await convertSingleBook({
         inputPath,
         targetFormat,

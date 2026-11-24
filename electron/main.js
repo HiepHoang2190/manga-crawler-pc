@@ -347,6 +347,8 @@ function createWindow() {
   }
 
   let boundsSaveTimer = null;
+  let zoomSaveTimer = null;
+  let pendingZoomFactor = null;
   const persistWindowBounds = () => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
     try {
@@ -367,6 +369,24 @@ function createWindow() {
       persistWindowBounds();
     }, 300);
   };
+  const flushZoomSave = () => {
+    if (pendingZoomFactor == null) return;
+    const toSave = pendingZoomFactor;
+    pendingZoomFactor = null;
+    try {
+      writeSettings({ zoomFactor: toSave });
+    } catch {
+      /* ignore */
+    }
+  };
+  const scheduleZoomSave = (factor) => {
+    pendingZoomFactor = factor;
+    if (zoomSaveTimer) clearTimeout(zoomSaveTimer);
+    zoomSaveTimer = setTimeout(() => {
+      zoomSaveTimer = null;
+      flushZoomSave();
+    }, 300);
+  };
 
   mainWindow.on('resize', scheduleBoundsSave);
   mainWindow.on('move', scheduleBoundsSave);
@@ -377,6 +397,11 @@ function createWindow() {
       clearTimeout(boundsSaveTimer);
       boundsSaveTimer = null;
     }
+    if (zoomSaveTimer) {
+      clearTimeout(zoomSaveTimer);
+      zoomSaveTimer = null;
+    }
+    flushZoomSave();
     persistWindowBounds();
   });
   mainWindow.on('closed', () => {
@@ -384,6 +409,11 @@ function createWindow() {
       clearTimeout(boundsSaveTimer);
       boundsSaveTimer = null;
     }
+    if (zoomSaveTimer) {
+      clearTimeout(zoomSaveTimer);
+      zoomSaveTimer = null;
+    }
+    pendingZoomFactor = null;
     if (membershipFocusDebounceId) {
       clearTimeout(membershipFocusDebounceId);
       membershipFocusDebounceId = null;
@@ -428,11 +458,7 @@ function createWindow() {
       zoomDirection === 'in' ? 'in' : 'out'
     );
     mainWindow.webContents.setZoomFactor(next);
-    try {
-      writeSettings({ zoomFactor: next });
-    } catch {
-      /* ignore */
-    }
+    scheduleZoomSave(next);
     mainWindow.webContents.send('window:zoomChanged', { zoomFactor: next, source: 'wheel' });
   });
 

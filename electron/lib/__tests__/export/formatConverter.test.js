@@ -312,4 +312,74 @@ describe('Format Converter', () => {
     expect(result.skipped).toBeUndefined();
     expect(fs.readdirSync(emptyFolder)).toEqual(['0001.png']);
   });
+
+  test('convertSingleBook atomically overwrites same-path cbz without leaving temp files', async () => {
+    const cbzPath = path.join(dir, 'same.cbz');
+    await createDummyCbz(cbzPath, ['01.png', '02.png']);
+    const originalSize = fs.statSync(cbzPath).size;
+
+    const result = await convertSingleBook({
+      inputPath: cbzPath,
+      targetFormat: 'cbz',
+      outputDir: dir,
+      options: { skipExisting: false },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.outputPath).toBe(cbzPath);
+    expect(fs.existsSync(cbzPath)).toBe(true);
+    expect(fs.statSync(cbzPath).size).toBeGreaterThan(0);
+    expect(originalSize).toBeGreaterThan(0);
+    const leftover = fs.readdirSync(dir).filter((f) => f.includes('.converting-'));
+    expect(leftover).toEqual([]);
+
+    const verifyDir = path.join(dir, 'verify_same');
+    const extracted = await extractImagesFromBook(cbzPath, verifyDir);
+    expect(extracted.ok).toBe(true);
+    expect(extracted.images.length).toBe(2);
+  });
+
+  test('batchConvertBooks preserves original file intact if same-path overwrite is aborted mid-conversion', async () => {
+    const cbzPath = path.join(dir, 'keep-intact.cbz');
+    await createDummyCbz(cbzPath, ['01.png', '02.png']);
+    const originalBytes = fs.readFileSync(cbzPath);
+
+    const ac = new AbortController();
+    const results = await batchConvertBooks({
+      inputPaths: [cbzPath],
+      targetFormat: 'cbz',
+      outputDir: '',
+      inPlace: true,
+      signal: ac.signal,
+      onItemProgress: (p) => {
+        if (p?.message?.includes('đóng gói')) {
+          ac.abort();
+        }
+      },
+    });
+
+    expect(results.length).toBe(1);
+    expect(results[0].ok).toBe(false);
+    expect(fs.existsSync(cbzPath)).toBe(true);
+    expect(fs.readFileSync(cbzPath).equals(originalBytes)).toBe(true);
+    const leftover = fs.readdirSync(dir).filter((f) => f.includes('.converting-'));
+    expect(leftover).toEqual([]);
+  });
+
+  test('batchConvertBooks with inPlace: true rejects directory-to-folder conversion instead of nesting', async () => {
+    const imgFolder = path.join(dir, 'comicFolder');
+    fs.mkdirSync(imgFolder, { recursive: true });
+    writeTinyPng(path.join(imgFolder, '01.png'));
+
+    const results = await batchConvertBooks({
+      inputPaths: [imgFolder],
+      targetFormat: 'folder',
+      outputDir: '',
+      inPlace: true,
+    });
+
+    expect(results.length).toBe(1);
+    expect(results[0].ok).toBe(false);
+    expect(fs.existsSync(path.join(imgFolder, 'comicFolder'))).toBe(false);
+  });
 });

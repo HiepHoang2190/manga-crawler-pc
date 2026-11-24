@@ -47,7 +47,6 @@ export const FALLBACK_CONNECTORS = [
     domain: 'https://truyen.moe/',
     supportsApiFetch: false,
     supportsLatestUpdates: true,
-    supportsBulkScan: true,
   },
   {
     id: 'toptruyenzone2',

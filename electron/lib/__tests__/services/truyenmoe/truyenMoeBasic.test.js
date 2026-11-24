@@ -16,8 +16,8 @@ describe('TruyenMoe - Basic Tests', () => {
       const truyenMoe = connectors.find((c) => c.id === 'truyenmoe');
       expect(truyenMoe).toBeDefined();
       expect(truyenMoe.label).toBe('TruyenMoe');
-      expect(truyenMoe.supportsLatestUpdates).toBe(false);
-      expect(truyenMoe.supportsLatestUpdatesSearch).toBe(false);
+      expect(truyenMoe.supportsLatestUpdates).toBe(true);
+      expect(truyenMoe.supportsLatestUpdatesSearch).toBe(true);
       expect(truyenMoe.supportsBulkScan).toBe(false);
     });
 
@@ -30,7 +30,7 @@ describe('TruyenMoe - Basic Tests', () => {
     test('should have load and download methods', () => {
       expect(typeof truyenMoeConnector.load).toBe('function');
       expect(typeof truyenMoeConnector.downloadChapter).toBe('function');
-      expect(typeof truyenMoeConnector.fetchLatestUpdates).toBe('undefined');
+      expect(typeof truyenMoeConnector.fetchLatestUpdates).toBe('function');
       expect(typeof truyenMoeConnector.fetchBulkScanListing).toBe('undefined');
     });
   });

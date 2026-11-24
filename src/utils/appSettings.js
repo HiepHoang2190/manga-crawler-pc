@@ -4,6 +4,7 @@ const AUTO_RETRY_MAX_KEY = "mangaAutoRetryMax";
 const DUPLICATE_SCAN_RECURSIVE_KEY = "duplicateScanRecursive_v2";
 const FAVORITE_AUTO_CHECK_ENABLED_KEY = "mangaFavoriteAutoCheckEnabled";
 const FAVORITE_AUTO_CHECK_INTERVAL_MIN_KEY = "mangaFavoriteAutoCheckIntervalMin";
+// Transient per-machine polling timestamp; intentionally excluded from userDataBackup sync sections.
 export const FAVORITE_AUTO_CHECK_LAST_AT_KEY = "mangaFavoriteAutoCheckLastAt";
 export const FAVORITE_AUTO_CHECK_INTERVAL_PRESETS = [15, 30, 60, 180, 360, 720, 1440];
 const MANGADEX_VOLUME_FOLDER_GROUPING_KEY = "mangadex_volume_folder_grouping_v1";

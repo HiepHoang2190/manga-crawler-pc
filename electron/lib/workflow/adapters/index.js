@@ -871,6 +871,7 @@ function createAdapters({ connectors = null, ipc_context = null } = {}) {
         try {
           if (ipc_context?.trashItem) {
             let trashedCount = 0;
+            let unlinkedFallbackCount = 0;
             let errorCount = 0;
             for (const f of filesToDelete) {
               try {
@@ -880,7 +881,7 @@ function createAdapters({ connectors = null, ipc_context = null } = {}) {
                 try {
                   if (fs.existsSync(f)) {
                     await fs.promises.unlink(f);
-                    trashedCount += 1;
+                    unlinkedFallbackCount += 1;
                   } else {
                     errorCount += 1;
                   }
@@ -889,10 +890,14 @@ function createAdapters({ connectors = null, ipc_context = null } = {}) {
                 }
               }
             }
+            const summaryMsg =
+              unlinkedFallbackCount > 0
+                ? `Đã chuyển ${trashedCount} ảnh vào Thùng rác và xóa trực tiếp ${unlinkedFallbackCount} ảnh (Thùng rác không khả dụng).${errorCount > 0 ? ` (${errorCount} lỗi)` : ''}`
+                : `Đã chuyển thành công ${trashedCount} ảnh trùng lặp vào Thùng rác an toàn.${errorCount > 0 ? ` (${errorCount} lỗi)` : ''}`;
             onProgress({
-              message: `Đã chuyển thành công ${trashedCount} ảnh trùng lặp vào Thùng rác an toàn.${errorCount > 0 ? ` (${errorCount} lỗi)` : ''}`,
+              message: summaryMsg,
               step: 'cleanup',
-              type: errorCount > 0 && trashedCount === 0 ? 'warn' : 'success',
+              type: errorCount > 0 && trashedCount + unlinkedFallbackCount === 0 ? 'warn' : 'success',
             });
           } else {
             const { deleteFilesUnderRoots } = require('../../export/image/duplicateImageScanner');
