@@ -3,6 +3,11 @@ import {
   removeDeletedFilesFromBuckets,
   toggleGroupCollapseInSet,
   collectAllGroupIds,
+  applyDuplicateRangeSelection,
+  computeSelectedDuplicateStats,
+  getVisibleSelectablePaths,
+  findNextPreviewPath,
+  resolveDuplicateSelectionPreset,
 } from './duplicateUtils.js';
 
 describe('DuplicateFinder - Bucket State Updates on Deletion', () => {
@@ -167,6 +172,227 @@ describe('DuplicateFinder - Bucket State Updates on Deletion', () => {
       const result = collectAllGroupIds(items);
       expect(result.size).toBe(1);
       expect(result.has('ungrouped')).toBe(true);
+    });
+  });
+
+  describe('applyDuplicateRangeSelection', () => {
+    const visiblePaths = ['/a.jpg', '/b.jpg', '/c.jpg', '/d.jpg', '/e.jpg'];
+
+    test('single click selects an unselected path and sets anchor', () => {
+      const res = applyDuplicateRangeSelection({
+        prevSelected: new Set(['/a.jpg']),
+        visiblePaths,
+        clickedIndex: 2,
+        anchorIndex: null,
+        anchorTargetSelected: true,
+        shiftKey: false,
+      });
+      expect([...res.nextSelected].sort()).toEqual(['/a.jpg', '/c.jpg']);
+      expect(res.nextAnchorIndex).toBe(2);
+      expect(res.nextAnchorTargetSelected).toBe(true);
+    });
+
+    test('single click deselects an already-selected path and sets anchor target false', () => {
+      const res = applyDuplicateRangeSelection({
+        prevSelected: new Set(['/a.jpg', '/c.jpg', '/d.jpg']),
+        visiblePaths,
+        clickedIndex: 2,
+        anchorIndex: 0,
+        anchorTargetSelected: true,
+        shiftKey: false,
+      });
+      expect([...res.nextSelected].sort()).toEqual(['/a.jpg', '/d.jpg']);
+      expect(res.nextAnchorIndex).toBe(2);
+      expect(res.nextAnchorTargetSelected).toBe(false);
+    });
+
+    test('Shift+click forward selects inclusive range while preserving outside selections', () => {
+      const res = applyDuplicateRangeSelection({
+        prevSelected: new Set(['/a.jpg', '/b.jpg']),
+        visiblePaths,
+        clickedIndex: 3,
+        anchorIndex: 1,
+        anchorTargetSelected: true,
+        shiftKey: true,
+      });
+      expect([...res.nextSelected].sort()).toEqual(['/a.jpg', '/b.jpg', '/c.jpg', '/d.jpg']);
+      expect(res.nextAnchorIndex).toBe(1);
+      expect(res.nextAnchorTargetSelected).toBe(true);
+    });
+
+    test('Shift+click backward selects inclusive range', () => {
+      const res = applyDuplicateRangeSelection({
+        prevSelected: new Set(['/e.jpg']),
+        visiblePaths,
+        clickedIndex: 1,
+        anchorIndex: 4,
+        anchorTargetSelected: true,
+        shiftKey: true,
+      });
+      expect([...res.nextSelected].sort()).toEqual(['/b.jpg', '/c.jpg', '/d.jpg', '/e.jpg']);
+      expect(res.nextAnchorIndex).toBe(4);
+      expect(res.nextAnchorTargetSelected).toBe(true);
+    });
+
+    test('Shift+click after deselecting anchor deselects range while preserving outside selections', () => {
+      const res = applyDuplicateRangeSelection({
+        prevSelected: new Set(visiblePaths),
+        visiblePaths,
+        clickedIndex: 3,
+        anchorIndex: 1,
+        anchorTargetSelected: false,
+        shiftKey: true,
+      });
+      expect([...res.nextSelected].sort()).toEqual(['/a.jpg', '/e.jpg']);
+      expect(res.nextAnchorIndex).toBe(1);
+      expect(res.nextAnchorTargetSelected).toBe(false);
+    });
+
+    test('Shift+click with null or out-of-bounds anchor falls back to toggling clickedIndex', () => {
+      const resNull = applyDuplicateRangeSelection({
+        prevSelected: new Set(),
+        visiblePaths,
+        clickedIndex: 2,
+        anchorIndex: null,
+        anchorTargetSelected: true,
+        shiftKey: true,
+      });
+      expect([...resNull.nextSelected]).toEqual(['/c.jpg']);
+      expect(resNull.nextAnchorIndex).toBe(2);
+      expect(resNull.nextAnchorTargetSelected).toBe(true);
+
+      const resOob = applyDuplicateRangeSelection({
+        prevSelected: new Set(['/c.jpg']),
+        visiblePaths,
+        clickedIndex: 2,
+        anchorIndex: 99,
+        anchorTargetSelected: true,
+        shiftKey: true,
+      });
+      expect([...resOob.nextSelected]).toEqual([]);
+      expect(resOob.nextAnchorIndex).toBe(2);
+      expect(resOob.nextAnchorTargetSelected).toBe(false);
+    });
+
+    test('out-of-bounds clickedIndex returns cloned set without throwing', () => {
+      const prev = new Set(['/a.jpg']);
+      const res = applyDuplicateRangeSelection({
+        prevSelected: prev,
+        visiblePaths,
+        clickedIndex: -1,
+        anchorIndex: 0,
+        anchorTargetSelected: true,
+        shiftKey: true,
+      });
+      expect(res.nextSelected).not.toBe(prev);
+      expect([...res.nextSelected]).toEqual(['/a.jpg']);
+      expect(res.nextAnchorIndex).toBe(0);
+    });
+  });
+
+  describe('computeSelectedDuplicateStats', () => {
+    test('sums selectedCount and selectedBytes only for matching items in list', () => {
+      const items = [
+        { fullPath: '/a.jpg', sizeBytes: 1024 },
+        { fullPath: '/b.jpg', sizeBytes: 2048 },
+        { fullPath: '/c.jpg', sizeBytes: 512 },
+      ];
+      const selected = new Set(['/b.jpg', '/c.jpg', '/missing.jpg']);
+      expect(computeSelectedDuplicateStats(items, selected)).toEqual({
+        selectedCount: 2,
+        selectedBytes: 2560,
+      });
+    });
+
+    test('handles invalid sizeBytes, empty arrays, and non-Set inputs gracefully', () => {
+      const items = [
+        { fullPath: '/a.jpg', sizeBytes: null },
+        { fullPath: '/b.jpg', sizeBytes: NaN },
+        { fullPath: '/c.jpg', sizeBytes: 100 },
+      ];
+      expect(computeSelectedDuplicateStats(items, new Set(['/a.jpg', '/b.jpg', '/c.jpg']))).toEqual({
+        selectedCount: 3,
+        selectedBytes: 100,
+      });
+      expect(computeSelectedDuplicateStats(null, new Set(['/a.jpg']))).toEqual({
+        selectedCount: 0,
+        selectedBytes: 0,
+      });
+      expect(computeSelectedDuplicateStats(items, null)).toEqual({
+        selectedCount: 0,
+        selectedBytes: 0,
+      });
+    });
+  });
+
+  describe('getVisibleSelectablePaths', () => {
+    test('returns paths in visual group order and skips collapsed groups', () => {
+      const grouped = [
+        { groupId: 1, items: [{ fullPath: '/g1-a.jpg' }, { fullPath: '/g1-b.jpg' }] },
+        { groupId: 2, items: [{ fullPath: '/g2-a.jpg' }, { fullPath: '/g2-b.jpg' }] },
+        { groupId: 3, items: [{ fullPath: '/g3-a.jpg' }] },
+      ];
+      const collapsed = new Set([2]);
+      expect(getVisibleSelectablePaths(grouped, collapsed)).toEqual([
+        '/g1-a.jpg',
+        '/g1-b.jpg',
+        '/g3-a.jpg',
+      ]);
+    });
+  });
+
+  describe('findNextPreviewPath', () => {
+    test('wraps forward/backward and handles deselected current item safely', () => {
+      const items = [{ fullPath: '/a.jpg' }, { fullPath: '/b.jpg' }, { fullPath: '/c.jpg' }];
+      expect(findNextPreviewPath(items, '/a.jpg', -1)).toBe('/c.jpg');
+      expect(findNextPreviewPath(items, '/c.jpg', 1)).toBe('/a.jpg');
+      expect(findNextPreviewPath(items, '/removed.jpg', 1)).toBe('/a.jpg');
+      expect(findNextPreviewPath(items, '/removed.jpg', -1)).toBe('/c.jpg');
+      expect(findNextPreviewPath([], '/a.jpg', 1)).toBeNull();
+    });
+  });
+
+  describe('resolveDuplicateSelectionPreset', () => {
+    const items = [
+      { fullPath: '/orig.jpg', isOriginal: true },
+      { fullPath: '/copy1.jpg', isOriginal: false },
+      { fullPath: '/copy2.jpg', isOriginal: false },
+    ];
+
+    test('returns "none" when list is empty or nothing is selected', () => {
+      expect(resolveDuplicateSelectionPreset([], new Set(['/orig.jpg']))).toBe('none');
+      expect(resolveDuplicateSelectionPreset(items, new Set())).toBe('none');
+      expect(resolveDuplicateSelectionPreset(items, new Set(['/other.jpg']))).toBe('none');
+    });
+
+    test('returns "all" when every displayed item is selected', () => {
+      expect(
+        resolveDuplicateSelectionPreset(items, new Set(['/orig.jpg', '/copy1.jpg', '/copy2.jpg']))
+      ).toBe('all');
+    });
+
+    test('returns "copies" when all non-originals are selected and zero originals are selected', () => {
+      expect(resolveDuplicateSelectionPreset(items, new Set(['/copy1.jpg', '/copy2.jpg']))).toBe(
+        'copies'
+      );
+    });
+
+    test('returns "custom" for arbitrary partial subsets', () => {
+      expect(resolveDuplicateSelectionPreset(items, new Set(['/orig.jpg', '/copy1.jpg']))).toBe(
+        'custom'
+      );
+      expect(resolveDuplicateSelectionPreset(items, new Set(['/copy1.jpg']))).toBe('custom');
+      expect(resolveDuplicateSelectionPreset(items, new Set(['/orig.jpg']))).toBe('custom');
+    });
+
+    test('prefers "all" over "copies" when all displayed items are copies or originals', () => {
+      const onlyCopies = [
+        { fullPath: '/c1.jpg', isOriginal: false },
+        { fullPath: '/c2.jpg', isOriginal: false },
+      ];
+      expect(resolveDuplicateSelectionPreset(onlyCopies, new Set(['/c1.jpg', '/c2.jpg']))).toBe(
+        'all'
+      );
     });
   });
 });

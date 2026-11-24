@@ -1,9 +1,20 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useI18n } from '../../../context/I18nContext';
-import { ResizeSplitter, SearchableSelect, SourcePicker, useToolsSidebarResize } from '../../../shared';
+import { EmptyState, ResizeSplitter, SearchableSelect, SourcePicker, useToolsSidebarResize } from '../../../shared';
 import { ToolsStudioActionSlot, ToolsStudioCenterSlot } from '../../tools-studio/ToolsStudioActionSlot';
-import { formatBytes, toggleGroupCollapseInSet, collectAllGroupIds } from './duplicateUtils';
+import DuplicateFinderSkeleton from './DuplicateFinderSkeleton';
+import DuplicatePreviewModal from './DuplicatePreviewModal';
+import {
+  formatBytes,
+  toggleGroupCollapseInSet,
+  collectAllGroupIds,
+  applyDuplicateRangeSelection,
+  computeSelectedDuplicateStats,
+  getVisibleSelectablePaths,
+  findNextPreviewPath,
+  resolveDuplicateSelectionPreset,
+} from './duplicateUtils';
 
 const previewThumbnailCache = new Map();
 
@@ -135,16 +146,18 @@ export default function DuplicateFinderTab({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // Preview modal states
-  const [previewIndex, setPreviewIndex] = useState(null);
+  const [previewPath, setPreviewPath] = useState(null);
   const [previewDataUrl, setPreviewDataUrl] = useState(null);
+  const [previewError, setPreviewError] = useState(false);
 
-  // Search, sort & filter states
+  // Search & sort states
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('name_asc');
-  const [filterStatus, setFilterStatus] = useState('all');
 
   // Collapsed groups state (Set of groupIds that are currently collapsed)
   const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());
+  const lastClickedIndexRef = useRef(null);
+  const lastClickedSelectedRef = useRef(true);
 
   // Notify parent of running state
   useEffect(() => {
@@ -163,11 +176,12 @@ export default function DuplicateFinderTab({
     setScanError('');
     setSelectedForDelete(new Set());
     setScanProgress(null);
-    setPreviewIndex(null);
+    setPreviewPath(null);
     setDeleteMessage('');
     setSearchQuery('');
-    setFilterStatus('all');
     setCollapsedGroups(new Set());
+    lastClickedIndexRef.current = null;
+    lastClickedSelectedRef.current = true;
   }, []);
 
   // Listen to scan progress from main process
@@ -256,6 +270,7 @@ export default function DuplicateFinderTab({
       setImportedFiles([]);
       setScannedDuplicates([]);
       setHasScanned(false);
+      setStats({ total: 0, duplicates: 0, ok: 0 });
       setLoadingFiles(false);
       return;
     }
@@ -267,7 +282,6 @@ export default function DuplicateFinderTab({
     setScanError('');
     setDeleteMessage('');
     setSortBy('name_asc');
-    setFilterStatus('all');
 
     api.duplicateListFiles({ folders, sourceFiles, includeSubfolders })
       .then((res) => {
@@ -299,7 +313,7 @@ export default function DuplicateFinderTab({
     setScanError('');
     setDeleteMessage('');
     setScanProgress(null);
-    setPreviewIndex(null);
+    setPreviewPath(null);
     try {
       const payload = folders.length > 0
         ? {
@@ -331,7 +345,6 @@ export default function DuplicateFinderTab({
       setScannedDuplicates(duplicateImages);
       setHasScanned(true);
       setSortBy('duplicates_first');
-      setFilterStatus('all');
       // Mặc định thu gọn (collapse) tất cả nhóm trùng sau khi quét
       setCollapsedGroups(collectAllGroupIds(duplicateImages));
 
@@ -376,21 +389,14 @@ export default function DuplicateFinderTab({
     });
   }, []);
 
-  // Quick select duplicate copies only (except first original)
-  const selectExceptFirstPerGroup = useCallback(() => {
-    const next = new Set();
-    for (const img of scannedDuplicates) {
-      if (img.isDuplicate && !img.isOriginal) {
-        next.add(img.fullPath);
-      }
-    }
-    setSelectedForDelete(next);
-  }, [scannedDuplicates]);
-
   // Remove single image from list (does not delete file on disk)
   const handleRemoveItem = useCallback((pathToRemove) => {
     if (hasScanned) {
       setScannedDuplicates((prev) => prev.filter((img) => img.fullPath !== pathToRemove));
+      setStats((prev) => ({
+        ...prev,
+        total: Math.max(0, (prev.total || 0) - 1),
+      }));
     } else {
       setImportedFiles((prev) => prev.filter((f) => f.fullPath !== pathToRemove));
     }
@@ -412,16 +418,49 @@ export default function DuplicateFinderTab({
     }
   }, [api]);
 
-  // Deletion logic
+  const allSourceItems = useMemo(
+    () => (hasScanned ? scannedDuplicates : importedFiles),
+    [hasScanned, scannedDuplicates, importedFiles]
+  );
+
+  const selectedStats = useMemo(
+    () => computeSelectedDuplicateStats(allSourceItems, selectedForDelete),
+    [allSourceItems, selectedForDelete]
+  );
+  const selectedCount = selectedStats.selectedCount;
+  const importedTotalBytes = useMemo(
+    () => importedFiles.reduce((sum, f) => sum + (Number(f?.sizeBytes) || 0), 0),
+    [importedFiles]
+  );
+  const copiesCount = useMemo(
+    () => scannedDuplicates.filter((img) => !img.isOriginal).length,
+    [scannedDuplicates]
+  );
+  const totalGroupCount = useMemo(
+    () => collectAllGroupIds(scannedDuplicates).size,
+    [scannedDuplicates]
+  );
+  const totalReclaimableBytes = useMemo(
+    () =>
+      scannedDuplicates.reduce(
+        (sum, img) => sum + (!img.isOriginal ? Number(img?.sizeBytes) || 0 : 0),
+        0
+      ),
+    [scannedDuplicates]
+  );
+
+  // Deletion logic (scoped strictly to active items in list)
   const handleDelete = useCallback(() => {
-    if (!api?.duplicateDeleteFiles || !selectedForDelete.size || !hasSource) return;
+    if (!api?.duplicateDeleteFiles || selectedCount === 0 || !hasSource) return;
     setShowDeleteConfirm(true);
-  }, [api, selectedForDelete, hasSource]);
+  }, [api, selectedCount, hasSource]);
 
   const executeDelete = useCallback(async () => {
     setShowDeleteConfirm(false);
-    if (!api?.duplicateDeleteFiles || !selectedForDelete.size || !hasSource) return;
-    const paths = [...selectedForDelete];
+    if (!api?.duplicateDeleteFiles || selectedCount === 0 || !hasSource) return;
+    const activeSet = new Set(allSourceItems.map((img) => img.fullPath));
+    const paths = [...selectedForDelete].filter((p) => activeSet.has(p));
+    if (paths.length === 0) return;
     const allowedRoots = folders.length > 0 ? folders : sourceFiles;
     setDeleteBusy(true);
     setDeleteMessage('');
@@ -436,6 +475,10 @@ export default function DuplicateFinderTab({
       if (deletedSet.size > 0) {
         setScannedDuplicates((prev) => prev.filter((img) => !deletedSet.has(img.fullPath)));
         setImportedFiles((prev) => prev.filter((img) => !deletedSet.has(img.fullPath)));
+        setStats((prev) => ({
+          ...prev,
+          total: Math.max(0, (prev.total || 0) - deletedSet.size),
+        }));
         setSelectedForDelete((prev) => {
           const next = new Set(prev);
           for (const p of deletedSet) next.delete(p);
@@ -455,51 +498,7 @@ export default function DuplicateFinderTab({
     } finally {
       setDeleteBusy(false);
     }
-  }, [api, selectedForDelete, hasSource, folders, sourceFiles, t]);
-
-  const selectedCount = selectedForDelete.size;
-  const copiesCount = useMemo(
-    () => scannedDuplicates.filter((img) => !img.isOriginal).length,
-    [scannedDuplicates]
-  );
-
-  // Danh sách các tùy chọn cho dropdown Bộ lọc trạng thái (Filter)
-  const filterOptions = useMemo(() => {
-    const totalCount = hasScanned ? scannedDuplicates.length : importedFiles.length;
-    const allLabel = hasScanned
-      ? `${t('duplicateTab.filterAllDuplicates')} (${totalCount})`
-      : `${t('duplicateTab.filterAll')} (${totalCount})`;
-
-    return [
-      {
-        value: 'all',
-        label: allLabel,
-        materialIcon: 'layers',
-      },
-      ...(selectedCount > 0
-        ? [
-            {
-              value: 'selected',
-              label: `${t('duplicateTab.filterSelected')} (${selectedCount})`,
-              materialIcon: 'check_box',
-            },
-          ]
-        : []),
-    ];
-  }, [
-    hasScanned,
-    scannedDuplicates.length,
-    importedFiles.length,
-    selectedCount,
-    t,
-  ]);
-
-  // Tự động trả về 'all' nếu đang lọc 'selected' mà toàn bộ selection bị hủy
-  useEffect(() => {
-    if (filterStatus === 'selected' && selectedCount === 0) {
-      setFilterStatus('all');
-    }
-  }, [filterStatus, selectedCount]);
+  }, [api, selectedCount, hasSource, allSourceItems, selectedForDelete, folders, sourceFiles, t]);
 
   // Filtered and Sorted Images
   const displayedItems = useMemo(() => {
@@ -516,12 +515,7 @@ export default function DuplicateFinderTab({
       );
     }
 
-    // 2. Status filter
-    if (filterStatus === 'selected') {
-      list = list.filter((item) => selectedForDelete.has(item.fullPath));
-    }
-
-    // 3. Sort
+    // 2. Sort
     list.sort((a, b) => {
       if (hasScanned && sortBy === 'duplicates_first') {
         if (a.duplicateGroup && b.duplicateGroup && a.duplicateGroup !== b.duplicateGroup) {
@@ -546,20 +540,21 @@ export default function DuplicateFinderTab({
     });
 
     return list;
-  }, [hasScanned, scannedDuplicates, importedFiles, searchQuery, filterStatus, sortBy, selectedForDelete]);
+  }, [hasScanned, scannedDuplicates, importedFiles, searchQuery, sortBy]);
 
-  // Master Checkbox State
   const allDisplayedChecked = useMemo(() => {
     if (displayedItems.length === 0) return false;
     return displayedItems.every((item) => selectedForDelete.has(item.fullPath));
   }, [displayedItems, selectedForDelete]);
 
-  const someDisplayedChecked = useMemo(() => {
-    if (displayedItems.length === 0) return false;
-    return displayedItems.some((item) => selectedForDelete.has(item.fullPath));
-  }, [displayedItems, selectedForDelete]);
+  const visibleSelectedInDisplayedCount = useMemo(
+    () => computeSelectedDuplicateStats(displayedItems, selectedForDelete).selectedCount,
+    [displayedItems, selectedForDelete]
+  );
 
   const handleToggleSelectAll = useCallback(() => {
+    lastClickedIndexRef.current = null;
+    lastClickedSelectedRef.current = true;
     setSelectedForDelete((prev) => {
       const next = new Set(prev);
       if (allDisplayedChecked) {
@@ -570,6 +565,107 @@ export default function DuplicateFinderTab({
       return next;
     });
   }, [allDisplayedChecked, displayedItems]);
+
+  // Quick select duplicate copies only (except first original) across displayed items
+  const selectExceptFirstPerGroup = useCallback(() => {
+    lastClickedIndexRef.current = null;
+    lastClickedSelectedRef.current = true;
+    setSelectedForDelete((prev) => {
+      const next = new Set(prev);
+      for (const item of displayedItems) {
+        if (item.isDuplicate && !item.isOriginal) {
+          next.add(item.fullPath);
+        } else {
+          next.delete(item.fullPath);
+        }
+      }
+      return next;
+    });
+  }, [displayedItems]);
+
+  const handleClearDisplayedSelection = useCallback(() => {
+    lastClickedIndexRef.current = null;
+    lastClickedSelectedRef.current = true;
+    setSelectedForDelete((prev) => {
+      const next = new Set(prev);
+      for (const item of displayedItems) next.delete(item.fullPath);
+      return next;
+    });
+  }, [displayedItems]);
+
+  const selectionPreset = useMemo(
+    () => resolveDuplicateSelectionPreset(displayedItems, selectedForDelete),
+    [displayedItems, selectedForDelete]
+  );
+
+  const displayedHasCopies = useMemo(
+    () =>
+      displayedItems.some((item) => !item.isOriginal) &&
+      displayedItems.some((item) => item.isOriginal),
+    [displayedItems]
+  );
+
+  const selectionPresetOptions = useMemo(() => {
+    const total = displayedItems.length;
+    const baseOptions = [
+      {
+        value: 'all',
+        label:
+          selectionPreset === 'all'
+            ? `${t('duplicateTab.checkAll')} (${visibleSelectedInDisplayedCount}/${total})`
+            : t('duplicateTab.checkAll'),
+        materialIcon: 'check_box',
+      },
+      ...(displayedHasCopies
+        ? [
+            {
+              value: 'copies',
+              label:
+                selectionPreset === 'copies'
+                  ? `${t('duplicateTab.keepOneOriginal')} (${visibleSelectedInDisplayedCount}/${total})`
+                  : t('duplicateTab.keepOneOriginal'),
+              materialIcon: 'filter_1',
+            },
+          ]
+        : []),
+      {
+        value: 'none',
+        label:
+          selectionPreset === 'none'
+            ? `${t('duplicateTab.uncheckAll')} (0/${total})`
+            : t('duplicateTab.uncheckAll'),
+        materialIcon: 'check_box_outline_blank',
+      },
+    ];
+
+    if (selectionPreset === 'custom') {
+      return [
+        {
+          value: 'custom',
+          label: t('duplicateTab.selectionCustom', {
+            selected: visibleSelectedInDisplayedCount,
+            total,
+          }),
+          materialIcon: 'indeterminate_check_box',
+        },
+        ...baseOptions,
+      ];
+    }
+    return baseOptions;
+  }, [selectionPreset, displayedItems.length, visibleSelectedInDisplayedCount, displayedHasCopies, t]);
+
+  const handleSelectionPresetChange = useCallback(
+    (mode) => {
+      if (mode === 'all') {
+        if (!allDisplayedChecked) handleToggleSelectAll();
+      } else if (mode === 'copies') {
+        selectExceptFirstPerGroup();
+      } else if (mode === 'none') {
+        handleClearDisplayedSelection();
+      }
+    },
+    [allDisplayedChecked, handleToggleSelectAll, selectExceptFirstPerGroup, handleClearDisplayedSelection]
+  );
 
   // Gom nhóm ảnh trùng theo từng cụm/nhóm trùng (Duplicate Group)
   const groupedDuplicates = useMemo(() => {
@@ -593,6 +689,12 @@ export default function DuplicateFinderTab({
       const allItemsChecked =
         items.length > 0 && items.every((img) => selectedForDelete.has(img.fullPath));
       const someItemsChecked = items.some((img) => selectedForDelete.has(img.fullPath));
+      const allOriginalsChecked =
+        originals.length > 0 && originals.every((img) => selectedForDelete.has(img.fullPath));
+      const onlyCopiesSelected =
+        copies.length > 0 &&
+        allCopiesChecked &&
+        originals.every((img) => !selectedForDelete.has(img.fullPath));
 
       return {
         groupId,
@@ -605,11 +707,56 @@ export default function DuplicateFinderTab({
         someCopiesChecked,
         allItemsChecked,
         someItemsChecked,
+        allOriginalsChecked,
+        onlyCopiesSelected,
       };
     });
   }, [hasScanned, displayedItems, selectedForDelete]);
 
+  // Visual render order of visible rows for Shift+click range selection
+  const visibleSelectablePaths = useMemo(
+    () => getVisibleSelectablePaths(groupedDuplicates, collapsedGroups),
+    [groupedDuplicates, collapsedGroups]
+  );
+  const visibleSelectablePathsKey = useMemo(
+    () => visibleSelectablePaths.join('\n'),
+    [visibleSelectablePaths]
+  );
+
+  useEffect(() => {
+    lastClickedIndexRef.current = null;
+    lastClickedSelectedRef.current = true;
+  }, [visibleSelectablePathsKey]);
+
+  const handleSelectRow = useCallback(
+    (clickedPath, shiftKey = false) => {
+      const clickedIndex = visibleSelectablePaths.indexOf(clickedPath);
+      if (clickedIndex < 0) return;
+      if (shiftKey && typeof window !== 'undefined') {
+        window.getSelection?.()?.removeAllRanges?.();
+      }
+      const anchorIndex = lastClickedIndexRef.current;
+      const anchorTargetSelected = lastClickedSelectedRef.current;
+      setSelectedForDelete((prev) => {
+        const res = applyDuplicateRangeSelection({
+          prevSelected: prev,
+          visiblePaths: visibleSelectablePaths,
+          clickedIndex,
+          anchorIndex,
+          anchorTargetSelected,
+          shiftKey,
+        });
+        lastClickedIndexRef.current = res.nextAnchorIndex;
+        lastClickedSelectedRef.current = res.nextAnchorTargetSelected;
+        return res.nextSelected;
+      });
+    },
+    [visibleSelectablePaths]
+  );
+
   const toggleGroupSelection = useCallback((group) => {
+    lastClickedIndexRef.current = null;
+    lastClickedSelectedRef.current = true;
     setSelectedForDelete((prev) => {
       const next = new Set(prev);
       if (group.allItemsChecked) {
@@ -626,6 +773,9 @@ export default function DuplicateFinderTab({
   }, []);
 
   const selectOnlyGroupCopies = useCallback((group) => {
+    if (!group?.copies?.length) return;
+    lastClickedIndexRef.current = null;
+    lastClickedSelectedRef.current = true;
     setSelectedForDelete((prev) => {
       const next = new Set(prev);
       for (const orig of group.originals) {
@@ -639,6 +789,8 @@ export default function DuplicateFinderTab({
   }, []);
 
   const uncheckGroup = useCallback((group) => {
+    lastClickedIndexRef.current = null;
+    lastClickedSelectedRef.current = true;
     setSelectedForDelete((prev) => {
       const next = new Set(prev);
       for (const item of group.items) {
@@ -672,23 +824,48 @@ export default function DuplicateFinderTab({
     });
   }, [groupedDuplicates]);
 
-  // Preview modal image loading & keyboard navigation
-  const activeItem = previewIndex !== null ? displayedItems[previewIndex] : null;
+  // Preview modal image loading & keyboard navigation (keeps viewed item stable when toggling in 'selected' filter)
+  const activeItem = useMemo(() => {
+    if (!previewPath) return null;
+    return (
+      displayedItems.find((item) => item.fullPath === previewPath) ||
+      allSourceItems.find((item) => item.fullPath === previewPath) ||
+      null
+    );
+  }, [previewPath, displayedItems, allSourceItems]);
+
+  useEffect(() => {
+    if (previewPath !== null && !activeItem) {
+      setPreviewPath(null);
+    }
+  }, [previewPath, activeItem]);
 
   useEffect(() => {
     if (!activeItem || !api) {
       setPreviewDataUrl(null);
+      setPreviewError(false);
       return;
     }
     let active = true;
+    setPreviewDataUrl(null);
+    setPreviewError(false);
     const readPreview = api.readImagePreview || api.duplicateReadPreview;
     if (readPreview) {
-      readPreview(activeItem.fullPath).then((res) => {
-        if (!active) return;
-        if (res?.ok && res?.dataUrl) {
-          setPreviewDataUrl(res.dataUrl);
-        }
-      });
+      Promise.resolve(readPreview(activeItem.fullPath))
+        .then((res) => {
+          if (!active) return;
+          if (res?.ok && res?.dataUrl) {
+            setPreviewDataUrl(res.dataUrl);
+          } else {
+            setPreviewError(true);
+          }
+        })
+        .catch(() => {
+          if (!active) return;
+          setPreviewError(true);
+        });
+    } else {
+      setPreviewError(true);
     }
     return () => {
       active = false;
@@ -696,13 +873,36 @@ export default function DuplicateFinderTab({
   }, [activeItem, api]);
 
   useEffect(() => {
-    if (previewIndex === null) return undefined;
+    if (!activeItem) return undefined;
     const onKey = (e) => {
-      if (e.key === 'Escape') setPreviewIndex(null);
-      else if (e.key === 'ArrowLeft') {
-        setPreviewIndex((prev) => (prev > 0 ? prev - 1 : displayedItems.length - 1));
-      } else if (e.key === 'ArrowRight') {
-        setPreviewIndex((prev) => (prev < displayedItems.length - 1 ? prev + 1 : 0));
+      if (showDeleteConfirm) return;
+      if (e.key === 'Escape') {
+        setPreviewPath(null);
+        return;
+      }
+      if (e.key === 'ArrowLeft') {
+        setPreviewPath((prev) => findNextPreviewPath(displayedItems, prev, -1));
+        return;
+      }
+      if (e.key === 'ArrowRight') {
+        setPreviewPath((prev) => findNextPreviewPath(displayedItems, prev, 1));
+        return;
+      }
+      const target = e.target;
+      const tag = target?.tagName;
+      if (
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        tag === 'SELECT' ||
+        tag === 'BUTTON' ||
+        target?.getAttribute?.('role') === 'button' ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
+      if (e.key === ' ' && hasScanned && activeItem?.fullPath && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        togglePath(activeItem.fullPath);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -712,7 +912,7 @@ export default function DuplicateFinderTab({
       window.removeEventListener('keydown', onKey);
       document.body.style.overflow = prevOverflow;
     };
-  }, [previewIndex, displayedItems.length]);
+  }, [activeItem, displayedItems, hasScanned, showDeleteConfirm, togglePath]);
 
   const hasItemsToDisplay = hasScanned ? scannedDuplicates.length > 0 : importedFiles.length > 0;
 
@@ -720,24 +920,27 @@ export default function DuplicateFinderTab({
     <div className="flex-1 flex min-h-0 min-w-0 overflow-hidden bg-surface">
       <ToolsStudioCenterSlot active={isActive}>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            disabled={!hasElectron || !hasSource || scanning || deleteBusy || loadingFiles || (!hasScanned && importedFiles.length === 0)}
-            onClick={handleScan}
-            className="flex h-8 items-center justify-center gap-1.5 rounded-lg bg-primary px-3.5 text-xs font-semibold text-on-primary shadow-xs transition-all hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-[16px] leading-none">travel_explore</span>
-            <span>{scanning ? t('duplicateTab.scanning') : t('duplicateTab.start')}</span>
-          </button>
-          <button
-            type="button"
-            onClick={handleCancelScan}
-            disabled={!scanning || !api?.duplicateCancelScan}
-            className="flex h-8 items-center justify-center gap-1 rounded-lg border border-error/40 px-2.5 text-xs font-semibold text-error transition-colors hover:bg-error/10 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-[16px] leading-none">stop_circle</span>
-            <span>{t('duplicateTab.stop')}</span>
-          </button>
+          {scanning ? (
+            <button
+              type="button"
+              onClick={handleCancelScan}
+              disabled={!api?.duplicateCancelScan}
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-error/30 bg-error/15 px-3.5 text-xs font-semibold text-error transition-colors hover:bg-error/25 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer shrink-0 whitespace-nowrap"
+            >
+              <span className="material-symbols-outlined text-[16px] leading-none">stop_circle</span>
+              <span>{t('duplicateTab.stop')}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={!hasElectron || !hasSource || deleteBusy || loadingFiles || (!hasScanned && importedFiles.length === 0)}
+              onClick={handleScan}
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-primary px-3.5 text-xs font-semibold text-on-primary shadow-2xs transition-all hover:opacity-95 active:scale-95 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer shrink-0 whitespace-nowrap"
+            >
+              <span className="material-symbols-outlined text-[16px] leading-none">travel_explore</span>
+              <span>{hasScanned ? t('duplicateTab.rescan') : t('duplicateTab.start')}</span>
+            </button>
+          )}
         </div>
       </ToolsStudioCenterSlot>
       <ToolsStudioActionSlot active={isActive}></ToolsStudioActionSlot>
@@ -748,9 +951,9 @@ export default function DuplicateFinderTab({
           style={{ width: `${sidebarWidth}px` }}
           className="relative shrink-0 flex flex-col h-full border-r border-outline-variant/20 overflow-visible select-none"
         >
-          <div className="flex-1 overflow-y-auto custom-scrollbar px-4 py-5 space-y-5 mr-1.5">
+          <div className="flex-1 flex flex-col overflow-y-auto custom-scrollbar px-4 py-5 space-y-5 mr-1.5">
             {!hasElectron && (
-              <p className="text-xs text-amber-400">{t('duplicateTab.desktopOnly')}</p>
+              <p className="text-xs text-amber-600 dark:text-amber-400">{t('duplicateTab.desktopOnly')}</p>
             )}
 
             {/* (1) Nguồn ảnh: Hỗ trợ 1 hoặc nhiều thư mục (có nút Thêm thư mục khác) */}
@@ -766,11 +969,6 @@ export default function DuplicateFinderTab({
               foldersMaxHeightClass="max-h-[55vh]"
             />
 
-            {/* (2) Contextual Callout thuật toán */}
-            <p className="rounded-lg border border-outline-variant/20 bg-surface-container-high p-2.5 text-[11px] leading-relaxed text-on-surface-variant">
-              {t('duplicateTab.algorithmHint')}
-            </p>
-
             {/* Thông báo lỗi / kết quả */}
             {scanError ? (
               <p className="text-xs text-error whitespace-pre-wrap" role="alert">
@@ -783,6 +981,45 @@ export default function DuplicateFinderTab({
                 {deleteMessage}
               </p>
             ) : null}
+
+            {/* (2) Thẻ thống kê tổng quan (đồng bộ Khám phá / Thư viện) */}
+            <div className="mt-auto pt-2">
+              <div
+                data-testid="duplicate-overview-card"
+                className="rounded-xl border border-primary/15 bg-primary/5 p-3"
+              >
+                <div className="text-[10px] font-bold text-primary mb-2 flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-[13px]">bar_chart</span>
+                  <span>{t('duplicateTab.overview.title')}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+                  <span className="text-on-surface-variant">{t('duplicateTab.overview.totalImages')}</span>
+                  <span className="font-bold text-on-surface text-right tabular-nums">
+                    {hasScanned ? stats.total : importedFiles.length}
+                  </span>
+                  <span className="text-on-surface-variant">{t('duplicateTab.overview.duplicateGroups')}</span>
+                  <span className="font-bold text-primary text-right tabular-nums">
+                    {hasScanned ? totalGroupCount : '—'}
+                  </span>
+                  <span className="text-on-surface-variant">{t('duplicateTab.overview.duplicateCopies')}</span>
+                  <span className="font-bold text-rose-600 dark:text-rose-400 text-right tabular-nums">
+                    {hasScanned ? copiesCount : '—'}
+                  </span>
+                  <span className="text-on-surface-variant">{t('duplicateTab.overview.reclaimable')}</span>
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400 text-right tabular-nums">
+                    {hasScanned ? formatBytes(totalReclaimableBytes) : '—'}
+                  </span>
+                </div>
+                <div className="mt-2.5 pt-2 border-t border-primary/10 space-y-1.5 text-[10px] text-on-surface-variant/75 leading-relaxed">
+                  <div className="flex items-start gap-1.5">
+                    <span className="w-4 h-4 flex items-center justify-center shrink-0 text-primary/70">
+                      <span className="material-symbols-outlined text-[13px] leading-none">touch_app</span>
+                    </span>
+                    <span className="flex-1 min-w-0 leading-snug pt-0.5">{t('duplicateTab.overview.tip')}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
           <ResizeSplitter
@@ -794,204 +1031,179 @@ export default function DuplicateFinderTab({
         </div>
       )}
 
-      {/* ─── right panel: results & actions ─── */}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col p-4 overflow-hidden">
-        {/* Progress Bar khi đang quét */}
-        {scanning && scanProgress && (
-          <div className="shrink-0 space-y-1 pb-3">
-            <div className="h-1 overflow-hidden rounded-full bg-surface-container-highest">
-              <div
-                className="h-full bg-primary transition-[width] duration-150"
-                style={{
-                  width: `${Math.max(0, Math.min(100, (scanProgress.processed / Math.max(1, scanProgress.total)) * 100))}%`,
-                }}
-              />
+      {/* ─── right panel: edge-to-edge workspace, selection bar & slim footer ─── */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-surface">
+        {/* Thanh công cụ Inline đồng bộ 1 hàng h-8 */}
+        {hasSource && hasItemsToDisplay && !scanning && !loadingFiles && (
+          <div className="shrink-0 flex flex-nowrap items-center justify-between gap-2 border-b border-outline-variant/20 px-4 sm:px-6 py-2.5 bg-surface-container-low/50 select-none overflow-x-auto no-scrollbar">
+            {/* Left: Selection Preset Select & Contextual Delete CTA */}
+            <div className="flex items-center gap-2 shrink-0">
+              {!hasScanned ? (
+                <div className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-surface-container-highest/70 border border-outline-variant/20 px-3 text-xs text-on-surface whitespace-nowrap">
+                  <span className="material-symbols-outlined text-[16px] leading-none text-primary">photo_library</span>
+                  <span className="font-semibold text-on-surface">
+                    {t('duplicateTab.readyToScan', { count: displayedItems.length })}
+                  </span>
+                </div>
+              ) : (
+                <>
+                  <SearchableSelect
+                    size="sm"
+                    value={selectionPreset}
+                    onChange={handleSelectionPresetChange}
+                    options={selectionPresetOptions}
+                    placeholder=""
+                    showPlaceholderOption={false}
+                    disabled={displayedItems.length === 0}
+                    ariaLabel={t('duplicateTab.selectionModeAria')}
+                    className="w-56 min-w-[13rem] shrink-0"
+                  />
+
+                  {selectedCount > 0 && (
+                    <button
+                      type="button"
+                      data-testid="duplicate-delete-selected-btn"
+                      disabled={!hasElectron || deleteBusy}
+                      onClick={handleDelete}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-error/30 bg-error/15 px-3 text-xs font-semibold text-error hover:bg-error/25 disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed shrink-0 transition-colors whitespace-nowrap"
+                    >
+                      <span className="material-symbols-outlined text-[16px] leading-none">delete</span>
+                      <span className="tabular-nums">
+                        {deleteBusy
+                          ? t('duplicateTab.deleting')
+                          : t('duplicateTab.deleteSelectedWithSize', {
+                              count: selectedCount,
+                              size: formatBytes(selectedStats.selectedBytes),
+                            })}
+                      </span>
+                    </button>
+                  )}
+                </>
+              )}
             </div>
-            <div className="flex items-center justify-between text-[11px] text-on-surface-variant">
-              <p className="truncate">
-                {t('duplicateTab.scanning')} {scanProgress.processed} / {scanProgress.total}
-                {scanProgress.currentFile ? ` — ${scanProgress.currentFile}` : ''}
-              </p>
-              <span className="shrink-0 font-mono ml-2">
-                {Math.round((scanProgress.processed / Math.max(1, scanProgress.total)) * 100)}%
-              </span>
-            </div>
+
+            {/* Right: Flexible Search + Sort h-8 + Collapse toggle (same row) */}
+            {hasScanned && (
+              <div className="flex items-center gap-2 min-w-0 flex-1 justify-end">
+                <div className="flex h-8 items-center gap-1.5 bg-surface-container-highest rounded-lg px-2.5 border border-outline-variant/25 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/30 transition-colors flex-1 min-w-[7rem] max-w-[15rem]">
+                  <span className="material-symbols-outlined text-outline shrink-0 text-[16px] leading-none">
+                    search
+                  </span>
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder={t('duplicateTab.searchPlaceholder')}
+                    className="min-h-0 h-7 bg-transparent border-none text-xs leading-normal focus:ring-0 p-0 flex-1 min-w-0 text-on-surface outline-none placeholder:text-outline"
+                  />
+                  {searchQuery ? (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      data-tooltip={t('duplicateTab.clearSearch')}
+                      aria-label={t('duplicateTab.clearSearch')}
+                      className="cursor-pointer shrink-0 rounded-md p-0.5 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-[14px] leading-none">close</span>
+                    </button>
+                  ) : null}
+                </div>
+
+                <SearchableSelect
+                  size="sm"
+                  value={sortBy}
+                  onChange={setSortBy}
+                  options={[
+                    { value: 'duplicates_first', label: t('duplicateTab.sortDuplicatesFirst'), materialIcon: 'content_copy' },
+                    { value: 'name_asc', label: t('duplicateTab.sortNameAsc'), materialIcon: 'sort_by_alpha' },
+                    { value: 'name_desc', label: t('duplicateTab.sortNameDesc'), materialIcon: 'sort_by_alpha' },
+                    { value: 'size_desc', label: t('duplicateTab.sortSizeDesc'), materialIcon: 'format_size' },
+                    { value: 'size_asc', label: t('duplicateTab.sortSizeAsc'), materialIcon: 'format_size' },
+                  ]}
+                  placeholder=""
+                  showPlaceholderOption={false}
+                  ariaLabel={t('duplicateTab.sortDuplicatesFirst')}
+                  className="w-48 min-w-[11.5rem] shrink-0"
+                />
+
+                {groupedDuplicates.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={toggleAllGroupsCollapse}
+                    data-tooltip={allGroupsCollapsed ? t('duplicateTab.expandAll') : t('duplicateTab.collapseAll')}
+                    aria-label={allGroupsCollapsed ? t('duplicateTab.expandAll') : t('duplicateTab.collapseAll')}
+                    className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-outline-variant/20 bg-surface-container-highest text-on-surface-variant hover:text-primary hover:border-primary/40 cursor-pointer transition-colors shrink-0"
+                  >
+                    <span className="material-symbols-outlined text-[18px] leading-none">
+                      {allGroupsCollapsed ? 'unfold_more' : 'unfold_less'}
+                    </span>
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
 
-        {/* Khung danh sách chuẩn Tools Studio */}
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-outline-variant/15 bg-surface-container-lowest/50 shadow-sm">
-          {/* Thanh công cụ đỉnh Toolbar */}
-          {hasSource && hasItemsToDisplay && (
-            <div className="shrink-0 flex items-center justify-between gap-2 border-b border-outline-variant/15 px-3 py-2 bg-surface-container-low/40 min-h-[3rem] overflow-x-auto no-scrollbar">
-              {/* Left: When !hasScanned, show simple count badge. When hasScanned, show selection & filter controls */}
-              <div className="flex items-center gap-1.5 shrink-0">
-                {!hasScanned ? (
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-container-highest/60 border border-outline-variant/15 text-xs text-on-surface select-none">
-                    <span className="material-symbols-outlined text-[17px] text-primary">photo_library</span>
-                    <span className="font-semibold text-on-surface">
-                      {t('duplicateTab.readyToScan', { count: displayedItems.length })}
-                    </span>
-                  </div>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      onClick={handleToggleSelectAll}
-                      aria-label={allDisplayedChecked ? t('duplicateTab.uncheckAll') : t('duplicateTab.checkAll')}
-                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-surface-container-highest/70 hover:bg-surface-container-highest text-on-surface transition-colors cursor-pointer border border-outline-variant/20 shrink-0"
-                    >
-                      <span className="material-symbols-outlined text-[18px] leading-none text-primary">
-                        {allDisplayedChecked
-                          ? 'check_box'
-                          : someDisplayedChecked
-                            ? 'indeterminate_check_box'
-                            : 'check_box_outline_blank'}
-                      </span>
-                    </button>
-
-                    {/* Nút chọn nhanh bản sao trùng (nằm cạnh Checkbox All) */}
-                    {copiesCount > 0 && (
-                      <button
-                        type="button"
-                        onClick={selectExceptFirstPerGroup}
-                        data-tooltip={t('duplicateTab.selectAllExceptFirst')}
-                        aria-label={t('duplicateTab.selectAllExceptFirst')}
-                        className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-on-surface-variant hover:text-primary hover:bg-surface-container-highest/80 border border-outline-variant/20 cursor-pointer transition-colors shrink-0"
-                      >
-                        <span className="material-symbols-outlined text-[18px] leading-none">filter_1</span>
-                      </button>
-                    )}
-
-                    {/* Dropdown Bộ lọc trạng thái */}
-                    <SearchableSelect
-                      value={filterStatus}
-                      onChange={setFilterStatus}
-                      options={filterOptions}
-                      className="min-w-[12.5rem] sm:min-w-[14rem]"
-                    />
-
-                    {/* Nút thu gọn / mở rộng tất cả nhóm trùng */}
-                    {groupedDuplicates.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={toggleAllGroupsCollapse}
-                        data-tooltip={allGroupsCollapsed ? t('duplicateTab.expandAll') : t('duplicateTab.collapseAll')}
-                        aria-label={allGroupsCollapsed ? t('duplicateTab.expandAll') : t('duplicateTab.collapseAll')}
-                        className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-on-surface-variant hover:text-primary hover:bg-surface-container-highest/80 border border-outline-variant/20 cursor-pointer transition-colors shrink-0"
-                      >
-                        <span className="material-symbols-outlined text-[18px] leading-none">
-                          {allGroupsCollapsed ? 'unfold_more' : 'unfold_less'}
-                        </span>
-                      </button>
-                    )}
-                  </>
-                )}
-              </div>
-
-              {/* Right: Search + Sort + Delete Button (chỉ hiển thị sau khi đã quét xong) */}
-              {hasScanned && (
-                <div className="flex items-center gap-2 shrink-0">
-                  <div className="relative flex items-center">
-                    <span className="material-symbols-outlined absolute left-2.5 text-[15px] text-on-surface-variant/50 pointer-events-none">
-                      search
-                    </span>
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder={t('duplicateTab.searchPlaceholder')}
-                      className="h-8 w-32 sm:w-36 rounded-lg bg-surface-container-highest/80 pl-8 pr-7 text-xs outline-none focus:ring-1 focus:ring-primary placeholder:text-on-surface-variant/40 transition-all"
-                    />
-                    {searchQuery && (
-                      <button
-                        type="button"
-                        onClick={() => setSearchQuery('')}
-                        className="absolute right-2 text-on-surface-variant/60 hover:text-on-surface text-[14px] cursor-pointer"
-                      >
-                        ✕
-                      </button>
-                    )}
-                  </div>
-
-                  <SearchableSelect
-                    value={sortBy}
-                    onChange={setSortBy}
-                    options={[
-                      { value: 'duplicates_first', label: t('duplicateTab.sortDuplicatesFirst'), materialIcon: 'content_copy' },
-                      { value: 'name_asc', label: t('duplicateTab.sortNameAsc'), materialIcon: 'sort_by_alpha' },
-                      { value: 'name_desc', label: t('duplicateTab.sortNameDesc'), materialIcon: 'sort_by_alpha' },
-                      { value: 'size_desc', label: t('duplicateTab.sortSizeDesc'), materialIcon: 'format_size' },
-                      { value: 'size_asc', label: t('duplicateTab.sortSizeAsc'), materialIcon: 'format_size' },
-                    ]}
-                    className="min-w-[11.5rem]"
-                  />
-
-                  <button
-                    type="button"
-                    disabled={!hasElectron || !selectedCount || deleteBusy}
-                    onClick={handleDelete}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs bg-error text-on-error font-bold hover:opacity-90 disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed shrink-0 shadow-xs transition-opacity h-8"
-                  >
-                    <span className="material-symbols-outlined text-[16px]">delete</span>
-                    <span>{deleteBusy ? t('duplicateTab.deleting') : t('duplicateTab.delete')}</span>
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Vùng danh sách nội dung */}
+        {/* Vùng danh sách nội dung */}
+        <div className="custom-scrollbar flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 bg-surface flex flex-col">
           {!hasSource ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 text-on-surface-variant/40">
-              <span className="material-symbols-outlined text-[48px]">travel_explore</span>
-              <p className="text-sm">{t('duplicateTab.noSourceSelected')}</p>
-            </div>
+            <EmptyState
+              icon="travel_explore"
+              title={t('duplicateTab.selectSource')}
+              description={t('duplicateTab.noSourceSelected')}
+            />
           ) : loadingFiles ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 text-on-surface-variant">
-              <span className="material-symbols-outlined text-4xl text-primary animate-spin">
-                progress_activity
-              </span>
-              <p className="text-sm font-medium text-on-surface">{t('duplicateTab.loadingFiles')}</p>
-            </div>
+            <DuplicateFinderSkeleton
+              mode="files"
+              statusText={t('duplicateTab.loadingFiles')}
+            />
           ) : scanning ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 text-on-surface-variant">
-              <span className="material-symbols-outlined text-4xl text-primary animate-spin">
-                progress_activity
-              </span>
-              <p className="text-sm font-medium text-on-surface">{t('duplicateTab.scanning')}</p>
-              {scanProgress && (
-                <p className="text-xs text-on-surface-variant font-mono">
-                  {scanProgress.processed} / {scanProgress.total} (
-                  {Math.round((scanProgress.processed / Math.max(1, scanProgress.total)) * 100)}%)
-                </p>
-              )}
-            </div>
+            <DuplicateFinderSkeleton
+              mode="groups"
+              statusText={t('duplicateTab.scanning')}
+              progress={scanProgress}
+            />
           ) : !hasScanned && importedFiles.length === 0 ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 text-on-surface-variant/40 p-6 text-center">
-              <span className="material-symbols-outlined text-[48px]">folder_off</span>
-              <p className="text-sm font-medium text-on-surface">{t('duplicateTab.noResults')}</p>
-            </div>
+            <EmptyState
+              icon="folder_off"
+              title={t('duplicateTab.noResults')}
+            />
           ) : hasScanned && scannedDuplicates.length === 0 ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-              <span className="material-symbols-outlined text-[54px] text-emerald-400">check_circle</span>
-              <p className="text-base font-bold text-on-surface">{t('duplicateTab.noDuplicatesFound')}</p>
-              <p className="text-xs text-on-surface-variant/70 max-w-md">{t('duplicateTab.allImagesUnique')}</p>
-            </div>
+            <EmptyState
+              icon="check_circle"
+              title={t('duplicateTab.noDuplicatesFound')}
+              description={t('duplicateTab.allImagesUnique')}
+            />
           ) : displayedItems.length === 0 ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 text-on-surface-variant/40">
-              <span className="material-symbols-outlined text-[48px]">search_off</span>
-              <p className="text-sm font-medium text-on-surface">{t('duplicateTab.noMatchingFilter')}</p>
-            </div>
+            <EmptyState
+              icon="search_off"
+              title={t('duplicateTab.noMatchingFilter')}
+              action={
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery('');
+                  }}
+                  className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-outline-variant/25 bg-surface-container-highest px-3.5 text-xs font-semibold text-on-surface hover:border-primary/40 hover:text-primary transition-colors cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[15px] leading-none">restart_alt</span>
+                  <span>{t('duplicateTab.resetFilters')}</span>
+                </button>
+              }
+            />
           ) : hasScanned ? (
-            <div className="min-h-0 flex-1 overflow-y-auto py-1.5 pr-1 custom-scrollbar space-y-3">
+            <div className="space-y-3">
               {groupedDuplicates.map((group) => {
                 const representativeItem = group.originals[0] || group.items[0];
                 const isCollapsed = collapsedGroups.has(group.groupId);
                 return (
                   <div
                     key={`group-${group.groupId}`}
-                    className="mx-1 rounded-xl border border-outline-variant/20 bg-surface-container-low/40 overflow-hidden shadow-xs"
+                    className={`rounded-xl border shadow-xs transition-colors overflow-hidden ${
+                      group.allOriginalsChecked
+                        ? 'border-amber-500/45 bg-amber-500/[0.04]'
+                        : 'border-outline-variant/20 bg-surface-container-low/40'
+                    }`}
                   >
                     {/* Header nhóm trùng */}
                     <div
@@ -1007,7 +1219,7 @@ export default function DuplicateFinderTab({
                       }}
                       data-tooltip={isCollapsed ? t('duplicateTab.expandGroup') : t('duplicateTab.collapseGroup')}
                       className={[
-                        'flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 px-3 py-2.5 bg-surface-container-high/60 text-xs cursor-pointer select-none transition-colors hover:bg-surface-container-high',
+                        'flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 px-3.5 py-2.5 bg-surface-container-high/60 text-xs cursor-pointer select-none transition-colors hover:bg-surface-container-high',
                         isCollapsed ? '' : 'border-b border-outline-variant/15',
                       ].join(' ')}
                     >
@@ -1047,10 +1259,7 @@ export default function DuplicateFinderTab({
                           <GroupThumbnail
                             item={representativeItem}
                             tooltipText={t('duplicateTab.preview')}
-                            onPreviewClick={() => {
-                              const repIdx = displayedItems.indexOf(representativeItem);
-                              if (repIdx !== -1) setPreviewIndex(repIdx);
-                            }}
+                            onPreviewClick={() => setPreviewPath(representativeItem.fullPath)}
                           />
                         )}
 
@@ -1064,23 +1273,33 @@ export default function DuplicateFinderTab({
                             <span className="truncate text-on-surface-variant font-medium">
                               {t('duplicateTab.groupFilesCount', { count: group.items.length })}
                               {group.copies.length > 0 && (
-                                <span className="text-rose-400 font-semibold ml-1">
+                                <span className="text-rose-500 dark:text-rose-400 font-semibold ml-1">
                                   ({group.copies.length} {t('duplicateTab.filterCopiesOnly') || 'bản sao'})
                                 </span>
                               )}
                             </span>
 
                             {group.reclaimableSize > 0 && (
-                              <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-mono text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20 shrink-0">
+                              <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-mono text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20 shrink-0 tabular-nums">
                                 <span className="material-symbols-outlined text-[13px]">delete_sweep</span>
                                 <span>{formatBytes(group.reclaimableSize)}</span>
+                              </span>
+                            )}
+
+                            {group.allOriginalsChecked && (
+                              <span
+                                data-testid="duplicate-group-all-selected-warning"
+                                className="inline-flex items-center gap-1 rounded-md border border-amber-500/35 bg-amber-500/12 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300 shrink-0"
+                              >
+                                <span className="material-symbols-outlined text-[13px] leading-none">warning</span>
+                                <span>{t('duplicateTab.allOriginalsSelectedWarning')}</span>
                               </span>
                             )}
                           </div>
 
                           {/* Thông số ảnh đại diện */}
                           {representativeItem && (
-                            <div className="flex items-center gap-2 text-[11px] text-on-surface-variant/70 min-w-0">
+                            <div className="flex items-center gap-2 text-[11px] text-on-surface-variant/75 min-w-0">
                               <span
                                 className="truncate font-medium text-on-surface text-xs"
                                 data-tooltip={representativeItem.fullPath}
@@ -1088,11 +1307,11 @@ export default function DuplicateFinderTab({
                                 {representativeItem.name}
                               </span>
                               {representativeItem.width && representativeItem.height ? (
-                                <span className="shrink-0 font-mono text-[10px] text-on-surface-variant/60">
+                                <span className="shrink-0 font-mono text-[10px] text-on-surface-variant/65 tabular-nums">
                                   {representativeItem.width}×{representativeItem.height}
                                 </span>
                               ) : null}
-                              <span className="shrink-0 font-mono text-[10px] text-on-surface-variant/60">
+                              <span className="shrink-0 font-mono text-[10px] text-on-surface-variant/65 tabular-nums">
                                 {formatBytes(representativeItem.sizeBytes)}
                               </span>
                             </div>
@@ -1104,25 +1323,36 @@ export default function DuplicateFinderTab({
                       <div className="flex items-center gap-1.5 shrink-0">
                         <button
                           type="button"
+                          disabled={group.copies.length === 0}
+                          aria-pressed={group.onlyCopiesSelected}
                           onClick={(e) => {
                             e.stopPropagation();
                             selectOnlyGroupCopies(group);
                           }}
-                          className="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-surface-container-highest/80 hover:bg-surface-container-highest text-on-surface hover:text-primary transition-colors cursor-pointer"
+                          className={`h-7 px-2.5 rounded-lg text-[11px] border transition-colors cursor-pointer whitespace-nowrap disabled:opacity-45 disabled:cursor-not-allowed ${
+                            group.onlyCopiesSelected
+                              ? 'border-primary/40 bg-primary/15 text-primary font-semibold'
+                              : 'border-outline-variant/25 bg-surface-container-highest text-on-surface font-medium hover:border-primary/40 hover:text-primary'
+                          }`}
                           data-tooltip={t('duplicateTab.selectAllExceptFirst')}
                         >
-                          {t('duplicateTab.filterCopiesOnly') || 'Chọn bản sao'}
+                          {t('duplicateTab.selectGroupCopies')}
                         </button>
                         <button
                           type="button"
+                          aria-pressed={!group.someItemsChecked}
                           onClick={(e) => {
                             e.stopPropagation();
                             uncheckGroup(group);
                           }}
-                          className="px-2.5 py-1 rounded-lg text-[11px] font-medium text-on-surface-variant/60 hover:text-on-surface hover:bg-surface-container-highest transition-colors cursor-pointer"
+                          className={`h-7 px-2.5 rounded-lg text-[11px] border transition-colors cursor-pointer whitespace-nowrap ${
+                            !group.someItemsChecked
+                              ? 'border-primary/40 bg-primary/15 text-primary font-semibold'
+                              : 'border-outline-variant/25 bg-surface-container-highest text-on-surface font-medium hover:border-primary/40 hover:text-primary'
+                          }`}
                           data-tooltip={t('duplicateTab.uncheckAll')}
                         >
-                          {t('duplicateTab.cancel') || 'Bỏ chọn'}
+                          {t('duplicateTab.unselectGroup')}
                         </button>
                         <button
                           type="button"
@@ -1130,7 +1360,7 @@ export default function DuplicateFinderTab({
                             e.stopPropagation();
                             toggleGroupCollapse(group.groupId);
                           }}
-                          className="w-7 h-7 flex items-center justify-center rounded-lg text-on-surface-variant/60 hover:text-primary hover:bg-surface-container-highest transition-colors cursor-pointer shrink-0"
+                          className="w-7 h-7 flex items-center justify-center rounded-lg border border-outline-variant/25 bg-surface-container-highest text-on-surface-variant hover:text-primary hover:border-primary/40 transition-colors cursor-pointer shrink-0"
                           data-tooltip={isCollapsed ? t('duplicateTab.expandGroup') : t('duplicateTab.collapseGroup')}
                           aria-label={isCollapsed ? t('duplicateTab.expandGroup') : t('duplicateTab.collapseGroup')}
                         >
@@ -1149,141 +1379,144 @@ export default function DuplicateFinderTab({
                     {/* Danh sách các ảnh trong nhóm */}
                     {!isCollapsed && (
                       <ul className="divide-y divide-outline-variant/10">
-                      {group.items.map((item) => {
-                        const idx = displayedItems.indexOf(item);
-                        const isChecked = selectedForDelete.has(item.fullPath);
-                        return (
-                          <li
-                            key={item.fullPath}
-                            onClick={() => setPreviewIndex(idx)}
-                            className="flex items-center gap-2.5 px-3 py-2 text-sm hover:bg-surface-container-high cursor-pointer transition-colors group"
-                          >
-                            {/* 1. Checkbox */}
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                togglePath(item.fullPath);
-                              }}
-                              aria-label={isChecked ? t('duplicateTab.uncheckAll') : t('duplicateTab.checkAll')}
-                              className="flex items-center justify-center p-0.5 rounded text-on-surface-variant/70 hover:text-primary transition-colors cursor-pointer shrink-0"
+                        {group.items.map((item) => {
+                          const isChecked = selectedForDelete.has(item.fullPath);
+                          return (
+                            <li
+                              key={item.fullPath}
+                              onClick={() => setPreviewPath(item.fullPath)}
+                              className={`flex items-center gap-2.5 px-3.5 py-2 text-sm hover:bg-surface-container-high cursor-pointer transition-colors group select-none ${
+                                isChecked ? 'bg-primary/[0.04]' : ''
+                              }`}
                             >
+                              {/* 1. Checkbox (hỗ trợ Shift+click chọn nhiều dòng) */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSelectRow(item.fullPath, Boolean(e.shiftKey));
+                                }}
+                                aria-label={isChecked ? t('duplicateTab.uncheckAll') : t('duplicateTab.checkAll')}
+                                className="flex items-center justify-center p-0.5 rounded text-on-surface-variant/70 hover:text-primary transition-colors cursor-pointer shrink-0"
+                              >
+                                <span
+                                  className={[
+                                    'material-symbols-outlined text-[20px] leading-none select-none pointer-events-none',
+                                    isChecked ? 'text-primary' : 'text-on-surface-variant/35 hover:text-on-surface-variant/60',
+                                  ].join(' ')}
+                                >
+                                  {isChecked ? 'check_box' : 'check_box_outline_blank'}
+                                </span>
+                              </button>
+
+                              {/* 2. Icon loại file */}
                               <span
                                 className={[
-                                  'material-symbols-outlined text-[20px] leading-none select-none pointer-events-none',
-                                  isChecked ? 'text-primary' : 'text-on-surface-variant/35 hover:text-on-surface-variant/60',
+                                  'material-symbols-outlined shrink-0 text-[18px]',
+                                  item.isOriginal ? 'text-cyan-500 dark:text-cyan-400' : 'text-rose-500 dark:text-rose-400',
                                 ].join(' ')}
                               >
-                                {isChecked ? 'check_box' : 'check_box_outline_blank'}
+                                {item.isOriginal ? 'photo_library' : 'content_copy'}
                               </span>
-                            </button>
 
-                            {/* 2. Icon loại file */}
-                            <span
-                              className={[
-                                'material-symbols-outlined shrink-0 text-[18px]',
-                                item.isOriginal ? 'text-cyan-400' : 'text-rose-400',
-                              ].join(' ')}
-                            >
-                              {item.isOriginal ? 'photo_library' : 'content_copy'}
-                            </span>
+                              {/* 3. Tên tệp & Đường dẫn tương đối */}
+                              <div className="min-w-0 flex-1">
+                                <p
+                                  className="truncate font-medium text-on-surface text-xs sm:text-sm"
+                                  data-tooltip={item.fullPath}
+                                >
+                                  {item.name}
+                                </p>
+                                <p
+                                  className="truncate text-[10px] text-on-surface-variant/65 font-mono"
+                                  data-tooltip={item.fullPath}
+                                >
+                                  {item.relativePath}
+                                </p>
+                              </div>
 
-                            {/* 3. Tên tệp & Đường dẫn tương đối */}
-                            <div className="min-w-0 flex-1">
-                              <p
-                                className="truncate font-medium text-on-surface text-xs sm:text-sm"
-                                data-tooltip={item.fullPath}
-                              >
-                                {item.name}
-                              </p>
-                              <p
-                                className="truncate text-[10px] text-on-surface-variant/60 font-mono"
-                                data-tooltip={item.fullPath}
-                              >
-                                {item.relativePath}
-                              </p>
-                            </div>
+                              {/* 4. Kích thước gốc & Dung lượng */}
+                              <div className="shrink-0 text-[11px] font-mono text-on-surface-variant/70 text-right tabular-nums">
+                                {item.width && item.height ? <span>{item.width}×{item.height} · </span> : null}
+                                <span>{formatBytes(item.sizeBytes)}</span>
+                              </div>
 
-                            {/* 4. Kích thước gốc & Dung lượng */}
-                            <div className="shrink-0 text-[11px] font-mono text-on-surface-variant/70 text-right">
-                              {item.width && item.height ? <span>{item.width}×{item.height} · </span> : null}
-                              <span>{formatBytes(item.sizeBytes)}</span>
-                            </div>
+                              {/* 5. Badges trạng thái */}
+                              {item.isOriginal ? (
+                                <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold border border-cyan-500/30 bg-cyan-500/10 text-cyan-600 dark:text-cyan-400">
+                                  {t('duplicateTab.originalBadge')}
+                                </span>
+                              ) : (
+                                <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold border border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400">
+                                  {t('duplicateTab.duplicateBadge')}
+                                </span>
+                              )}
 
-                            {/* 5. Badges trạng thái */}
-                            {item.isOriginal ? (
-                              <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold border border-cyan-500/30 bg-cyan-500/10 text-cyan-400">
-                                {t('duplicateTab.originalBadge')}
-                              </span>
-                            ) : (
-                              <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold border border-rose-500/30 bg-rose-500/10 text-rose-400">
-                                {t('duplicateTab.duplicateBadge')}
-                              </span>
-                            )}
+                              {/* 6. Cụm nút hành động đồng chuẩn h-8 w-8 rounded-lg border */}
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPreviewPath(item.fullPath);
+                                  }}
+                                  data-tooltip={t('duplicateTab.preview')}
+                                  aria-label={t('duplicateTab.preview')}
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-outline-variant/20 bg-surface-container-highest text-on-surface-variant hover:text-primary hover:border-primary/40 shrink-0 cursor-pointer transition-colors"
+                                >
+                                  <span className="material-symbols-outlined text-[16px] leading-none">visibility</span>
+                                </button>
 
-                            {/* 6. Nút Xem Trước */}
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setPreviewIndex(idx);
-                              }}
-                              data-tooltip={t('duplicateTab.preview')}
-                              aria-label={t('duplicateTab.preview')}
-                              className="p-1 rounded text-on-surface-variant/50 hover:text-primary hover:bg-surface-container-highest shrink-0 cursor-pointer transition-colors"
-                            >
-                              <span className="material-symbols-outlined text-[18px]">visibility</span>
-                            </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenItemFolder(item.fullPath);
+                                  }}
+                                  data-tooltip={t('duplicateTab.openFolder')}
+                                  aria-label={t('duplicateTab.openFolder')}
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-outline-variant/20 bg-surface-container-highest text-on-surface-variant hover:text-primary hover:border-primary/40 shrink-0 cursor-pointer transition-colors"
+                                >
+                                  <span className="material-symbols-outlined text-[16px] leading-none">folder_open</span>
+                                </button>
 
-                            {/* 7. Nút Mở Thư Mục Chứa Ảnh */}
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleOpenItemFolder(item.fullPath);
-                              }}
-                              data-tooltip={t('duplicateTab.openFolder')}
-                              aria-label={t('duplicateTab.openFolder')}
-                              className="p-1 rounded text-on-surface-variant/50 hover:text-primary hover:bg-surface-container-highest shrink-0 cursor-pointer transition-colors"
-                            >
-                              <span className="material-symbols-outlined text-[18px]">folder_open</span>
-                            </button>
-
-                            {/* 8. Nút Xóa Khỏi Danh Sách */}
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRemoveItem(item.fullPath);
-                              }}
-                              aria-label={t('duplicateTab.removeFromList')}
-                              className="p-1 rounded text-on-surface-variant/50 hover:text-error hover:bg-error/10 shrink-0 cursor-pointer transition-colors"
-                            >
-                              <span className="material-symbols-outlined text-[18px]">delete</span>
-                            </button>
-                          </li>
-                        );
-                      })}
-                    </ul>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRemoveItem(item.fullPath);
+                                  }}
+                                  data-tooltip={t('duplicateTab.removeFromList')}
+                                  aria-label={t('duplicateTab.removeFromList')}
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-outline-variant/20 bg-surface-container-highest text-on-surface-variant hover:text-on-surface hover:border-outline-variant/50 shrink-0 cursor-pointer transition-colors"
+                                >
+                                  <span className="material-symbols-outlined text-[16px] leading-none">close</span>
+                                </button>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
                     )}
                   </div>
                 );
               })}
             </div>
           ) : (
-            <ul className="min-h-0 flex-1 overflow-y-auto py-1 pr-1 custom-scrollbar">
+            <ul className="space-y-1.5">
               {displayedItems.map((item, idx) => (
                 <li
                   key={item.fullPath}
-                  className="mx-1 flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-sm hover:bg-surface-container-high transition-colors select-none"
+                  onClick={() => setPreviewPath(item.fullPath)}
+                  className="flex items-center gap-2.5 rounded-xl border border-outline-variant/20 bg-surface-container-low/40 px-3.5 py-2 text-sm hover:border-primary/35 hover:bg-surface-container-high cursor-pointer transition-colors select-none"
                 >
                   {/* Số thứ tự */}
-                  <span className="w-6 shrink-0 text-center font-mono text-[11px] text-on-surface-variant/40 select-none">
+                  <span className="w-6 shrink-0 text-center font-mono text-[11px] text-on-surface-variant/55 tabular-nums select-none">
                     {idx + 1}
                   </span>
 
                   {/* Icon loại file */}
-                  <span className="material-symbols-outlined shrink-0 text-[18px] text-on-surface-variant/40">
+                  <span className="material-symbols-outlined shrink-0 text-[18px] text-on-surface-variant/60">
                     image
                   </span>
 
@@ -1292,13 +1525,13 @@ export default function DuplicateFinderTab({
                     <p className="truncate font-medium text-on-surface text-xs sm:text-sm">
                       {item.name}
                     </p>
-                    <p className="truncate text-[10px] text-on-surface-variant/50 font-mono">
+                    <p className="truncate text-[10px] text-on-surface-variant/60 font-mono">
                       {item.relativePath}
                     </p>
                   </div>
 
                   {/* Kích thước gốc & Dung lượng */}
-                  <div className="shrink-0 text-[11px] font-mono text-on-surface-variant/60 text-right">
+                  <div className="shrink-0 text-[11px] font-mono text-on-surface-variant/70 text-right tabular-nums">
                     {item.width && item.height ? <span>{item.width}×{item.height} · </span> : null}
                     <span>{formatBytes(item.sizeBytes)}</span>
                   </div>
@@ -1307,109 +1540,55 @@ export default function DuplicateFinderTab({
             </ul>
           )}
         </div>
+
+        {/* Slim Bottom Summary Footer */}
+        {hasSource && hasItemsToDisplay && !scanning && !loadingFiles && (
+          <div
+            data-testid="duplicate-summary-footer"
+            className="border-t border-outline-variant/20 bg-surface-container-low/80 backdrop-blur-md px-4 sm:px-6 py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 select-none shrink-0"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary tabular-nums shadow-2xs truncate">
+                {hasScanned
+                  ? t('duplicateTab.footerGroupsSummary', {
+                      groups: totalGroupCount,
+                      total: scannedDuplicates.length,
+                      copies: copiesCount,
+                    })
+                  : t('duplicateTab.footerPendingSummary', {
+                      count: importedFiles.length,
+                      size: formatBytes(importedTotalBytes),
+                    })}
+              </span>
+            </div>
+            {hasScanned && (
+              <div className="text-xs text-on-surface-variant font-medium tabular-nums">
+                {t('duplicateTab.footerSelectedSummary', {
+                  count: selectedCount,
+                  size: formatBytes(selectedStats.selectedBytes),
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Interactive Preview Modal (Portal z-[9990]) */}
-      {previewIndex !== null && displayedItems[previewIndex] && typeof document !== 'undefined'
-        ? createPortal(
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-label={t('duplicateTab.preview')}
-              className="fixed inset-0 z-[9990] flex flex-col items-center justify-center bg-black/92 backdrop-blur-md text-white p-4"
-              onClick={() => setPreviewIndex(null)}
-            >
-              <button
-                type="button"
-                onClick={() => setPreviewIndex(null)}
-                data-tooltip={t('duplicateTab.closePreview')}
-                aria-label={t('duplicateTab.closePreview')}
-                className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-[20px] leading-none">close</span>
-              </button>
-
-              {displayedItems.length > 1 && (
-                <>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setPreviewIndex((prev) => (prev > 0 ? prev - 1 : displayedItems.length - 1));
-                    }}
-                    className="absolute left-4 top-1/2 -translate-y-1/2 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white cursor-pointer transition-colors"
-                  >
-                    <span className="material-symbols-outlined text-[24px]">arrow_back_ios_new</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setPreviewIndex((prev) => (prev < displayedItems.length - 1 ? prev + 1 : 0));
-                    }}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white cursor-pointer transition-colors"
-                  >
-                    <span className="material-symbols-outlined text-[24px]">arrow_forward_ios</span>
-                  </button>
-                </>
-              )}
-
-              <div
-                className="inline-flex max-h-[90vh] max-w-[92vw] flex-col items-center justify-center gap-3"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {previewDataUrl ? (
-                  <img
-                    src={previewDataUrl}
-                    alt=""
-                    className="max-h-[80vh] w-auto max-w-full object-contain rounded-xl shadow-2xl ring-1 ring-white/10"
-                  />
-                ) : (
-                  <div className="w-64 h-64 flex items-center justify-center">
-                    <span className="material-symbols-outlined text-4xl text-primary animate-spin">
-                      progress_activity
-                    </span>
-                  </div>
-                )}
-                <div className="flex flex-col items-center gap-1 text-center">
-                  <p className="max-w-2xl text-xs font-mono text-white/90 px-2 break-all font-semibold">
-                    {displayedItems[previewIndex].name}
-                  </p>
-                  <p className="max-w-2xl text-[11px] font-mono text-white/60 px-2 break-all">
-                    {displayedItems[previewIndex].fullPath}
-                  </p>
-                  <div className="flex items-center gap-2 text-xs font-mono text-white/70">
-                    {displayedItems[previewIndex].width && displayedItems[previewIndex].height ? (
-                      <span>
-                        {displayedItems[previewIndex].width}×{displayedItems[previewIndex].height}
-                      </span>
-                    ) : null}
-                    <span>•</span>
-                    <span>{formatBytes(displayedItems[previewIndex].sizeBytes)}</span>
-                    {hasScanned && displayedItems[previewIndex].isDuplicate ? (
-                      <>
-                        <span>•</span>
-                        <span
-                          className={
-                            displayedItems[previewIndex].isOriginal
-                              ? 'text-cyan-400 font-bold'
-                              : 'text-rose-400 font-bold'
-                          }
-                        >
-                          {displayedItems[previewIndex].isOriginal
-                            ? t('duplicateTab.originalBadge')
-                            : t('duplicateTab.duplicateBadge')}{' '}
-                          ({t('duplicateTab.group', { id: displayedItems[previewIndex].duplicateGroup })})
-                        </span>
-                      </>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            </div>,
-            document.body
-          )
-        : null}
+      {/* Theme-Aware Studio Preview Modal */}
+      <DuplicatePreviewModal
+        item={activeItem}
+        previewDataUrl={previewDataUrl}
+        previewError={previewError}
+        hasScanned={hasScanned}
+        isSelected={Boolean(activeItem && selectedForDelete.has(activeItem.fullPath))}
+        currentIndex={activeItem ? displayedItems.findIndex((it) => it.fullPath === activeItem.fullPath) : -1}
+        totalCount={displayedItems.length}
+        onToggleSelect={togglePath}
+        onOpenFolder={handleOpenItemFolder}
+        onPrev={() => setPreviewPath((prev) => findNextPreviewPath(displayedItems, prev, -1))}
+        onNext={() => setPreviewPath((prev) => findNextPreviewPath(displayedItems, prev, 1))}
+        onClose={() => setPreviewPath(null)}
+        t={t}
+      />
 
       {/* Delete Confirmation Modal (Portal z-[9990]) */}
       {showDeleteConfirm && typeof document !== 'undefined' ? (
@@ -1430,7 +1609,10 @@ export default function DuplicateFinderTab({
                   </h3>
                 </div>
                 <p className="text-sm text-on-surface-variant leading-relaxed pl-13">
-                  {t('duplicateTab.deleteConfirm', { count: selectedForDelete.size })}
+                  {t('duplicateTab.deleteConfirm', { count: selectedCount })}{' '}
+                  <span className="font-mono font-semibold text-on-surface">
+                    ({formatBytes(selectedStats.selectedBytes)})
+                  </span>
                 </p>
               </div>
               <div className="px-6 py-4 flex items-center justify-end gap-2 bg-surface-container-low/40 border-t border-outline-variant/10">
