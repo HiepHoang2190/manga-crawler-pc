@@ -133,15 +133,26 @@ export default function RenameTab({
   // fromRel values the user unchecked — default empty = all preview ops selected
   const [deselectedRels, setDeselectedRels] = useState(() => new Set());
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState('changed');
+  const [filterStatus, setFilterStatus] = useState('all');
+
+  const clearPreviewResults = () => {
+    setPreviewOps([]);
+    setBlockedOps([]);
+    setUnchangedOps([]);
+    setUnchangedCount(0);
+    setDeselectedRels(new Set());
+  };
 
   const handleModeChange = (next_mode) => {
     if (applying || next_mode === renameMode) return;
     setRenameMode(next_mode);
+    setFilterStatus('all');
+    setSearchQuery('');
     setDeselectedRels(new Set());
     if (next_mode === 'folders') {
       if (sourceFiles.length > 0) {
         setSourceFiles([]);
+        if (!rootDir) clearPreviewResults();
       }
       if (selectedCategory === 'extension' || selectedCategory === 'cleanup') {
         setSelectedCategory('autoNormalize');
@@ -343,6 +354,8 @@ export default function RenameTab({
     if (!selected_dir) return;
     setRootDir(selected_dir);
     setSourceFiles([]);
+    setFilterStatus('all');
+    setSearchQuery('');
     setRenameProgress(null);
     setErrorMessage('');
     setResultMessage('');
@@ -357,6 +370,8 @@ export default function RenameTab({
       if (files && files.length > 0) {
         setSourceFiles(files);
         setRootDir('');
+        setFilterStatus('all');
+        setSearchQuery('');
         setRenameProgress(null);
         setErrorMessage('');
         setResultMessage('');
@@ -370,11 +385,9 @@ export default function RenameTab({
   const handleClearRoot = () => {
     setRootDir('');
     setSourceFiles([]);
-    setPreviewOps([]);
-    setBlockedOps([]);
-    setUnchangedOps([]);
-    setUnchangedCount(0);
-    setDeselectedRels(new Set());
+    setFilterStatus('all');
+    setSearchQuery('');
+    clearPreviewResults();
     setRenameProgress(null);
     setErrorMessage('');
     setResultMessage('');
@@ -673,9 +686,9 @@ export default function RenameTab({
           );
         }
         if (filterStatus === 'changed') {
-          rows = rows.filter((r) => r.opType !== 'unchanged' && !r.blocked && r.fromRel !== r.toRel);
+          rows = rows.filter((r) => r.opType !== 'unchanged' && !r.blocked && (r.opType === 'delete' || r.fromRel !== r.toRel));
         } else if (filterStatus === 'unchanged') {
-          rows = rows.filter((r) => r.opType === 'unchanged' || (!r.blocked && r.fromRel === r.toRel));
+          rows = rows.filter((r) => r.opType === 'unchanged' || (!r.blocked && r.opType !== 'delete' && r.fromRel === r.toRel));
         } else if (filterStatus === 'blocked') {
           rows = rows.filter((r) => r.blocked);
         }
@@ -994,29 +1007,35 @@ export default function RenameTab({
     <div className="flex-1 flex min-h-0 min-w-0 overflow-hidden bg-surface">
       <ToolsStudioCenterSlot active={isActive}>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleApply}
-            disabled={!api?.renameApply || apply_disabled}
-            className="flex h-8 items-center justify-center gap-1.5 rounded-lg bg-primary px-3.5 text-xs font-semibold text-on-primary shadow-xs transition-all hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-[16px] leading-none">drive_file_rename_outline</span>
-            <span>{applying ? t('renameTab.applying') : t('renameTab.apply')}</span>
-          </button>
-          <button
-            type="button"
-            onClick={handleStop}
-            disabled={!applying || !api?.cancelRename}
-            className="flex h-8 items-center justify-center gap-1 rounded-lg border border-error/40 px-2.5 text-xs font-semibold text-error transition-colors hover:bg-error/10 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-[16px] leading-none">stop_circle</span>
-            <span>{t('renameTab.stop')}</span>
-          </button>
+          {applying ? (
+            <button
+              type="button"
+              data-testid="rename-stop-btn"
+              onClick={handleStop}
+              disabled={!api?.cancelRename}
+              aria-label={t('renameTab.stop')}
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-error/30 bg-error/15 px-3.5 text-xs font-semibold text-error transition-all hover:bg-error/25 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer shrink-0 whitespace-nowrap"
+            >
+              <span className="material-symbols-outlined text-[16px] leading-none">stop_circle</span>
+              <span>{t('renameTab.stop')}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              data-testid="rename-apply-btn"
+              onClick={handleApply}
+              disabled={!api?.renameApply || apply_disabled}
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-primary px-3.5 text-xs font-semibold text-on-primary shadow-2xs transition-all hover:opacity-95 active:scale-95 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer shrink-0 whitespace-nowrap"
+            >
+              <span className="material-symbols-outlined text-[16px] leading-none">drive_file_rename_outline</span>
+              <span>{t('renameTab.apply')}</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={handleUndo}
             disabled={applying || undoStack.length === 0 || !api?.renameUndo}
-            className="flex h-8 items-center justify-center gap-1 rounded-lg border border-outline-variant/30 px-2.5 text-xs font-medium text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
+            className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-outline-variant/30 px-2.5 text-xs font-medium text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer shrink-0 whitespace-nowrap"
           >
             <span className="material-symbols-outlined text-[16px] leading-none">undo</span>
             <span>
@@ -1065,11 +1084,10 @@ export default function RenameTab({
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto custom-scrollbar px-4 py-5 mr-1.5">
-        <div className="space-y-5">
-          {!hasDesktopApi && (
-            <p className="text-xs text-amber-400">{t('renameTab.desktopOnly')}</p>
-          )}
+          <div className="flex-1 flex flex-col overflow-y-auto custom-scrollbar px-4 py-5 space-y-5 mr-1.5">
+            {!hasDesktopApi && (
+              <p className="text-xs text-amber-600 dark:text-amber-400">{t('renameTab.desktopOnly')}</p>
+            )}
 
           <SourcePicker
             sourceDir={rootDir}
@@ -1114,21 +1132,69 @@ export default function RenameTab({
 
           {renderParamsPanel()}
 
-          {(errorMessage || (resultMessage && !errorMessage)) && (
-            <div className="space-y-1">
-              {errorMessage && (
-                <p className="text-xs text-error font-medium" role="alert">
-                  {errorMessage}
-                </p>
-              )}
-              {resultMessage && !errorMessage && (
-                <p className="text-xs text-green-400/90 font-medium" role="status">
-                  {resultMessage}
-                </p>
-              )}
+          {/* Thông báo lỗi / kết quả */}
+          {errorMessage ? (
+            <p className="text-xs text-error whitespace-pre-wrap" role="alert">
+              {errorMessage}
+            </p>
+          ) : null}
+
+          {resultMessage && !errorMessage ? (
+            <p
+              data-testid="rename-result-message"
+              className="text-xs text-on-surface whitespace-pre-wrap border border-outline-variant/20 rounded-xl p-3 bg-surface-container-highest/50"
+              role="status"
+            >
+              {resultMessage}
+            </p>
+          ) : null}
+
+          {/* Thẻ thống kê tổng quan (đồng bộ tab Trùng ảnh) */}
+          <div className="mt-auto pt-2">
+            <div
+              data-testid="rename-overview-card"
+              className="rounded-xl border border-primary/15 bg-primary/5 p-3"
+            >
+              <div className="text-[10px] font-bold text-primary mb-2 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[13px]">bar_chart</span>
+                <span>{t('renameTab.overview.title')}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+                <span className="text-on-surface-variant">{t('renameTab.overview.totalItems')}</span>
+                <span className="font-bold text-on-surface text-right tabular-nums">
+                  {hasSource ? total_items_count : '—'}
+                </span>
+                <span className="text-on-surface-variant">{t('renameTab.overview.willChange')}</span>
+                <span className="font-bold text-primary text-right tabular-nums">
+                  {hasSource ? previewOps.length : '—'}
+                </span>
+                <span className="text-on-surface-variant">{t('renameTab.overview.selected')}</span>
+                <span className="font-bold text-emerald-600 dark:text-emerald-400 text-right tabular-nums">
+                  {hasSource ? selected_ops_count : '—'}
+                </span>
+                <span className="text-on-surface-variant">{t('renameTab.overview.unchanged')}</span>
+                <span className="font-bold text-on-surface-variant text-right tabular-nums">
+                  {hasSource ? unchangedOps.length : '—'}
+                </span>
+                {hasSource && blockedOps.length > 0 && (
+                  <>
+                    <span className="text-on-surface-variant">{t('renameTab.overview.blocked')}</span>
+                    <span className="font-bold text-rose-600 dark:text-rose-400 text-right tabular-nums">
+                      {blockedOps.length}
+                    </span>
+                  </>
+                )}
+              </div>
+              <div className="mt-2.5 pt-2 border-t border-primary/10 space-y-1.5 text-[10px] text-on-surface-variant/75 leading-relaxed">
+                <div className="flex items-start gap-1.5">
+                  <span className="w-4 h-4 flex items-center justify-center shrink-0 text-primary/70">
+                    <span className="material-symbols-outlined text-[13px] leading-none">touch_app</span>
+                  </span>
+                  <span className="flex-1 min-w-0 leading-snug pt-0.5">{t('renameTab.overview.tip')}</span>
+                </div>
+              </div>
             </div>
-          )}
-        </div>
+          </div>
           </div>
 
           <ResizeSplitter

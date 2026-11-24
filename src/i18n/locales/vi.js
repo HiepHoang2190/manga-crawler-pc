@@ -1857,6 +1857,13 @@ export const vi = {
   'renameTab.noSourceSelected': 'Chưa chọn thư mục hoặc tệp nguồn.',
   'renameTab.searchPlaceholder': 'Tìm theo tên…',
   'renameTab.clearSearch': 'Xóa tìm kiếm',
+  'renameTab.overview.title': 'Tổng quan',
+  'renameTab.overview.totalItems': 'Tổng số mục',
+  'renameTab.overview.willChange': 'Thay đổi',
+  'renameTab.overview.selected': 'Đã chọn',
+  'renameTab.overview.unchanged': 'Giữ nguyên',
+  'renameTab.overview.blocked': 'Xung đột',
+  'renameTab.overview.tip': 'Tick chọn các mục cần đổi tên trong danh sách, hỗ trợ Hoàn tác sau khi áp dụng.',
 
   'imageConvertTab.desktopOnly': 'Chức năng này chỉ dùng trên bản desktop.',
   'imageConvertTab.selectSource': 'Chọn nguồn ảnh',

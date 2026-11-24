@@ -1856,6 +1856,13 @@ export const en = {
   'renameTab.noSourceSelected': 'No source folder or files selected.',
   'renameTab.searchPlaceholder': 'Search by name…',
   'renameTab.clearSearch': 'Clear search',
+  'renameTab.overview.title': 'Overview',
+  'renameTab.overview.totalItems': 'Total items',
+  'renameTab.overview.willChange': 'Changes',
+  'renameTab.overview.selected': 'Selected',
+  'renameTab.overview.unchanged': 'Unchanged',
+  'renameTab.overview.blocked': 'Conflicts',
+  'renameTab.overview.tip': 'Check items to include in the preview list; changes can be undone after applying.',
 
   'imageConvertTab.desktopOnly': 'This feature is only available in the desktop app.',
   'imageConvertTab.selectSource': 'Select Image Source',

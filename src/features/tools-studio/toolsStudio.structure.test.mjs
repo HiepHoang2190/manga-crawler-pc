@@ -113,3 +113,30 @@ test('ToolsStudio sub-tab pill buttons match toolbar action button height (h-8 p
   expect(studioSrc).toMatch(/data-testid=\{`subtab-\$\{tab\.id\}`\}[\s\S]{0,250}\bh-8 px-3\b/);
   expect(studioSrc).not.toMatch(/data-testid=\{`subtab-\$\{tab\.id\}`\}[\s\S]{0,250}(?:\bpy-1\.5\b|\bh-7\b)/);
 });
+
+test('All 4 tool tabs render a single Start/Stop toggle CTA using unified Primary and soft-error Stop styles', () => {
+  TAB_FILES.forEach((rel) => {
+    const tabSrc = fs.readFileSync(path.join(dirname, rel), 'utf8');
+    const slotMatch = tabSrc.match(/<ToolsStudioCenterSlot active=\{isActive\}>([\s\S]*?)<\/ToolsStudioCenterSlot>/);
+    expect({ rel, hasCenterSlot: Boolean(slotMatch) }).toEqual({ rel, hasCenterSlot: true });
+    const slotSrc = slotMatch[1];
+
+    expect({ rel, hasToggle: /\b(?:processing|applying|scanning)\s*\?\s*\(/.test(slotSrc) }).toEqual({
+      rel,
+      hasToggle: true,
+    });
+    expect(slotSrc).not.toMatch(/disabled=\{!(?:processing|applying)\b/);
+    expect(slotSrc).toContain('stop_circle');
+    expect(slotSrc).toContain('bg-error/15');
+    expect(slotSrc).toContain('text-error');
+    expect(slotSrc).toContain('border-error/30');
+    expect(slotSrc).toContain('bg-primary');
+    expect(slotSrc).toContain('text-on-primary');
+    expect(slotSrc).toContain('h-8');
+    expect(slotSrc).toContain('px-3.5');
+  });
+
+  const renameSrc = fs.readFileSync(path.join(dirname, '../export/rename/RenameTab.jsx'), 'utf8');
+  const renameSlot = renameSrc.match(/<ToolsStudioCenterSlot active=\{isActive\}>([\s\S]*?)<\/ToolsStudioCenterSlot>/)[1];
+  expect(renameSlot).toContain('onClick={handleUndo}');
+});

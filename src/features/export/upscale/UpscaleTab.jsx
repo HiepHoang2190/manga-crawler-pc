@@ -1106,38 +1106,36 @@ export default function UpscaleTab({
     <div className="flex-1 flex min-h-0 min-w-0 overflow-hidden bg-surface" data-testid="tab-content-upscale">
       <ToolsStudioCenterSlot active={isActive}>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            data-testid="upscale-start-btn"
-            disabled={startDisabled}
-            onClick={completedPaths.size > 0 && stats.pending > 0 ? handleResume : handleStart}
-            className="flex h-8 items-center justify-center gap-1.5 rounded-lg bg-primary px-3.5 text-xs font-semibold text-on-primary shadow-xs transition-all hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-[16px] leading-none">
-              {processing
-                ? 'hourglass_top'
-                : completedPaths.size > 0 && stats.pending > 0
-                ? 'play_arrow'
-                : 'photo_size_select_large'}
-            </span>
-            <span>
-              {processing
-                ? t('upscale.processing', { current: progress?.current || 0, total: progress?.total || 0 })
-                : completedPaths.size > 0 && stats.pending > 0
-                ? t('upscale.resume', { remaining: stats.pending })
-                : t('upscale.start')}
-            </span>
-          </button>
-          <button
-            type="button"
-            data-testid="upscale-stop-btn"
-            disabled={!processing}
-            onClick={handleStop}
-            className="flex h-8 items-center justify-center gap-1 rounded-lg border border-error/40 px-2.5 text-xs font-semibold text-error transition-colors hover:bg-error/10 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-[16px] leading-none">stop_circle</span>
-            <span>{t('upscale.stop')}</span>
-          </button>
+          {processing ? (
+            <button
+              type="button"
+              data-testid="upscale-stop-btn"
+              onClick={handleStop}
+              disabled={!api?.upscaleCancel}
+              aria-label={t('upscale.stop')}
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-error/30 bg-error/15 px-3.5 text-xs font-semibold text-error transition-all hover:bg-error/25 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer shrink-0 whitespace-nowrap"
+            >
+              <span className="material-symbols-outlined text-[16px] leading-none">stop_circle</span>
+              <span>{t('upscale.stop')}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              data-testid="upscale-start-btn"
+              disabled={startDisabled}
+              onClick={completedPaths.size > 0 && stats.pending > 0 ? handleResume : handleStart}
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-primary px-3.5 text-xs font-semibold text-on-primary shadow-2xs transition-all hover:opacity-95 active:scale-95 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer shrink-0 whitespace-nowrap"
+            >
+              <span className="material-symbols-outlined text-[16px] leading-none">
+                {completedPaths.size > 0 && stats.pending > 0 ? 'play_arrow' : 'photo_size_select_large'}
+              </span>
+              <span>
+                {completedPaths.size > 0 && stats.pending > 0
+                  ? t('upscale.resume', { remaining: stats.pending })
+                  : t('upscale.start')}
+              </span>
+            </button>
+          )}
         </div>
       </ToolsStudioCenterSlot>
       <ToolsStudioActionSlot active={isActive}></ToolsStudioActionSlot>

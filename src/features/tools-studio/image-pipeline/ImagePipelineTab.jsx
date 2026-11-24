@@ -642,35 +642,35 @@ export default function ImagePipelineTab({
 
   return (
     <div className="flex-1 flex min-h-0 min-w-0 overflow-hidden bg-surface">
-      {/* Center action slot: Primary Execution Controls (Bắt đầu, Dừng) */}
+      {/* Center action slot: Primary Execution Toggle (Bắt đầu / Dừng) */}
       <ToolsStudioCenterSlot active={isActive}>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            data-testid="image-pipeline-start-btn"
-            onClick={handleStart}
-            disabled={!canStart}
-            data-tooltip={startTooltip || undefined}
-            aria-label={t('imagePipeline.start')}
-            className="flex h-8 items-center justify-center gap-1.5 rounded-lg bg-primary px-4 text-xs font-semibold text-on-primary shadow-xs transition-all hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-[16px] leading-none">play_arrow</span>
-            <span>
-              {processing
-                ? t('imagePipeline.processing', { current: runProgress?.current || 0, total: runProgress?.total || 0 })
-                : t('imagePipeline.start')}
-            </span>
-          </button>
-          <button
-            type="button"
-            data-testid="image-pipeline-stop-btn"
-            onClick={handleStop}
-            disabled={!processing || !api?.pipelineCancel}
-            className="flex h-8 items-center justify-center gap-1 rounded-lg border border-error/40 px-3 text-xs font-semibold text-error transition-colors hover:bg-error/10 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-[16px] leading-none">stop_circle</span>
-            <span>{t('imagePipeline.stop')}</span>
-          </button>
+          {processing ? (
+            <button
+              type="button"
+              data-testid="image-pipeline-stop-btn"
+              onClick={handleStop}
+              disabled={!api?.pipelineCancel}
+              aria-label={t('imagePipeline.stop')}
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-error/30 bg-error/15 px-3.5 text-xs font-semibold text-error transition-all hover:bg-error/25 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer shrink-0 whitespace-nowrap"
+            >
+              <span className="material-symbols-outlined text-[16px] leading-none">stop_circle</span>
+              <span>{t('imagePipeline.stop')}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              data-testid="image-pipeline-start-btn"
+              onClick={handleStart}
+              disabled={!canStart}
+              data-tooltip={startTooltip || undefined}
+              aria-label={t('imagePipeline.start')}
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-primary px-3.5 text-xs font-semibold text-on-primary shadow-2xs transition-all hover:opacity-95 active:scale-95 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer shrink-0 whitespace-nowrap"
+            >
+              <span className="material-symbols-outlined text-[16px] leading-none">play_arrow</span>
+              <span>{t('imagePipeline.start')}</span>
+            </button>
+          )}
         </div>
       </ToolsStudioCenterSlot>
 
