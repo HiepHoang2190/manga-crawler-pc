@@ -56,9 +56,7 @@ describe('Crawler Tab Explore-First Unified UI Standard', () => {
     const selector = read('src/features/download/components/QueueWorkflowSelector.jsx');
 
     expect(queue).toContain('StudioPrimaryActionSlot');
-    expect(queue).toContain('StudioRightToolbarSlot');
     expect(queue).toContain('<StudioPrimaryActionSlot>');
-    expect(queue).toContain('<StudioRightToolbarSlot>');
     expect(queue).not.toMatch(/\bh-11\b/);
     expect(selector).not.toMatch(/\bh-11\b/);
     expect(queue).toContain('h-8 w-8 rounded-lg border border-outline-variant/20 bg-surface-container-highest');
@@ -196,7 +194,7 @@ describe('Crawler Tab Explore-First Unified UI Standard', () => {
     expect(queue).toContain('buildErrorDetailText');
     expect(queue).toContain('exportErrorRowsToCsv');
     expect(queue).toContain('data-testid="queue-export-error-csv-btn"');
-    expect(queue).toContain('w-64 min-w-[256px]');
+    expect(queue).toContain('data-testid="queue-list-row-actions"');
     expect(queue).toContain('data-testid="queue-group-bug-btn"');
     expect(queue).toContain('bug_report');
     expect(queue).toContain('data-testid="queue-error-modal-backdrop"');
@@ -228,7 +226,6 @@ describe('Crawler Tab Explore-First Unified UI Standard', () => {
     expect(offlineSidebar).toContain('SearchableSelect');
     expect(offlineSidebar).toContain('role="group"');
     expect(offlineSidebar).toContain('h-10');
-    expect(offlineSidebar).toContain('hasNew');
     expect(offlineSidebar).toContain('extraPaths');
     expect(offlineSidebar).toContain('stats');
   });
@@ -275,8 +272,8 @@ describe('Crawler Tab Explore-First Unified UI Standard', () => {
 
     expect(offlineTab).not.toContain('data-testid="offline-open-library-folder-btn"');
     expect(listRow).toMatch(/offline-list-row-actions[\s\S]{0,120}stopPropagation/);
-    expect(listRow).toContain("typeof onEnqueuePendingChapters === 'function'");
-    expect(chapterMeta).toMatch(/stopPropagation\(\);[\s\S]{0,60}onEnqueuePending\(\)/);
+    expect(chapterMeta).not.toContain('onEnqueuePending');
+    expect(chapterMeta).not.toContain('newChaptersPending');
     expect(gridCard).toContain('pointer-events-auto');
     expect(gridCard).toMatch(/pointer-events-auto[\s\S]{0,120}stopPropagation/);
 
@@ -304,7 +301,6 @@ describe('Crawler Tab Explore-First Unified UI Standard', () => {
     expect(dataHook).not.toContain("source: 'favorite'");
     expect(dataHook).not.toContain('onRemoveFavorite');
 
-    expect(offlineTab).toContain('stats.favorites > 0');
     expect(offlineTab).not.toContain('favorites.length > 0');
   });
 
@@ -363,7 +359,7 @@ describe('Crawler Tab Explore-First Unified UI Standard', () => {
     );
   });
 
-  test('OfflineLibraryTab renders Explore-style OfflineLibrarySkeleton during rescan, update check, and foreground loading', () => {
+  test('OfflineLibraryTab renders Explore-style OfflineLibrarySkeleton during rescan and foreground loading', () => {
     const skeleton = read('src/features/library/components/offline/OfflineLibrarySkeleton.jsx');
     const offlineTab = read('src/features/library/OfflineLibraryTab.jsx');
     const dataHook = read('src/features/library/components/offline/useOfflineLibraryData.js');
@@ -396,12 +392,167 @@ describe('Crawler Tab Explore-First Unified UI Standard', () => {
 
     expect(offlineTab).toContain('showSkeleton');
     expect(offlineTab).toContain('<OfflineLibrarySkeleton');
-    expect(offlineTab).toContain('disabled={isForegroundLoading || isRescanning || fetchAllFavoritesBusy || !base}');
-    expect(offlineTab).toContain('disabled={fetchAllFavoritesBusy || isForegroundLoading || isRescanning}');
+    expect(offlineTab).toContain('disabled={isForegroundLoading || isRescanning || !base}');
     expect(offlineTab).not.toMatch(/disabled=\{[^}]*\bloading\b/);
     const skelIdx = offlineTab.indexOf('<OfflineLibrarySkeleton');
     const emptyIdx = offlineTab.indexOf('{libraryEmptyState}');
     expect(skelIdx).toBeGreaterThan(-1);
     expect(emptyIdx).toBeGreaterThan(skelIdx);
+  });
+
+  test('OfflineLibraryTab focuses purely on offline library (no Check Updates, Notify Bell, or Has-New watchlist overlap)', () => {
+    const offlineTab = read('src/features/library/OfflineLibraryTab.jsx');
+    const offlineSidebar = read('src/features/library/components/offline/OfflineLibrarySidebar.jsx');
+    const offlineToolbar = read('src/features/library/components/offline/OfflineLibraryToolbar.jsx');
+    const listRow = read('src/features/library/components/offline/OfflineListRow.jsx');
+    const gridCard = read('src/features/library/components/offline/OfflineGridCard.jsx');
+    const listActions = read('src/features/library/components/offline/OfflineListActions.jsx');
+    const cardActions = read('src/features/library/components/offline/OfflineCardActions.jsx');
+
+    expect(offlineTab).toContain('onToggleFavorite');
+    expect(offlineTab).toContain('FavoriteNotifyBell');
+    expect(offlineTab).toContain('data-testid="offline-rescan-btn"');
+    expect(offlineTab).not.toContain('onFetchAllFavorites');
+    expect(offlineTab).not.toContain('fetchAllFavoritesBusy');
+    expect(offlineTab).not.toContain('checkAllUpdates');
+    expect(offlineTab).not.toContain('onToggleFavoriteNotifyWatch');
+    expect(offlineTab).not.toContain('onEnqueuePendingChapters');
+    expect(offlineTab).not.toContain('favoriteSyncById');
+    expect(offlineTab).not.toContain('favoriteTabBadgeReadById');
+    expect(offlineTab).not.toContain('connectors');
+
+    expect(offlineSidebar).toContain('filterSourceAll');
+    expect(offlineSidebar).toContain('filterSourceSave');
+    expect(offlineSidebar).toContain('filterSourceExtra');
+    expect(offlineSidebar).toContain('filterSourceArchives');
+    expect(offlineSidebar).not.toContain('filterSourceFavorites');
+    expect(offlineSidebar).not.toContain('filterSourceHasNew');
+    expect(offlineSidebar).not.toContain('hasNewFirst');
+    expect(offlineSidebar).not.toContain('favoritesCount');
+    expect(offlineSidebar).not.toContain('newUpdatesCount');
+
+    expect(offlineToolbar).not.toContain('filterSourceFavorites');
+    expect(offlineToolbar).not.toContain('filterSourceHasNew');
+
+    for (const actionsCode of [listActions, cardActions]) {
+      expect(actionsCode).toContain('data-testid="offline-row-fetch-btn"');
+      expect(actionsCode).not.toContain('FavoriteNotifyBell');
+      expect(actionsCode).not.toContain('onToggleNotifyWatch');
+    }
+
+    for (const itemCode of [listRow, gridCard]) {
+      expect(itemCode).not.toContain('onEnqueuePendingChapters');
+      expect(itemCode).not.toContain('onToggleFavoriteNotifyWatch');
+      expect(itemCode).not.toContain('sync=');
+      expect(itemCode).not.toContain('onEnqueuePending');
+      expect(itemCode).not.toContain('isBadgeUnread');
+    }
+  });
+
+  test('OfflineLibrary grid cards reuse shared MangaCard and omit redundant local path text in both grid and list views', () => {
+    const gridCard = read('src/features/library/components/offline/OfflineGridCard.jsx');
+    const listRow = read('src/features/library/components/offline/OfflineListRow.jsx');
+
+    expect(gridCard).toMatch(/import\s*\{[^}]*\bMangaCard\b[^}]*\}\s*from\s*['"][^'"]*shared['"]/);
+    expect(gridCard).toContain('<MangaCard');
+
+    for (const itemCode of [gridCard, listRow]) {
+      expect(itemCode).not.toContain('row.absolutePath');
+      expect(itemCode).not.toContain('row.sourceFile');
+      expect(itemCode).not.toContain('offlineLibrary.lastExtractedSourceFile');
+    }
+  });
+
+  test('QueuePanel replaces StudioTable with Explore/OfflineLibrary-style Task List Cards and clean EmptyState', () => {
+    const queue = read('src/features/download/components/QueuePanel.jsx');
+    const vi = read('src/i18n/locales/vi.js');
+    const en = read('src/i18n/locales/en.js');
+
+    expect(queue).not.toContain('StudioTable');
+    expect(queue).not.toContain('QueueQueueMobileCard');
+    expect(queue).toContain('data-testid="queue-list-cards"');
+    expect(queue).toContain('space-y-2.5');
+    expect(queue).toContain('data-testid="queue-task-card"');
+    expect(queue).toContain('queueIndexById');
+    expect(queue).not.toMatch(/data-testid="queue-task-card"[\s\S]{0,600}overflow-hidden/);
+    expect(queue).toContain('data-testid="queue-selection-bar"');
+    expect(queue).toContain('data-testid="queue-expanded-chapters"');
+    expect(queue).toContain('rounded-b-xl');
+    expect(queue).toContain('h-14 w-10 sm:h-16 sm:w-11');
+    expect(queue).toContain('queue.emptyTitle');
+    expect(queue).toContain('queue.resetFilters');
+    expect(queue).toContain('queue.selectAll');
+    expect(queue).toContain('queue.selectedCount');
+
+    for (const locale of [vi, en]) {
+      expect(locale).toContain("'queue.emptyTitle':");
+      expect(locale).toContain("'queue.selectAll':");
+      expect(locale).toContain("'queue.selectedCount':");
+      expect(locale).toContain("'queue.resetFilters':");
+    }
+  });
+
+  test('QueuePanel PA 1 compact header: workflow selector beside Start with createPortal, single inline selection+filter bar, no 3-tier sub-toolbar', () => {
+    const queue = read('src/features/download/components/QueuePanel.jsx');
+    const selector = read('src/features/download/components/QueueWorkflowSelector.jsx');
+    const home = read('src/features/home/HomeWorkspace.jsx');
+
+    expect(selector).toMatch(/size\s*=\s*['"]md['"]/);
+    expect(selector).toContain("size === 'sm'");
+    expect(selector).toContain('h-8 px-2.5 rounded-lg');
+    expect(selector).toContain('max-w-[280px]');
+    expect(selector).toContain('createPortal');
+    expect(selector).toContain('document.body');
+
+    expect(home).toMatch(/<StudioLayout\.Toolbar[\s\S]{0,120}className="z-50"/);
+
+    expect(queue).not.toContain('border-b border-outline-variant/15 bg-surface-container-low/40');
+
+    const primarySlot = queue.match(/<StudioPrimaryActionSlot>([\s\S]*?)<\/StudioPrimaryActionSlot>/);
+    expect(primarySlot).not.toBeNull();
+    expect(primarySlot[1]).not.toContain('queue.removeSelected');
+    const startIdx = primarySlot[1].indexOf('queue.start');
+    const wfIdx = primarySlot[1].indexOf('<QueueWorkflowSelector');
+    expect(startIdx).toBeGreaterThan(-1);
+    expect(wfIdx).toBeGreaterThan(startIdx);
+    expect(primarySlot[1]).toContain('size="sm"');
+    expect(queue).not.toContain('<StudioRightToolbarSlot>');
+
+    const selBarMatch = queue.match(/data-testid="queue-selection-bar"[\s\S]*?<ul data-testid="queue-list-cards"/);
+    expect(selBarMatch).not.toBeNull();
+    expect(queue).toMatch(/function QueueDragHandle[\s\S]*?h-6 w-6/);
+    expect(selBarMatch[0]).toContain('pl-[13px] sm:pl-[17px]');
+    expect(selBarMatch[0]).toContain('w-6 shrink-0');
+    expect(selBarMatch[0]).toContain('data-testid="queue-remove-selected-btn"');
+    expect(selBarMatch[0]).toContain('<SearchableSelect');
+    expect(selBarMatch[0]).toContain('size="sm"');
+    expect(selBarMatch[0]).toMatch(/<SearchableSelect[\s\S]*?data-testid="queue-clear-completed-btn"/);
+  });
+
+  test('Sidebar renders default MangaInfoEmptyCard below divider when no manga is fetched yet', () => {
+    const sidebar = read('src/features/download/components/Sidebar.jsx');
+    const vi = read('src/i18n/locales/vi.js');
+    const en = read('src/i18n/locales/en.js');
+
+    expect(sidebar).toMatch(/import\s+MangaInfo\s*,\s*\{\s*MangaInfoEmptyCard\s*\}\s+from\s+['"]\.\/MangaInfo(?:\.jsx)?['"]/);
+    expect(sidebar).toMatch(/<div className="h-px bg-outline-variant\/20"\s*\/>\s*\{manga\s*\?/);
+    expect(sidebar).toContain('<MangaInfoEmptyCard');
+    expect(sidebar).toMatch(/<MangaInfoEmptyCard[\s\S]*loading=\{Boolean\(loading\)\}/);
+    expect(sidebar).toMatch(/<MangaInfoEmptyCard[\s\S]*selectedSiteLabel=\{selectedConnector\?\.label \|\| ''\}/);
+
+    const emptyKeys = [
+      "'mangaInfo.emptyTitle':",
+      "'mangaInfo.emptyLoadingTitle':",
+      "'mangaInfo.emptyCoverLabel':",
+      "'mangaInfo.emptySourcePlaceholder':",
+      "'mangaInfo.emptyDescription':",
+      "'mangaInfo.emptyLoadingDescription':",
+      "'mangaInfo.emptyActionDisabledTooltip':",
+    ];
+    for (const locale of [vi, en]) {
+      for (const k of emptyKeys) {
+        expect(locale).toContain(k);
+      }
+    }
   });
 });

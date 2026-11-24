@@ -3,6 +3,7 @@ import {
   parseChapterRangeSelection,
   filterChaptersByQuery,
   selectUndownloadedChapterUrls,
+  buildQueueChapterStatusMap,
 } from '../chapterSelectionUtils.mjs';
 
 describe('chapterSelectionUtils', () => {
@@ -67,5 +68,88 @@ describe('chapterSelectionUtils', () => {
       'https://example.com/c3.5',
       'https://example.com/oneshot',
     ]);
+  });
+
+  test('buildQueueChapterStatusMap treats failed done chapters as error and merges matching manga groups by priority', () => {
+    const queue = [
+      {
+        id: 'g1',
+        mangaUrl: 'https://example.com/manga ',
+        chapters: [
+          { chapterUrl: 'https://example.com/c1', status: 'done' },
+          { chapterUrl: 'https://example.com/c2', status: 'done', downloadError: 'HTTP 502' },
+          { chapterUrl: 'https://example.com/c3.5', status: 'failed', downloadError: 'Timeout' },
+        ],
+      },
+      {
+        id: 'g2',
+        mangaUrl: 'https://example.com/manga',
+        chapters: [
+          { chapterUrl: 'https://example.com/c2', status: 'waiting' },
+          { chapterUrl: 'https://example.com/c10', status: 'downloading' },
+        ],
+      },
+      {
+        id: 'g-other',
+        mangaUrl: 'https://example.com/other',
+        chapters: [
+          { chapterUrl: 'https://example.com/oneshot', status: 'done' },
+        ],
+      },
+    ];
+
+    const map = buildQueueChapterStatusMap(queue, 'https://example.com/manga');
+    expect(map.get('https://example.com/c1')).toBe('done');
+    // Second group is actively waiting retry -> waiting takes priority over stale error
+    expect(map.get('https://example.com/c2')).toBe('waiting');
+    // Failed chapter must resolve to 'error' (not 'done') so undownloaded selection picks it up
+    expect(map.get('https://example.com/c3.5')).toBe('error');
+    expect(map.get('https://example.com/c10')).toBe('downloading');
+    expect(map.has('https://example.com/oneshot')).toBe(false);
+
+    // Failed chapter with done+downloadError in single group resolves to 'error' -> rowStatusKey === 'pending'
+    const singleGroupMap = buildQueueChapterStatusMap(
+      [
+        {
+          id: 'g-err',
+          mangaUrl: 'https://example.com/manga',
+          chapters: [{ chapterUrl: 'https://example.com/c2', status: 'done', downloadError: '404' }],
+        },
+      ],
+      'https://example.com/manga'
+    );
+    expect(singleGroupMap.get('https://example.com/c2')).toBe('error');
+
+    // Priority preservation when lower-priority statuses appear AFTER higher-priority ones
+    const priorityMap = buildQueueChapterStatusMap(
+      [
+        {
+          id: 'g-high',
+          mangaUrl: 'https://example.com/manga',
+          chapters: [
+            { chapterUrl: ' https://example.com/c1 ', status: 'downloading' },
+            { chapterUrl: 'https://example.com/c2', status: 'done' },
+            { chapterUrl: '   ', status: 'done' },
+          ],
+        },
+        {
+          id: 'g-low',
+          mangaUrl: 'https://example.com/manga',
+          chapters: [
+            { chapterUrl: 'https://example.com/c1', status: 'done' },
+            { chapterUrl: 'https://example.com/c2', status: 'waiting' },
+            { chapterUrl: 'https://example.com/c2', status: 'error' },
+          ],
+        },
+      ],
+      'https://example.com/manga'
+    );
+    expect(priorityMap.get('https://example.com/c1')).toBe('downloading');
+    expect(priorityMap.get('https://example.com/c2')).toBe('done');
+    expect(priorityMap.has('   ')).toBe(false);
+
+    // Safe empty/null inputs
+    expect(buildQueueChapterStatusMap(null, 'https://example.com/manga').size).toBe(0);
+    expect(buildQueueChapterStatusMap([], '').size).toBe(0);
   });
 });

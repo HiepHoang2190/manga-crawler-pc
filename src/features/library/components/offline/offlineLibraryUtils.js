@@ -22,15 +22,12 @@ export function isDownloadedOfflineRow(row) {
 /**
  * Builds the displayed Offline Library rows from local directories and recent extracted/ebook
  * entries, omitting online-only favorites and empty folders while enriching matched local rows
- * with favorite sync/badge metadata.
+ * with bookmark status and online source metadata (`mangaUrl`, `siteId`, `coverUrl`).
  */
 export function buildOfflineDisplayRows({
   rows = [],
   recentExtractedCbzEntries = [],
   favorites = [],
-  favoriteSyncById = {},
-  favoriteTabBadgeReadById = {},
-  isFavoriteTabBadgeUnread,
 } = {}) {
   const list = (Array.isArray(rows) ? rows : []).filter(isDownloadedOfflineRow);
   const seenPaths = new Set(list.map((r) => String(r.absolutePath || '').trim()));
@@ -87,20 +84,13 @@ export function buildOfflineDisplayRows({
       (localId && favById.get(localId)) ||
       (rowTitle && favByTitle.get(rowTitle));
     if (matchedFav) {
-      const sync = favoriteSyncById[matchedFav.id];
       return {
         ...r,
         isFavorite: true,
         favoriteId: matchedFav.id,
-        notifyWatch: matchedFav.notifyWatch,
         siteId: r.siteId || matchedFav.siteId || '',
         mangaUrl: r.mangaUrl || matchedFav.mangaUrl || matchedFav.url || '',
         coverUrl: matchedFav.coverUrl || '',
-        sync,
-        isBadgeUnread:
-          typeof isFavoriteTabBadgeUnread === 'function'
-            ? isFavoriteTabBadgeUnread(matchedFav.id, sync, favoriteTabBadgeReadById)
-            : false,
       };
     }
     return {
@@ -120,13 +110,12 @@ export function isExtractedTempRow(row) {
 
 export const EXTRA_PATHS_KEY = 'offlineLibraryExtraPaths_v1';
 
-export const OFFLINE_SORT_CYCLE = ['titleAsc', 'titleDesc', 'chaptersDesc', 'hasNewFirst'];
+export const OFFLINE_SORT_CYCLE = ['titleAsc', 'titleDesc', 'chaptersDesc'];
 
 export const SORT_LABEL_KEYS = {
   titleAsc: 'favorites.sort.titleAsc',
   titleDesc: 'favorites.sort.titleDesc',
   chaptersDesc: 'offlineLibrary.sort.chaptersDesc',
-  hasNewFirst: 'offlineLibrary.sort.hasNewFirst',
 };
 
 export const FAV_MS_ICON_20 =
@@ -206,25 +195,9 @@ export function normalizeExtraEntry(x) {
   return { path, kind };
 }
 
-export function getSyncNewCount(row) {
-  const s = row?.sync;
-  if (!s) return 0;
-  if (typeof s.newCount === 'number' && Number.isFinite(s.newCount)) {
-    return Math.max(0, s.newCount);
-  }
-  if (s.hasNew) {
-    if (typeof s.pendingNewCount === 'number' && s.pendingNewCount > 0) return s.pendingNewCount;
-    if (typeof s.remoteCount === 'number' && s.remoteCount > 0) return s.remoteCount;
-    return 1;
-  }
-  return 0;
-}
-
 export function rowMatchesSourceFilter(row, sourceFilter) {
   if (!row) return false;
   if (!sourceFilter || sourceFilter === 'all') return true;
-  if (sourceFilter === 'favorites') return Boolean(row.isFavorite);
-  if (sourceFilter === 'hasNew') return getSyncNewCount(row) > 0;
   if (sourceFilter === 'save') return row.source === 'save';
   if (sourceFilter === 'extra') {
     return (
@@ -277,14 +250,6 @@ export function sortOfflineLibraryRows(rows, sortMode = 'titleAsc') {
       const diff = Number(b?.chapterCount || 0) - Number(a?.chapterCount || 0);
       return diff !== 0 ? diff : compareOfflineTitles(a, b);
     });
-  } else if (sortMode === 'hasNewFirst') {
-    arr.sort((a, b) => {
-      const na = getSyncNewCount(a);
-      const nb = getSyncNewCount(b);
-      if ((na > 0) !== (nb > 0)) return nb > 0 ? 1 : -1;
-      if (nb !== na) return nb - na;
-      return compareOfflineTitles(a, b);
-    });
   } else {
     arr.sort(compareOfflineTitles);
   }
@@ -294,8 +259,6 @@ export function sortOfflineLibraryRows(rows, sortMode = 'titleAsc') {
 export function computeOfflineLibraryStats(rows) {
   const list = Array.isArray(rows) ? rows : [];
   let total = 0;
-  let favorites = 0;
-  let hasNew = 0;
   let save = 0;
   let extra = 0;
   let archives = 0;
@@ -305,8 +268,6 @@ export function computeOfflineLibraryStats(rows) {
     if (!r) continue;
     total += 1;
     totalChapters += Number(r.chapterCount || 0);
-    if (r.isFavorite) favorites += 1;
-    if (getSyncNewCount(r) > 0) hasNew += 1;
     if (rowMatchesSourceFilter(r, 'save')) save += 1;
     if (rowMatchesSourceFilter(r, 'extra')) extra += 1;
     if (rowMatchesSourceFilter(r, 'archives')) archives += 1;
@@ -314,8 +275,6 @@ export function computeOfflineLibraryStats(rows) {
 
   return {
     total,
-    favorites,
-    hasNew,
     save,
     extra,
     archives,

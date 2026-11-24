@@ -34,18 +34,6 @@ export function OfflineLibrarySidebar({
         dotClass: 'bg-primary',
       },
       {
-        id: 'favorites',
-        label: t('offlineLibrary.filterSourceFavorites'),
-        count: Number(stats.favorites || 0),
-        dotClass: 'bg-rose-500',
-      },
-      {
-        id: 'hasNew',
-        label: t('offlineLibrary.filterSourceHasNew'),
-        count: Number(stats.hasNew || 0),
-        dotClass: Number(stats.hasNew || 0) > 0 ? 'bg-emerald-500 animate-pulse' : 'bg-emerald-500/40',
-      },
-      {
         id: 'save',
         label: t('offlineLibrary.filterSourceSave'),
         count: Number(stats.save || 0),
@@ -72,7 +60,6 @@ export function OfflineLibrarySidebar({
       { value: 'titleAsc', label: t('favorites.sort.titleAsc'), materialIcon: 'sort_by_alpha' },
       { value: 'titleDesc', label: t('favorites.sort.titleDesc'), materialIcon: 'sort_by_alpha' },
       { value: 'chaptersDesc', label: t('offlineLibrary.sort.chaptersDesc'), materialIcon: 'format_list_numbered' },
-      { value: 'hasNewFirst', label: t('offlineLibrary.sort.hasNewFirst'), materialIcon: 'new_releases' },
     ],
     [t]
   );
@@ -278,14 +265,14 @@ export function OfflineLibrarySidebar({
           <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
             <span className="text-on-surface-variant">{t('offlineLibrary.sidebar.totalSeries')}</span>
             <span className="font-bold text-on-surface text-right tabular-nums">{stats.total || 0}</span>
-            <span className="text-on-surface-variant">{t('offlineLibrary.sidebar.favoritesCount')}</span>
-            <span className="font-bold text-rose-500 text-right tabular-nums">{stats.favorites || 0}</span>
-            <span className="text-on-surface-variant">{t('offlineLibrary.sidebar.newUpdatesCount')}</span>
-            <span className="font-bold text-emerald-600 dark:text-emerald-400 text-right tabular-nums">
-              {stats.hasNew || 0}
-            </span>
             <span className="text-on-surface-variant">{t('offlineLibrary.sidebar.totalChapters')}</span>
             <span className="font-bold text-on-surface text-right tabular-nums">{stats.totalChapters || 0}</span>
+            <span className="text-on-surface-variant">{t('offlineLibrary.filterSourceSave')}</span>
+            <span className="font-bold text-sky-600 dark:text-sky-400 text-right tabular-nums">{stats.save || 0}</span>
+            <span className="text-on-surface-variant">{t('offlineLibrary.filterSourceArchives')}</span>
+            <span className="font-bold text-violet-600 dark:text-violet-400 text-right tabular-nums">
+              {stats.archives || 0}
+            </span>
           </div>
         </div>
       </div>

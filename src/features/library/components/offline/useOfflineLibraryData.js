@@ -7,7 +7,6 @@ import {
   isInsideDirectory,
   unhidePathsForDirectory,
 } from '../../../../utils/offlineLibraryHiddenPaths';
-import { isFavoriteTabBadgeUnread } from '../../favoriteTabBadge';
 import {
   loadExtraPaths,
   saveExtraPaths,
@@ -22,8 +21,6 @@ import {
 export function useOfflineLibraryData({
   savePath,
   favorites = [],
-  favoriteSyncById = {},
-  favoriteTabBadgeReadById = {},
   recentExtractedCbzEntries = [],
   onRemoveRecentExtractedCbzEntry,
   t,
@@ -466,11 +463,8 @@ export function useOfflineLibraryData({
         rows,
         recentExtractedCbzEntries,
         favorites,
-        favoriteSyncById,
-        favoriteTabBadgeReadById,
-        isFavoriteTabBadgeUnread,
       }),
-    [rows, recentExtractedCbzEntries, favorites, favoriteSyncById, favoriteTabBadgeReadById]
+    [rows, recentExtractedCbzEntries, favorites]
   );
 
   const stats = useMemo(

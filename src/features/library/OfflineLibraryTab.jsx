@@ -44,16 +44,9 @@ export default function OfflineLibraryTab({
   recentExtractedCbzEntries = [],
   onRemoveRecentExtractedCbzEntry,
   onOpenEbook,
-  // Favorites props
+  // Bookmark & favorite integration
   favorites = [],
   onToggleFavorite,
-  favoriteSyncById = {},
-  favoriteTabBadgeReadById = {},
-  fetchAllFavoritesBusy = false,
-  onFetchAllFavorites,
-  onToggleFavoriteNotifyWatch,
-  onEnqueuePendingChapters,
-  connectors = [],
 }) {
   const { t } = useI18n();
   const hasLeftSidebarSlot = useHasLeftSidebarSlot();
@@ -77,7 +70,6 @@ export default function OfflineLibraryTab({
     setSortMode,
     cycleSort,
     base,
-    refresh,
     handleManualRefresh,
     removeFromOfflineList,
     addFolder,
@@ -88,8 +80,6 @@ export default function OfflineLibraryTab({
   } = useOfflineLibraryData({
     savePath,
     favorites,
-    favoriteSyncById,
-    favoriteTabBadgeReadById,
     recentExtractedCbzEntries,
     onRemoveRecentExtractedCbzEntry,
     t,
@@ -210,12 +200,10 @@ export default function OfflineLibraryTab({
     />
   );
 
-  const showSkeleton = isForegroundLoading || isRescanning || fetchAllFavoritesBusy;
-  const skeletonStatusText = fetchAllFavoritesBusy
-    ? t('offlineLibrary.checkAllUpdatesBusy')
-    : isRescanning
-      ? t('offlineLibrary.rescanningStatus')
-      : t('offlineLibrary.loading');
+  const showSkeleton = isForegroundLoading || isRescanning;
+  const skeletonStatusText = isRescanning
+    ? t('offlineLibrary.rescanningStatus')
+    : t('offlineLibrary.loading');
 
   return (
     <div className="flex-1 flex flex-col bg-surface overflow-hidden min-h-0">
@@ -225,7 +213,7 @@ export default function OfflineLibraryTab({
             type="button"
             data-testid="offline-rescan-btn"
             onClick={() => handleManualRefresh()}
-            disabled={isForegroundLoading || isRescanning || fetchAllFavoritesBusy || !base}
+            disabled={isForegroundLoading || isRescanning || !base}
             data-tooltip={t('offlineLibrary.refreshTooltip')}
             aria-label={t('offlineLibrary.rescanLibrary')}
             className="h-8 px-3.5 shrink-0 rounded-lg bg-primary text-xs font-semibold text-on-primary transition-all hover:opacity-95 active:scale-95 disabled:pointer-events-none disabled:opacity-50 inline-flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs whitespace-nowrap"
@@ -267,23 +255,6 @@ export default function OfflineLibraryTab({
               </>
             )}
           </button>
-          {typeof onFetchAllFavorites === 'function' && stats.favorites > 0 ? (
-            <button
-              type="button"
-              onClick={() => onFetchAllFavorites()}
-              disabled={fetchAllFavoritesBusy || isForegroundLoading || isRescanning}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-outline-variant/25 bg-surface-container-highest px-3 text-xs font-medium text-on-surface hover:border-primary/40 hover:text-primary transition-colors cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed shrink-0 whitespace-nowrap"
-            >
-              <span className={`material-symbols-outlined text-[16px] leading-none ${fetchAllFavoritesBusy ? 'animate-spin' : ''}`}>
-                {fetchAllFavoritesBusy ? 'progress_activity' : 'sync'}
-              </span>
-              <span>
-                {fetchAllFavoritesBusy
-                  ? t('offlineLibrary.checkAllUpdatesBusy')
-                  : t('offlineLibrary.checkAllUpdates')}
-              </span>
-            </button>
-          ) : null}
         </div>
       </StudioPrimaryActionSlot>
 
@@ -410,9 +381,7 @@ export default function OfflineLibraryTab({
                   onOpenFolder={onOpenFolder}
                   onRemoveFromList={removeFromOfflineList}
                   onSendToKindle={setKindleRow}
-                  onToggleNotifyWatch={onToggleFavoriteNotifyWatch}
                   onToggleFavorite={onToggleFavorite}
-                  onEnqueuePendingChapters={onEnqueuePendingChapters}
                   resolveSourceLabel={resolveSourceLabel}
                   t={t}
                 />
@@ -432,8 +401,6 @@ export default function OfflineLibraryTab({
                   openPinnedCbzFolder={openPinnedCbzFolder}
                   onReadCbzFromPath={onReadCbzFromPath}
                   setKindleRow={setKindleRow}
-                  onToggleFavoriteNotifyWatch={onToggleFavoriteNotifyWatch}
-                  onEnqueuePendingChapters={onEnqueuePendingChapters}
                   resolveSourceLabel={resolveSourceLabel}
                   t={t}
                 />

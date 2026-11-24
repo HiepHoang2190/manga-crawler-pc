@@ -116,8 +116,13 @@ function FavoriteCardActions({
 }
 
 function FavoriteChapterMeta({ item, sync, t, onEnqueuePending }) {
-  const pending =
-    sync?.hasNew && typeof sync.remoteCount === 'number' ? sync.remoteCount : 0;
+  const pending = sync?.hasNew
+    ? typeof sync.pendingNewCount === 'number'
+      ? sync.pendingNewCount
+      : typeof sync.remoteCount === 'number'
+        ? sync.remoteCount
+        : 0
+    : 0;
   return (
     <div className="flex flex-col items-start gap-1 min-w-0">
       <div className="text-xs text-outline tabular-nums flex items-center gap-1.5 flex-wrap">

@@ -145,20 +145,14 @@ export default function HomeWorkspace({
     toggleFavorite,
     toggleFavoriteFromLatest,
     removeFavorite,
-    toggleFavoriteNotifyWatch,
     isMangaFavorite,
     fetchMangaFromFavorite,
     fetchMangaFromOfflineLibrary,
-    readFromFavorite,
     readFromOfflineLibrary,
     openOfflineFolderPath,
-    handleFetchAllFavorites,
     downloadedCountForReaderCbz,
-    favoriteSyncById,
     fetchAllFavoritesBusy,
-    bellReadRemoteById,
     readChapterAllowedUrls,
-    enqueueFavoritePendingChapters,
   } = useLibrary();
   const { setCbzExportDrawerOpen, setpdfExportOpen } = useExport();
 
@@ -469,6 +463,7 @@ export default function HomeWorkspace({
     >
       <StudioLayout>
         <StudioLayout.Toolbar
+          className="z-50"
           leftSlot={
             <div className="flex items-center gap-2 min-w-0 overflow-x-auto no-scrollbar">
               <div
@@ -656,14 +651,7 @@ export default function HomeWorkspace({
                 onRemoveRecentExtractedCbzEntry={removeRecentExtractedCbzEntry}
                 onOpenEbook={openEbook}
                 favorites={favorites}
-                favoriteSyncById={favoriteSyncById}
-                favoriteTabBadgeReadById={bellReadRemoteById}
-                fetchAllFavoritesBusy={fetchAllFavoritesBusy}
-                onFetchAllFavorites={handleFetchAllFavorites}
-                onToggleFavoriteNotifyWatch={toggleFavoriteNotifyWatch}
                 onToggleFavorite={handleToggleFavoriteRow}
-                onEnqueuePendingChapters={enqueueFavoritePendingChapters}
-                connectors={connectorList}
               />
             ) : null}
           </div>

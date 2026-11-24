@@ -2,7 +2,6 @@ import {
   normalizeExtraEntry,
   isDownloadedOfflineRow,
   buildOfflineDisplayRows,
-  getSyncNewCount,
   hasRowFetchUrl,
   openOfflineRow,
   fetchOfflineRow,
@@ -24,32 +23,13 @@ describe('offlineLibraryUtils pure helpers', () => {
     expect(normalizeExtraEntry({ path: '/tmp/other', kind: 'unknown' })).toEqual({ path: '/tmp/other', kind: 'manga' });
   });
 
-  test('getSyncNewCount reads LibraryProvider sync shape ({ hasNew, remoteCount, pendingNewCount }) and newCount', () => {
-    expect(getSyncNewCount(null)).toBe(0);
-    expect(getSyncNewCount({ sync: { hasNew: false, remoteCount: 0 } })).toBe(0);
-    expect(getSyncNewCount({ sync: { hasNew: true, remoteCount: 4 } })).toBe(4);
-    expect(getSyncNewCount({ sync: { hasNew: true, pendingNewCount: 7, remoteCount: 4 } })).toBe(7);
-    expect(getSyncNewCount({ sync: { hasNew: true } })).toBe(1);
-    expect(getSyncNewCount({ sync: { newCount: 3 } })).toBe(3);
-  });
-
   const sampleRows = [
-    {
-      key: 'fav:1',
-      source: 'favorite',
-      mangaTitle: 'Berserk',
-      chapterCount: 370,
-      isFavorite: true,
-      sync: { hasNew: true, remoteCount: 3 },
-      absolutePath: '',
-    },
     {
       key: 'save:/dl/naruto',
       source: 'save',
       mangaTitle: 'Naruto',
       chapterCount: 700,
       isFavorite: true,
-      sync: { hasNew: false, remoteCount: 0 },
       absolutePath: '/dl/naruto',
     },
     {
@@ -69,36 +49,40 @@ describe('offlineLibraryUtils pure helpers', () => {
       isFavorite: false,
       absolutePath: '/zips/oneshot',
     },
+    {
+      key: 'recentExtracted:/tmp/cbz-temp',
+      source: 'recentExtracted',
+      mangaTitle: 'Berserk',
+      chapterCount: 370,
+      isFavorite: true,
+      absolutePath: '/tmp/cbz-temp',
+    },
   ];
 
-  test('computeOfflineLibraryStats summarizes collections and total chapters safely', () => {
+  test('computeOfflineLibraryStats summarizes local collections and total chapters safely', () => {
     expect(computeOfflineLibraryStats([...sampleRows, null])).toEqual({
       total: 4,
-      favorites: 2,
-      hasNew: 1,
       save: 1,
-      extra: 1,
+      extra: 2,
       archives: 1,
       totalChapters: 1088,
     });
   });
 
-  test('filterOfflineLibraryRows handles hasNew, favorites, save, extra, archives, null opts, and search query', () => {
+  test('filterOfflineLibraryRows handles save, extra, archives, null opts, and search query', () => {
     expect(filterOfflineLibraryRows(sampleRows, null)).toHaveLength(4);
     expect(filterOfflineLibraryRows(sampleRows, { sourceFilter: 'all', query: '' })).toHaveLength(4);
-    expect(filterOfflineLibraryRows(sampleRows, { sourceFilter: 'favorites' }).map((r) => r.key)).toEqual([
-      'fav:1',
-      'save:/dl/naruto',
-    ]);
-    expect(filterOfflineLibraryRows(sampleRows, { sourceFilter: 'hasNew' }).map((r) => r.key)).toEqual(['fav:1']);
     expect(filterOfflineLibraryRows(sampleRows, { sourceFilter: 'save' }).map((r) => r.key)).toEqual(['save:/dl/naruto']);
-    expect(filterOfflineLibraryRows(sampleRows, { sourceFilter: 'extra' }).map((r) => r.key)).toEqual(['extra:/custom/akira']);
+    expect(filterOfflineLibraryRows(sampleRows, { sourceFilter: 'extra' }).map((r) => r.key)).toEqual([
+      'extra:/custom/akira',
+      'recentExtracted:/tmp/cbz-temp',
+    ]);
     expect(filterOfflineLibraryRows(sampleRows, { sourceFilter: 'archives' }).map((r) => r.key)).toEqual(['extraCbz:/zips/oneshot']);
     expect(filterOfflineLibraryRows(sampleRows, { query: '/custom/' }).map((r) => r.key)).toEqual(['extra:/custom/akira']);
     expect(rowMatchesSourceFilter({ source: 'save', archiveKind: 'archive' }, 'archives')).toBe(true);
   });
 
-  test('sortOfflineLibraryRows supports titleAsc, titleDesc, chaptersDesc, and hasNewFirst', () => {
+  test('sortOfflineLibraryRows supports titleAsc, titleDesc, and chaptersDesc', () => {
     expect(sortOfflineLibraryRows(sampleRows, 'titleAsc').map((r) => r.mangaTitle)).toEqual([
       'Akira',
       'Berserk',
@@ -116,17 +100,6 @@ describe('offlineLibraryUtils pure helpers', () => {
       'Berserk',
       'Oneshot Pack',
       'Akira',
-    ]);
-    const multiNew = [
-      ...sampleRows,
-      { key: 'fav:2', source: 'favorite', mangaTitle: 'Zatch Bell', chapterCount: 50, isFavorite: true, sync: { hasNew: true, remoteCount: 5 } },
-    ];
-    expect(sortOfflineLibraryRows(multiNew, 'hasNewFirst').map((r) => r.mangaTitle)).toEqual([
-      'Zatch Bell',
-      'Berserk',
-      'Akira',
-      'Naruto',
-      'Oneshot Pack',
     ]);
   });
 
@@ -364,11 +337,6 @@ describe('offlineLibraryUtils pure helpers', () => {
           chapterCount: 15,
         },
       ],
-      favoriteSyncById: {
-        'fav-naruto': { hasNew: true, remoteCount: 2, pendingNewCount: 2 },
-      },
-      favoriteTabBadgeReadById: {},
-      isFavoriteTabBadgeUnread: (id, sync) => Boolean(id && sync?.hasNew),
     });
 
     expect(result.map((r) => r.key)).toEqual([
@@ -383,10 +351,8 @@ describe('offlineLibraryUtils pure helpers', () => {
     expect(result[2]).toMatchObject({
       isFavorite: true,
       favoriteId: 'fav-naruto',
-      notifyWatch: true,
       siteId: 'truyenqq',
       coverUrl: 'https://cdn.example.com/naruto.jpg',
-      isBadgeUnread: true,
     });
   });
 });

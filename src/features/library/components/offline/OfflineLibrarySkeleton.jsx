@@ -4,8 +4,8 @@ const OFFLINE_GRID_SKELETON_ITEMS = Array.from({ length: 12 }, (_, idx) => idx);
 const OFFLINE_LIST_SKELETON_ITEMS = Array.from({ length: 8 }, (_, idx) => idx);
 
 /**
- * Explore-style animated loading skeleton for Offline Library during rescan,
- * favorite update check, and initial foreground loading.
+ * Explore-style animated loading skeleton for Offline Library during library rescan
+ * and initial foreground loading.
  */
 export const OfflineLibrarySkeleton = React.memo(function OfflineLibrarySkeleton({
   viewMode,

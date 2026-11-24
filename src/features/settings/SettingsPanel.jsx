@@ -11,6 +11,11 @@ import { ExtrasSettingsSection } from '../extras';
 import { SiteCookieSection } from '../download';
 import { loadSavedWorkflows } from '../workflow/utils/workflowStorage.mjs';
 import { hasAppSession, isAdminSession, FREE_USER_TOKEN_MAX } from '../../utils/authSession';
+import {
+  FAVORITE_AUTO_CHECK_INTERVAL_PRESETS,
+  formatFavoriteAutoCheckInterval,
+  formatFavoriteAutoCheckLastAt,
+} from '../../utils/appSettings';
 import { findLatestEntitlementRow } from '../../utils/packageEntitlementView.mjs';
 import { publicAsset } from '../../utils/publicAsset';
 import packageJson from '../../../package.json';
@@ -111,6 +116,8 @@ export default function SettingsPanel({
   setFavoriteAutoCheckEnabled,
   favoriteAutoCheckIntervalMin,
   setFavoriteAutoCheckIntervalMin,
+  lastFavoriteAutoCheckAt = 0,
+  favoritesWatchedCount = 0,
   favoriteAutoDownloadEnabled,
   setFavoriteAutoDownloadEnabled,
   favoriteAutoDownloadMode = 'queue',
@@ -970,20 +977,48 @@ export default function SettingsPanel({
                     </label>
 
                     {favoriteAutoCheckEnabled ? (
-                      <div className="p-3.5 rounded-xl bg-surface-container-highest/40 border border-outline-variant/10 space-y-2 max-w-md">
+                      <div className="p-3.5 rounded-xl bg-surface-container-highest/40 border border-outline-variant/10 space-y-3 max-w-lg">
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-on-surface-variant rounded-lg bg-surface-container-low/70 border border-outline-variant/15 px-3 py-2">
+                          <span className="inline-flex items-start gap-1.5 min-w-0">
+                            <span className="material-symbols-outlined text-[14px] text-primary shrink-0 mt-0.5">schedule</span>
+                            <span className="leading-snug break-words">
+                              {t('settings.favoritesAutoCheckStatusSummary', {
+                                count: favoritesWatchedCount,
+                                last: formatFavoriteAutoCheckLastAt(lastFavoriteAutoCheckAt, t),
+                              })}
+                            </span>
+                          </span>
+                        </div>
+                        <div className="space-y-1.5">
+                          <SectionTitle as="span" className="block">
+                            {t('settings.favoritesAutoCheckPresets')}
+                          </SectionTitle>
+                          <div className="flex flex-wrap gap-1.5">
+                            {FAVORITE_AUTO_CHECK_INTERVAL_PRESETS.map((presetMin) => {
+                              const isSelected = Number(favoriteAutoCheckIntervalMin) === presetMin;
+                              return (
+                                <button
+                                  key={presetMin}
+                                  type="button"
+                                  onClick={() => setFavoriteAutoCheckIntervalMin?.(presetMin)}
+                                  className={`h-7 px-2.5 rounded-lg border text-[11px] font-semibold transition-colors cursor-pointer ${
+                                    isSelected
+                                      ? 'border-primary bg-primary/15 text-primary'
+                                      : 'border-outline-variant/25 bg-surface-container-highest/70 text-on-surface-variant hover:text-on-surface hover:border-outline-variant/50'
+                                  }`}
+                                >
+                                  {formatFavoriteAutoCheckInterval(presetMin, t)}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
                         <div className="flex justify-between items-center">
                           <SectionTitle as="label" className="shrink-0">
                             {t('settings.favoritesAutoCheckInterval')}
                           </SectionTitle>
                           <span className="text-xs font-semibold text-primary tabular-nums px-2 py-0.5 rounded-md bg-primary/10">
-                            {favoriteAutoCheckIntervalMin < 60
-                              ? t('settings.time.minutes', { m: favoriteAutoCheckIntervalMin })
-                              : favoriteAutoCheckIntervalMin % 60 === 0
-                              ? t('settings.time.hours', { h: Math.floor(favoriteAutoCheckIntervalMin / 60) })
-                              : t('settings.time.hoursMinutes', {
-                                  h: Math.floor(favoriteAutoCheckIntervalMin / 60),
-                                  m: favoriteAutoCheckIntervalMin % 60,
-                                })}
+                            {formatFavoriteAutoCheckInterval(favoriteAutoCheckIntervalMin, t)}
                           </span>
                         </div>
                         <input

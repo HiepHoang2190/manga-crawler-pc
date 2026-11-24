@@ -109,8 +109,13 @@ export default function FavoriteUpdateBell({
               items.map((item) => {
                 const sync = item._sync;
                 const unread = item._bellUnread;
-                const pending =
-                  sync?.hasNew && typeof sync.remoteCount === "number" ? sync.remoteCount : 0;
+                const pending = sync?.hasNew
+                  ? typeof sync.pendingNewCount === "number"
+                    ? sync.pendingNewCount
+                    : typeof sync.remoteCount === "number"
+                      ? sync.remoteCount
+                      : 0
+                  : 0;
                 return (
                   <li
                     key={item.id}

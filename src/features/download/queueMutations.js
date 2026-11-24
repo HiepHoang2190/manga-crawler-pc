@@ -347,3 +347,58 @@ export function updateGroupWorkflowState(queue, groupId, { workflowState, workfl
   });
 }
 
+/**
+ * Compute next selection set and anchor state for single-click and Shift+click range selection.
+ */
+export function applyQueueRowSelection({
+  prevSelectedIds,
+  visibleIds,
+  clickedIndex,
+  anchorIndex,
+  anchorTargetSelected = true,
+  shiftKey = false,
+}) {
+  const nextSelectedIds = new Set(prevSelectedIds instanceof Set ? prevSelectedIds : []);
+  const ids = Array.isArray(visibleIds) ? visibleIds : [];
+  if (!Number.isInteger(clickedIndex) || clickedIndex < 0 || clickedIndex >= ids.length) {
+    return {
+      nextSelectedIds,
+      nextAnchorIndex: anchorIndex ?? null,
+      nextAnchorTargetSelected: anchorTargetSelected !== false,
+    };
+  }
+
+  const clickedId = ids[clickedIndex];
+  const hasValidAnchor =
+    Boolean(shiftKey) &&
+    Number.isInteger(anchorIndex) &&
+    anchorIndex >= 0 &&
+    anchorIndex < ids.length;
+
+  if (hasValidAnchor) {
+    const from = Math.min(anchorIndex, clickedIndex);
+    const to = Math.max(anchorIndex, clickedIndex);
+    const shouldSelect = anchorTargetSelected !== false;
+    for (let idx = from; idx <= to; idx += 1) {
+      const id = ids[idx];
+      if (id == null) continue;
+      if (shouldSelect) nextSelectedIds.add(id);
+      else nextSelectedIds.delete(id);
+    }
+    return {
+      nextSelectedIds,
+      nextAnchorIndex: anchorIndex,
+      nextAnchorTargetSelected: shouldSelect,
+    };
+  }
+
+  const shouldSelect = !nextSelectedIds.has(clickedId);
+  if (shouldSelect) nextSelectedIds.add(clickedId);
+  else nextSelectedIds.delete(clickedId);
+  return {
+    nextSelectedIds,
+    nextAnchorIndex: clickedIndex,
+    nextAnchorTargetSelected: shouldSelect,
+  };
+}
+

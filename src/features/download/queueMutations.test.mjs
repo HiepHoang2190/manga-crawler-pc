@@ -14,6 +14,7 @@ import {
   setGroupWorkflow,
   setAllGroupsWorkflow,
   updateGroupWorkflowState,
+  applyQueueRowSelection,
 } from './queueMutations.js';
 
 const make_id = (() => {
@@ -439,6 +440,121 @@ describe('workflow mutations', () => {
         status: 'done',
         retryCount: 0,
       });
+    });
+  });
+
+  describe('applyQueueRowSelection', () => {
+    const visibleIds = ['g0', 'g1', 'g2', 'g3', 'g4'];
+
+    test('normal click selects an unselected row and sets anchor', () => {
+      const res = applyQueueRowSelection({
+        prevSelectedIds: new Set(['g0']),
+        visibleIds,
+        clickedIndex: 2,
+        anchorIndex: null,
+        anchorTargetSelected: true,
+        shiftKey: false,
+      });
+      expect([...res.nextSelectedIds].sort()).toEqual(['g0', 'g2']);
+      expect(res.nextAnchorIndex).toBe(2);
+      expect(res.nextAnchorTargetSelected).toBe(true);
+    });
+
+    test('normal click deselects an already-selected row and updates anchor target state', () => {
+      const res = applyQueueRowSelection({
+        prevSelectedIds: new Set(['g0', 'g2', 'g3']),
+        visibleIds,
+        clickedIndex: 2,
+        anchorIndex: 0,
+        anchorTargetSelected: true,
+        shiftKey: false,
+      });
+      expect([...res.nextSelectedIds].sort()).toEqual(['g0', 'g3']);
+      expect(res.nextAnchorIndex).toBe(2);
+      expect(res.nextAnchorTargetSelected).toBe(false);
+    });
+
+    test('Shift+click forward selects inclusive range while preserving outside selections', () => {
+      const res = applyQueueRowSelection({
+        prevSelectedIds: new Set(['g0', 'g1']),
+        visibleIds,
+        clickedIndex: 3,
+        anchorIndex: 1,
+        anchorTargetSelected: true,
+        shiftKey: true,
+      });
+      expect([...res.nextSelectedIds].sort()).toEqual(['g0', 'g1', 'g2', 'g3']);
+      expect(res.nextAnchorIndex).toBe(1);
+      expect(res.nextAnchorTargetSelected).toBe(true);
+    });
+
+    test('Shift+click backward selects inclusive range', () => {
+      const res = applyQueueRowSelection({
+        prevSelectedIds: new Set(['g4']),
+        visibleIds,
+        clickedIndex: 1,
+        anchorIndex: 4,
+        anchorTargetSelected: true,
+        shiftKey: true,
+      });
+      expect([...res.nextSelectedIds].sort()).toEqual(['g1', 'g2', 'g3', 'g4']);
+      expect(res.nextAnchorIndex).toBe(4);
+      expect(res.nextAnchorTargetSelected).toBe(true);
+    });
+
+    test('Shift+click after deselecting anchor deselects range while preserving outside selections', () => {
+      const res = applyQueueRowSelection({
+        prevSelectedIds: new Set(['g0', 'g1', 'g2', 'g3', 'g4']),
+        visibleIds,
+        clickedIndex: 3,
+        anchorIndex: 1,
+        anchorTargetSelected: false,
+        shiftKey: true,
+      });
+      expect([...res.nextSelectedIds].sort()).toEqual(['g0', 'g4']);
+      expect(res.nextAnchorIndex).toBe(1);
+      expect(res.nextAnchorTargetSelected).toBe(false);
+    });
+
+    test('Shift+click with null or out-of-bounds anchor falls back to single row toggle', () => {
+      const resNull = applyQueueRowSelection({
+        prevSelectedIds: new Set(),
+        visibleIds,
+        clickedIndex: 2,
+        anchorIndex: null,
+        anchorTargetSelected: true,
+        shiftKey: true,
+      });
+      expect([...resNull.nextSelectedIds]).toEqual(['g2']);
+      expect(resNull.nextAnchorIndex).toBe(2);
+      expect(resNull.nextAnchorTargetSelected).toBe(true);
+
+      const resOob = applyQueueRowSelection({
+        prevSelectedIds: new Set(['g2']),
+        visibleIds,
+        clickedIndex: 2,
+        anchorIndex: 99,
+        anchorTargetSelected: true,
+        shiftKey: true,
+      });
+      expect([...resOob.nextSelectedIds]).toEqual([]);
+      expect(resOob.nextAnchorIndex).toBe(2);
+      expect(resOob.nextAnchorTargetSelected).toBe(false);
+    });
+
+    test('out-of-bounds clickedIndex returns cloned set without throwing', () => {
+      const prev = new Set(['g0']);
+      const res = applyQueueRowSelection({
+        prevSelectedIds: prev,
+        visibleIds,
+        clickedIndex: -1,
+        anchorIndex: 0,
+        anchorTargetSelected: true,
+        shiftKey: true,
+      });
+      expect(res.nextSelectedIds).not.toBe(prev);
+      expect([...res.nextSelectedIds]).toEqual(['g0']);
+      expect(res.nextAnchorIndex).toBe(0);
     });
   });
 });

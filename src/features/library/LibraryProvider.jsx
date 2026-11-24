@@ -11,6 +11,11 @@ import {
   saveFavoriteAutoCheckEnabled,
   loadFavoriteAutoCheckIntervalMin,
   saveFavoriteAutoCheckIntervalMin,
+  loadFavoriteAutoCheckLastAt,
+  saveFavoriteAutoCheckLastAt,
+  clampFavoriteAutoIntervalMin,
+  selectPeriodicCheckFavorites,
+  shouldRunStartupCatchUpCheck,
   loadFavoriteAutoDownloadEnabled,
   saveFavoriteAutoDownloadEnabled,
   loadFavoriteAutoDownloadMode,
@@ -39,7 +44,7 @@ const FAVORITES_KEY = 'mangaFavorites';
 
 function normalizeFavorite(f) {
   if (!f || typeof f !== 'object') return f;
-  return { ...f, notifyWatch: f.notifyWatch === true };
+  return { ...f, notifyWatch: f.notifyWatch !== false };
 }
 
 function loadFavorites() {
@@ -86,6 +91,9 @@ export function LibraryProvider({ children }) {
   const [favoriteAutoCheckEnabled, setFavoriteAutoCheckEnabled] = useState(() => loadFavoriteAutoCheckEnabled());
   const [favoriteAutoCheckIntervalMin, setFavoriteAutoCheckIntervalMin] = useState(() =>
     loadFavoriteAutoCheckIntervalMin()
+  );
+  const [lastFavoriteAutoCheckAt, setLastFavoriteAutoCheckAt] = useState(() =>
+    loadFavoriteAutoCheckLastAt()
   );
   const [favoriteAutoDownloadEnabled, setFavoriteAutoDownloadEnabled] = useState(() =>
     loadFavoriteAutoDownloadEnabled()
@@ -152,7 +160,7 @@ export function LibraryProvider({ children }) {
             coverUrl: manga.coverUrl || '',
             chapterCount: chapters.length,
             addedAt: new Date().toISOString(),
-            notifyWatch: false,
+            notifyWatch: true,
           },
           ...prev,
         ].slice(0, 500);
@@ -226,7 +234,7 @@ export function LibraryProvider({ children }) {
             coverUrl: mangaData.coverUrl || '',
             chapterCount: initialChapterCount,
             addedAt: new Date().toISOString(),
-            notifyWatch: false,
+            notifyWatch: true,
           },
           ...prev,
         ].slice(0, 500);
@@ -277,7 +285,7 @@ export function LibraryProvider({ children }) {
   }, []);
 
   const favoritesNotifyWatchCount = useMemo(
-    () => favorites.filter((f) => f.notifyWatch).length,
+    () => selectPeriodicCheckFavorites(favorites).length,
     [favorites]
   );
 
@@ -749,7 +757,7 @@ export function LibraryProvider({ children }) {
       }
       let list;
       if (fromBackground) {
-        list = favorites.filter((f) => f.notifyWatch === true);
+        list = selectPeriodicCheckFavorites(favorites);
       } else if (siteFilter) {
         list = favorites.filter((f) => String(f.siteId || '') === siteFilter);
       } else {
@@ -774,11 +782,16 @@ export function LibraryProvider({ children }) {
       const autoDownloadJobs = [];
 
       try {
-        for (const item of list) {
+        for (let i = 0; i < list.length; i += 1) {
+          const item = list[i];
+          if (fromBackground && i > 0) {
+            await new Promise((resolve) => setTimeout(resolve, 350));
+          }
           const url = String(item.mangaUrl || '').trim();
           if (!url) {
             sync[item.id] = {
               remoteCount: 0,
+              pendingNewCount: 0,
               localCount: 0,
               hasNew: false,
               remoteHighestChapterNumber: -1,
@@ -791,6 +804,7 @@ export function LibraryProvider({ children }) {
           if (item.siteId === 'local' || !url.startsWith('http')) {
             sync[item.id] = {
               remoteCount: 0,
+              pendingNewCount: 0,
               localCount: 0,
               hasNew: false,
               remoteHighestChapterNumber: -1,
@@ -811,6 +825,7 @@ export function LibraryProvider({ children }) {
           if (!res?.ok) {
             sync[item.id] = {
               remoteCount: 0,
+              pendingNewCount: 0,
               localCount: 0,
               hasNew: false,
               remoteHighestChapterNumber: -1,
@@ -828,6 +843,7 @@ export function LibraryProvider({ children }) {
           if (!frontierRes?.ok) {
             sync[item.id] = {
               remoteCount: 0,
+              pendingNewCount: 0,
               localCount: 0,
               hasNew: false,
               remoteHighestChapterNumber: -1,
@@ -853,7 +869,8 @@ export function LibraryProvider({ children }) {
           chapterCountUpdates[item.id] = totalRemoteCount;
           const pendingChapters = Array.isArray(frontierRes.pendingChapters) ? frontierRes.pendingChapters : [];
           sync[item.id] = {
-            remoteCount: pendingNewCount,
+            remoteCount: totalRemoteCount,
+            pendingNewCount,
             localCount,
             hasNew: pendingNewCount > 0,
             remoteHighestChapterNumber,
@@ -983,6 +1000,10 @@ export function LibraryProvider({ children }) {
           }
         }
 
+        const checkedAt = Date.now();
+        saveFavoriteAutoCheckLastAt(checkedAt);
+        setLastFavoriteAutoCheckAt(checkedAt);
+
         const withNew = Object.values(sync).filter((x) => x.hasNew).length;
         if (!silent) {
           appendLog(
@@ -1022,23 +1043,39 @@ export function LibraryProvider({ children }) {
   const handleFetchAllFavoritesRef = useRef(handleFetchAllFavorites);
   handleFetchAllFavoritesRef.current = handleFetchAllFavorites;
 
+  const hasPeriodicWatchTargets = favoritesNotifyWatchCount > 0;
+
   useEffect(() => {
     if (!favoriteAutoCheckEnabled) return undefined;
     const api = window.electronAPI;
     if (!api?.loadManga || !api?.computeFavoriteChapterSync) return undefined;
     if (!savePath.trim()) return undefined;
-    if (favoritesNotifyWatchCount === 0) return undefined;
-    const intervalMs = Math.max(15, favoriteAutoCheckIntervalMin) * 60 * 1000;
+    if (!hasPeriodicWatchTargets) return undefined;
+    const intervalMs = clampFavoriteAutoIntervalMin(favoriteAutoCheckIntervalMin) * 60 * 1000;
+    let catchUpId = null;
+    if (
+      shouldRunStartupCatchUpCheck({
+        enabled: favoriteAutoCheckEnabled,
+        intervalMin: favoriteAutoCheckIntervalMin,
+        lastCheckAt: loadFavoriteAutoCheckLastAt(),
+      })
+    ) {
+      catchUpId = setTimeout(() => {
+        handleFetchAllFavoritesRef.current?.('', { silent: true, fromBackground: true });
+      }, 15000);
+    }
     const id = setInterval(() => {
       handleFetchAllFavoritesRef.current?.('', { silent: true, fromBackground: true });
     }, intervalMs);
-    return () => clearInterval(id);
+    return () => {
+      if (catchUpId) clearTimeout(catchUpId);
+      clearInterval(id);
+    };
   }, [
     favoriteAutoCheckEnabled,
     favoriteAutoCheckIntervalMin,
     savePath,
-    favoritesNotifyWatchCount,
-    handleFetchAllFavorites,
+    hasPeriodicWatchTargets,
   ]);
 
   const value = useMemo(
@@ -1073,6 +1110,8 @@ export function LibraryProvider({ children }) {
       setFavoriteAutoCheckEnabled,
       favoriteAutoCheckIntervalMin,
       setFavoriteAutoCheckIntervalMin,
+      lastFavoriteAutoCheckAt,
+      favoritesNotifyWatchCount,
       favoriteAutoDownloadEnabled,
       setFavoriteAutoDownloadEnabled,
       favoriteAutoDownloadMode,
@@ -1111,6 +1150,8 @@ export function LibraryProvider({ children }) {
       bellPanelRemovedRemoteById,
       favoriteAutoCheckEnabled,
       favoriteAutoCheckIntervalMin,
+      lastFavoriteAutoCheckAt,
+      favoritesNotifyWatchCount,
       favoriteAutoDownloadEnabled,
       favoriteAutoDownloadMode,
       favoriteAutoDownloadWorkflowId,

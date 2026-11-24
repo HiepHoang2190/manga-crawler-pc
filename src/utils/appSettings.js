@@ -4,6 +4,8 @@ const AUTO_RETRY_MAX_KEY = "mangaAutoRetryMax";
 const DUPLICATE_SCAN_RECURSIVE_KEY = "duplicateScanRecursive_v2";
 const FAVORITE_AUTO_CHECK_ENABLED_KEY = "mangaFavoriteAutoCheckEnabled";
 const FAVORITE_AUTO_CHECK_INTERVAL_MIN_KEY = "mangaFavoriteAutoCheckIntervalMin";
+export const FAVORITE_AUTO_CHECK_LAST_AT_KEY = "mangaFavoriteAutoCheckLastAt";
+export const FAVORITE_AUTO_CHECK_INTERVAL_PRESETS = [15, 30, 60, 180, 360, 720, 1440];
 const MANGADEX_VOLUME_FOLDER_GROUPING_KEY = "mangadex_volume_folder_grouping_v1";
 
 export function loadMangadexVolumeFolderGrouping() {
@@ -70,7 +72,7 @@ export function saveDuplicateScanRecursive(value) {
 const FAVORITE_AUTO_CHECK_INTERVAL_MIN_MIN = 15;
 const FAVORITE_AUTO_CHECK_INTERVAL_MIN_MAX = 24 * 60;
 
-function clampFavoriteAutoIntervalMin(n) {
+export function clampFavoriteAutoIntervalMin(n) {
   const x = Number(n);
   const v = Number.isFinite(x) ? Math.floor(x) : 60;
   return Math.max(
@@ -112,6 +114,80 @@ export function saveFavoriteAutoCheckIntervalMin(n) {
     localStorage.setItem(FAVORITE_AUTO_CHECK_INTERVAL_MIN_KEY, JSON.stringify(clampFavoriteAutoIntervalMin(n)));
   } catch {
     /* quota */
+  }
+}
+
+export function loadFavoriteAutoCheckLastAt() {
+  try {
+    const raw = localStorage.getItem(FAVORITE_AUTO_CHECK_LAST_AT_KEY);
+    if (raw == null) return 0;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function saveFavoriteAutoCheckLastAt(ts) {
+  try {
+    const n = Number(ts);
+    const val = Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+    localStorage.setItem(FAVORITE_AUTO_CHECK_LAST_AT_KEY, String(val));
+  } catch {
+    /* quota */
+  }
+}
+
+/**
+ * Selects favorites eligible for background periodic checks (all followed manga unless
+ * explicitly muted via `notifyWatch: false`).
+ */
+export function selectPeriodicCheckFavorites(favorites) {
+  return (Array.isArray(favorites) ? favorites : []).filter(
+    (f) => f && f.notifyWatch !== false
+  );
+}
+
+/**
+ * Returns true if periodic checking is enabled, a prior check timestamp exists, and at
+ * least one full interval has elapsed since that check.
+ */
+export function shouldRunStartupCatchUpCheck({
+  enabled,
+  intervalMin,
+  lastCheckAt,
+  now = Date.now(),
+} = {}) {
+  if (!enabled) return false;
+  const last = Number(lastCheckAt);
+  if (!Number.isFinite(last) || last <= 0) return false;
+  const intervalMs = clampFavoriteAutoIntervalMin(intervalMin) * 60 * 1000;
+  return now - last >= intervalMs;
+}
+
+export function formatFavoriteAutoCheckInterval(minutes, t) {
+  const m = clampFavoriteAutoIntervalMin(minutes);
+  if (m < 60) {
+    return t('settings.time.minutes', { m });
+  }
+  if (m % 60 === 0) {
+    return t('settings.time.hours', { h: Math.floor(m / 60) });
+  }
+  return t('settings.time.hoursMinutes', {
+    h: Math.floor(m / 60),
+    m: m % 60,
+  });
+}
+
+export function formatFavoriteAutoCheckLastAt(ts, t) {
+  const n = Number(ts);
+  if (!Number.isFinite(n) || n <= 0) {
+    return t('settings.favoritesAutoCheckNever');
+  }
+  try {
+    return new Date(n).toLocaleString();
+  } catch {
+    return t('settings.favoritesAutoCheckNever');
   }
 }
 

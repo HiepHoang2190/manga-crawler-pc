@@ -15,8 +15,6 @@ export function OfflineGridCard({
   openPinnedCbzFolder,
   onReadCbzFromPath,
   setKindleRow,
-  onToggleFavoriteNotifyWatch,
-  onEnqueuePendingChapters,
   resolveSourceLabel,
   t,
 }) {
@@ -29,11 +27,7 @@ export function OfflineGridCard({
           onReadOffline,
         })
       }
-      cardClassName={
-        row.isBadgeUnread
-          ? 'border-amber-500/70 ring-2 ring-amber-500/35 bg-amber-500/[0.06]'
-          : 'border-outline-variant/20 bg-surface-container-low hover:border-outline-variant/40 hover:bg-surface-container-high/55'
-      }
+      cardClassName="border-outline-variant/20 bg-surface-container-low hover:border-outline-variant/40 hover:bg-surface-container-high/55"
       coverSlot={
         <QueueCoverThumb
           coverUrl={row.localCoverPath || row.coverUrl || ''}
@@ -64,7 +58,6 @@ export function OfflineGridCard({
               onOpenFolder={onOpenFolder}
               onRemoveFromList={removeFromOfflineList}
               onSendToKindle={setKindleRow}
-              onToggleNotifyWatch={onToggleFavoriteNotifyWatch}
             />
           </div>
         </div>
@@ -80,7 +73,6 @@ export function OfflineGridCard({
           </p>
           <OfflineChapterMeta
             chapterCount={row.chapterCount}
-            sync={row.sync}
             t={t}
             lineVariant={
               row.source === 'extraCbz'
@@ -89,28 +81,7 @@ export function OfflineGridCard({
                   : 'cbzFiles'
                 : 'chapters'
             }
-            onEnqueuePending={
-              typeof onEnqueuePendingChapters === 'function'
-                ? () => onEnqueuePendingChapters(row)
-                : undefined
-            }
           />
-          {row.absolutePath ? (
-            <p
-              className="text-[10px] text-on-surface-variant/90 truncate pt-0.5"
-              data-tooltip={row.absolutePath}
-            >
-              {row.absolutePath}
-            </p>
-          ) : null}
-          {row.sourceFile ? (
-            <p
-              className="text-[10px] text-on-surface-variant/80 truncate"
-              data-tooltip={row.sourceFile}
-            >
-              {t('offlineLibrary.lastExtractedSourceFile')}: {row.sourceFile}
-            </p>
-          ) : null}
         </div>
       }
     />

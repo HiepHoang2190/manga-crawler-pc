@@ -1,5 +1,4 @@
 import React from 'react';
-import { FavoriteNotifyBell } from './FavoriteNotifyBell';
 import {
   isKindleEligible,
   isExtractedTempRow,
@@ -16,7 +15,6 @@ export function OfflineCardActions({
   onOpenFolder,
   onRemoveFromList,
   onSendToKindle,
-  onToggleNotifyWatch,
 }) {
   const canOpenFolder = canOpenOfflineRowFolder(row, { onOpenFolder });
   const hasFetchUrl = hasRowFetchUrl(row);
@@ -37,15 +35,6 @@ export function OfflineCardActions({
         >
           <span className={FAV_MS_ICON_20}>sync</span>
         </button>
-      ) : null}
-
-      {row.isFavorite ? (
-        <FavoriteNotifyBell
-          active={Boolean(row.notifyWatch)}
-          onToggle={() => onToggleNotifyWatch?.(row.favoriteId || row.key)}
-          titleOn={t('favorites.notifyWatchOn')}
-          titleOff={t('favorites.notifyWatchOff')}
-        />
       ) : null}
 
       {typeof onSendToKindle === 'function' && isKindleEligible(row) ? (

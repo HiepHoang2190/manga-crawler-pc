@@ -257,4 +257,63 @@ describe('FollowedMangaPanel structure and standards', () => {
     expect(en).toContain("'followedManga.actions.stopCheck':");
     expect(en).toContain("'followedManga.actions.stopping':");
   });
+
+  test('left sidebar includes compact Periodic Check companion icon beside Sort with clean toolbar rightSlot and fixes periodic check pipeline', () => {
+    const followed = fs.readFileSync(panelPath, 'utf8');
+    const explore = fs.readFileSync(path.resolve(process.cwd(), 'src/features/explore/ExplorePanel.jsx'), 'utf8');
+    const shell = fs.readFileSync(path.resolve(process.cwd(), 'src/features/shell/ShellLayout.jsx'), 'utf8');
+    const settings = fs.readFileSync(path.resolve(process.cwd(), 'src/features/settings/SettingsPanel.jsx'), 'utf8');
+    const library = fs.readFileSync(path.resolve(process.cwd(), 'src/features/library/LibraryProvider.jsx'), 'utf8');
+
+    const rightSlotMatch = followed.match(/rightSlot=\{([\s\S]*?)\n\s*\}\s*\/>/);
+    const leftSidebarMatch = followed.match(/<StudioLayout\.LeftSidebar[\s\S]*?<\/StudioLayout\.LeftSidebar>/);
+    expect(rightSlotMatch).not.toBeNull();
+    expect(leftSidebarMatch).not.toBeNull();
+
+    const rightSlotCode = rightSlotMatch[1];
+    const leftSidebarCode = leftSidebarMatch[0];
+
+    expect(rightSlotCode).not.toContain('followed-auto-check-settings-btn');
+    expect(rightSlotCode).not.toContain('onOpenFavoriteAutoCheckSettings');
+    expect(rightSlotCode).toContain('<ViewModeToggle');
+
+    expect(leftSidebarCode).toContain('data-testid="followed-auto-check-settings-btn"');
+    expect(leftSidebarCode).toContain('onOpenFavoriteAutoCheckSettings');
+    expect(leftSidebarCode).toContain('favoriteAutoCheckEnabled');
+    expect(leftSidebarCode).toContain('favoriteAutoCheckIntervalMin');
+    expect(leftSidebarCode).toMatch(
+      /<div className="flex items-center gap-2">\s*<SearchableSelect[\s\S]*?options=\{sortOptions\}[\s\S]*?className="flex-1 min-w-0"[\s\S]*?data-testid="followed-auto-check-settings-btn"/
+    );
+    expect(leftSidebarCode).toContain('h-10 w-10 shrink-0');
+    expect(leftSidebarCode).toContain('rounded-xl');
+    expect(leftSidebarCode).toContain('text-[18px]');
+    const autoCheckBtnMatch = leftSidebarCode.match(/<button[\s\S]*?data-testid="followed-auto-check-settings-btn"[\s\S]*?<\/button>/);
+    expect(autoCheckBtnMatch).not.toBeNull();
+    expect(autoCheckBtnMatch[0]).toMatch(/>\s*tune\s*<\/span>/);
+    expect(autoCheckBtnMatch[0]).not.toMatch(/>\s*schedule\s*<\/span>/);
+    expect(leftSidebarCode).toContain('data-tooltip={tooltipText}');
+
+    expect(explore).toContain('onOpenFavoriteAutoCheckSettings');
+    expect(explore).toContain('favoriteAutoCheckEnabled');
+    expect(explore).toContain('favoriteAutoCheckIntervalMin');
+    expect(explore).toContain('lastFavoriteAutoCheckAt');
+
+    expect(shell).toContain("setScrollSettingsToSection('favorites')");
+    expect(shell).toContain('onOpenFavoriteAutoCheckSettings');
+    expect(shell).toContain('lastFavoriteAutoCheckAt={lastFavoriteAutoCheckAt}');
+    expect(shell).toContain('favoritesWatchedCount={favoritesNotifyWatchCount}');
+
+    expect(settings).toContain('FAVORITE_AUTO_CHECK_INTERVAL_PRESETS');
+    expect(settings).toContain('lastFavoriteAutoCheckAt');
+    expect(settings).toContain('favoritesWatchedCount');
+
+    expect(library).toContain('selectPeriodicCheckFavorites');
+    expect(library).toContain('shouldRunStartupCatchUpCheck');
+    expect(library).toContain('clampFavoriteAutoIntervalMin');
+    expect(library).toContain('lastFavoriteAutoCheckAt');
+    expect(library).toContain('remoteCount: totalRemoteCount');
+    expect(library).toMatch(/remoteCount:\s*totalRemoteCount,\s*\n\s*pendingNewCount,/);
+    expect(library).toContain('notifyWatch: true');
+    expect(library).not.toMatch(/setInterval\([\s\S]{0,350}handleFetchAllFavorites,/);
+  });
 });

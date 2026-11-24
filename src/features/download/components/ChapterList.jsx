@@ -14,6 +14,7 @@ import {
   parseChapterRangeSelection,
   filterChaptersByQuery,
   selectUndownloadedChapterUrls,
+  buildQueueChapterStatusMap,
 } from '../utils/chapterSelectionUtils.js';
 
 function StatusBadge({ variant, label }) {
@@ -142,23 +143,10 @@ export default function ChapterList({
   }, [chaptersForList, titleSort]);
 
   /** Trạng thái từ hàng đợi (cùng mangaUrl với truyện đang fetch). */
-  const statusByChapterUrl = useMemo(() => {
-    const map = new Map();
-    const mu = String(currentMangaUrl || '').trim();
-    if (!mu || !Array.isArray(queue)) return map;
-    const g = queue.find((x) => String(x.mangaUrl || '').trim() === mu);
-    if (!g?.chapters) return map;
-    for (const ch of g.chapters) {
-      const u = String(ch.chapterUrl || '').trim();
-      if (u) {
-        map.set(u, ch.status);
-      }
-      if (ch.chapterUrl) {
-        map.set(ch.chapterUrl, ch.status);
-      }
-    }
-    return map;
-  }, [queue, currentMangaUrl]);
+  const statusByChapterUrl = useMemo(
+    () => buildQueueChapterStatusMap(queue, currentMangaUrl),
+    [queue, currentMangaUrl]
+  );
 
   const rowStatusKey = useCallback(
     (ch) => {
@@ -180,6 +168,19 @@ export default function ChapterList({
     () => (isPick ? [] : selectUndownloadedChapterUrls(sortedChapters, rowStatusKey)),
     [isPick, sortedChapters, rowStatusKey]
   );
+
+  const showUndownloadedQuickSelect =
+    !hideQueueFooter && chapterStatusKeyOverride !== 'completed';
+
+  const undownloadedTooltip = useMemo(() => {
+    if (undownloadedUrls.length > 0 || sortedChapters.length === 0) {
+      return t('chapterList.selectUndownloadedTooltip');
+    }
+    const allCompleted = sortedChapters.every((ch) => rowStatusKey(ch) === 'completed');
+    return allCompleted
+      ? t('chapterList.selectUndownloadedAllDownloaded')
+      : t('chapterList.selectUndownloadedAllQueuedOrDone');
+  }, [undownloadedUrls.length, sortedChapters, rowStatusKey, t]);
 
   const rangeMatchedUrls = useMemo(
     () => (rangeOpen ? parseChapterRangeSelection(rangeDraft, chaptersForList) : []),
@@ -883,19 +884,26 @@ export default function ChapterList({
 
             {!isPick && typeof setSelectedUrls === 'function' ? (
               <div className="flex items-center gap-1.5 shrink-0">
-                <button
-                  type="button"
-                  onClick={handleSelectUndownloaded}
-                  disabled={undownloadedUrls.length === 0}
-                  data-tooltip={t('chapterList.selectUndownloadedTooltip')}
-                  className="cursor-pointer h-8 px-2.5 rounded-lg border border-outline-variant/25 bg-surface-container-high/80 hover:border-primary/40 hover:text-primary text-xs font-medium text-on-surface flex items-center gap-1 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <span className="material-symbols-outlined text-[15px] text-primary">download_for_offline</span>
-                  <span>{t('chapterList.selectUndownloaded')}</span>
-                  {undownloadedUrls.length > 0 ? (
-                    <span className="text-[10px] font-mono opacity-80">({undownloadedUrls.length})</span>
-                  ) : null}
-                </button>
+                {showUndownloadedQuickSelect ? (
+                  <span
+                    className={`inline-flex ${undownloadedUrls.length === 0 ? 'cursor-not-allowed' : ''}`}
+                    data-tooltip={undownloadedTooltip}
+                  >
+                    <button
+                      type="button"
+                      onClick={handleSelectUndownloaded}
+                      disabled={undownloadedUrls.length === 0}
+                      aria-label={undownloadedTooltip}
+                      className="cursor-pointer h-8 px-2.5 rounded-lg border border-outline-variant/25 bg-surface-container-high/80 hover:border-primary/40 hover:text-primary text-xs font-medium text-on-surface flex items-center gap-1 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                    >
+                      <span className="material-symbols-outlined text-[15px] text-primary">download_for_offline</span>
+                      <span>{t('chapterList.selectUndownloaded')}</span>
+                      {undownloadedUrls.length > 0 ? (
+                        <span className="text-[10px] font-mono opacity-80">({undownloadedUrls.length})</span>
+                      ) : null}
+                    </button>
+                  </span>
+                ) : null}
 
                 <button
                   type="button"

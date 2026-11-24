@@ -40,7 +40,6 @@ export function OfflineLibraryToolbar({
           onChange={setSourceFilter}
           options={[
             { value: 'all', label: t('offlineLibrary.filterSourceAll') },
-            { value: 'favorites', label: t('offlineLibrary.filterSourceFavorites'), icon: 'favorite' },
             { value: 'save', label: t('offlineLibrary.filterSourceSave'), icon: 'download' },
             { value: 'extra', label: t('offlineLibrary.filterSourceExtra'), icon: 'folder' },
             { value: 'archives', label: t('offlineLibrary.filterSourceArchives'), icon: 'archive' },

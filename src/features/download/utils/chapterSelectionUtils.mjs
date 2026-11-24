@@ -1,3 +1,5 @@
+import { isFailedQueueChapter } from '../../../utils/queueProgress.js';
+
 function normalizeText(value) {
   return String(value ?? '')
     .replace(/đ/g, 'd')
@@ -120,4 +122,38 @@ export function selectUndownloadedChapterUrls(chapters = [], getStatusKey) {
   }
 
   return result;
+}
+
+const QUEUE_STATUS_PRIORITY = {
+  error: 0,
+  waiting: 1,
+  done: 2,
+  downloading: 3,
+};
+
+export function buildQueueChapterStatusMap(queue = [], currentMangaUrl = '') {
+  const map = new Map();
+  const mu = String(currentMangaUrl || '').trim();
+  if (!mu || !Array.isArray(queue)) return map;
+
+  for (const g of queue) {
+    if (!g || String(g.mangaUrl || '').trim() !== mu || !Array.isArray(g.chapters)) continue;
+    for (const ch of g.chapters) {
+      if (!ch) continue;
+      const effectiveStatus = isFailedQueueChapter(ch) ? 'error' : ch.status;
+      if (!effectiveStatus) continue;
+
+      const u = String(ch.chapterUrl || '').trim();
+      if (!u) continue;
+      const prevStatus = map.get(u) ?? map.get(ch.chapterUrl);
+      const prevPrio = prevStatus != null ? (QUEUE_STATUS_PRIORITY[prevStatus] ?? -1) : -1;
+      const nextPrio = QUEUE_STATUS_PRIORITY[effectiveStatus] ?? -1;
+      if (prevStatus != null && nextPrio < prevPrio) continue;
+
+      if (u) map.set(u, effectiveStatus);
+      if (ch.chapterUrl) map.set(ch.chapterUrl, effectiveStatus);
+    }
+  }
+
+  return map;
 }

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useI18n } from '../../../context/I18nContext';
 import { useDownload } from '../DownloadProvider';
 import { loadSavedWorkflows } from '../../workflow/utils/workflowStorage.mjs';
@@ -24,6 +25,7 @@ export default function QueueWorkflowSelector({
   onApplyToAll: propOnApplyToAll,
   groupId,
   compact = false,
+  size = 'md',
   disabled = false,
   className = '',
 }) {
@@ -31,19 +33,35 @@ export default function QueueWorkflowSelector({
   const downloadCtx = useDownloadSafe();
 
   const [isOpen, setIsOpen] = useState(false);
+  const [dropdownStyle, setDropdownStyle] = useState({});
   const containerRef = useRef(null);
+  const portalRef = useRef(null);
 
-  // Close on outside click
+  // Close on outside click, Escape, or external scroll
   useEffect(() => {
     if (!isOpen) return;
     const handleOutsideClick = (event) => {
-      if (containerRef.current && !containerRef.current.contains(event.target)) {
+      if (containerRef.current?.contains(event.target) || portalRef.current?.contains(event.target)) {
+        return;
+      }
+      setIsOpen(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
         setIsOpen(false);
       }
     };
+    const handleExternalScroll = (event) => {
+      if (portalRef.current?.contains(event.target)) return;
+      setIsOpen(false);
+    };
     document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('scroll', handleExternalScroll, true);
     return () => {
       document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('scroll', handleExternalScroll, true);
     };
   }, [isOpen]);
 
@@ -72,23 +90,49 @@ export default function QueueWorkflowSelector({
   const isRowMode = compact || Boolean(groupId);
   const [placement, setPlacement] = useState('right');
 
-  // Dynamically compute alignment (right-0 vs left-0) to prevent clipping at window edges
+  // Dynamically compute fixed portal coordinates & alignment to prevent clipping at overflow containers / viewport edges
   useLayoutEffect(() => {
     if (!isOpen || !containerRef.current) return;
     const updatePlacement = () => {
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
       const dropdownWidth = isRowMode ? 288 : 320;
+      const effectiveWidth = Math.min(dropdownWidth, window.innerWidth - 32);
       const spaceRight = window.innerWidth - rect.left;
       const spaceLeft = rect.right;
 
-      if (spaceRight < dropdownWidth + 16 && spaceLeft >= dropdownWidth) {
-        setPlacement('right');
-      } else if (spaceLeft < dropdownWidth + 16 && spaceRight >= dropdownWidth) {
-        setPlacement('left');
-      } else {
-        setPlacement(rect.left + rect.width / 2 > window.innerWidth / 2 ? 'right' : 'left');
-      }
+      const nextPlacement =
+        spaceRight < effectiveWidth + 16 && spaceLeft >= effectiveWidth
+          ? 'right'
+          : spaceLeft < effectiveWidth + 16 && spaceRight >= effectiveWidth
+            ? 'left'
+            : rect.left + rect.width / 2 > window.innerWidth / 2
+              ? 'right'
+              : 'left';
+
+      setPlacement(nextPlacement);
+
+      const rawLeft = nextPlacement === 'left' ? rect.left : rect.right - effectiveWidth;
+      const clampedLeft = Math.max(8, Math.min(rawLeft, window.innerWidth - effectiveWidth - 8));
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      const flipUp = spaceBelow < 240 && spaceAbove > spaceBelow;
+
+      setDropdownStyle(
+        flipUp
+          ? {
+              position: 'fixed',
+              left: clampedLeft,
+              bottom: window.innerHeight - rect.top + 6,
+              zIndex: 10050,
+            }
+          : {
+              position: 'fixed',
+              left: clampedLeft,
+              top: rect.bottom + 6,
+              zIndex: 10050,
+            }
+      );
     };
 
     updatePlacement();
@@ -164,9 +208,12 @@ export default function QueueWorkflowSelector({
           <span className="material-symbols-outlined text-[18px] leading-none">schema</span>
         </button>
 
-        {isOpen && (
+        {isOpen && typeof document !== 'undefined' && createPortal(
           <div
-            className={`absolute ${placement === 'left' ? 'left-0' : 'right-0'} top-full mt-1.5 z-50 w-72 max-w-[calc(100vw-32px)] rounded-xl border border-outline-variant/20 bg-surface shadow-2xl p-2 flex flex-col gap-1 text-left`}
+            ref={portalRef}
+            style={dropdownStyle}
+            data-placement={placement}
+            className="w-72 max-w-[calc(100vw-32px)] rounded-xl border border-outline-variant/20 bg-surface shadow-2xl p-2 flex flex-col gap-1 text-left"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-on-surface-variant flex items-center gap-1.5 border-b border-outline-variant/10 pb-1.5">
@@ -270,20 +317,26 @@ export default function QueueWorkflowSelector({
                 </>
               )}
             </div>
-          </div>
+          </div>,
+          document.body
         )}
       </div>
     );
   }
 
   // Toolbar Mode
+  const isSm = size === 'sm';
   return (
     <div className={`relative inline-flex items-center ${className}`} ref={containerRef}>
       <button
         type="button"
         disabled={disabled}
         onClick={() => setIsOpen((prev) => !prev)}
-        className={`h-10 px-3 rounded-xl border bg-surface-container-highest text-on-surface text-xs font-medium transition-all cursor-pointer flex items-center gap-2 shrink-0 select-none disabled:opacity-40 disabled:cursor-not-allowed max-w-[260px] ${
+        className={`${
+          isSm
+            ? 'h-8 px-2.5 rounded-lg gap-1.5 max-w-[280px]'
+            : 'h-10 px-3 rounded-xl gap-2 max-w-[300px]'
+        } border bg-surface-container-highest text-on-surface text-xs font-medium transition-all cursor-pointer flex items-center shrink-0 select-none disabled:opacity-40 disabled:cursor-not-allowed ${
           isOpen
             ? 'border-primary ring-2 ring-primary/20 shadow-xs'
             : 'border-outline-variant/25 hover:border-outline-variant/50'
@@ -291,10 +344,10 @@ export default function QueueWorkflowSelector({
         data-tooltip={`${t('queue.workflowSelectorLabel') || 'Quy trình sau tải'}: ${activeLabel}`}
         aria-label={`${t('queue.workflowSelectorLabel') || 'Quy trình sau tải'}: ${activeLabel}`}
       >
-        <span className="material-symbols-outlined text-[18px] text-primary leading-none shrink-0">schema</span>
+        <span className={`material-symbols-outlined ${isSm ? 'text-[16px]' : 'text-[18px]'} text-primary leading-none shrink-0`}>schema</span>
         <span className="truncate font-semibold">{activeLabel}</span>
         <span
-          className={`material-symbols-outlined text-[18px] leading-none shrink-0 transition-transform duration-150 ${
+          className={`material-symbols-outlined ${isSm ? 'text-[16px]' : 'text-[18px]'} leading-none shrink-0 transition-transform duration-150 ${
             isOpen ? 'rotate-180 text-primary' : 'text-on-surface-variant'
           }`}
         >
@@ -302,9 +355,12 @@ export default function QueueWorkflowSelector({
         </span>
       </button>
 
-      {isOpen && (
+      {isOpen && typeof document !== 'undefined' && createPortal(
         <div
-          className={`absolute ${placement === 'left' ? 'left-0' : 'right-0'} top-full mt-1.5 z-50 w-80 max-w-[calc(100vw-32px)] rounded-xl border border-outline-variant/20 bg-surface shadow-2xl p-2 flex flex-col gap-1 text-left`}
+          ref={portalRef}
+          style={dropdownStyle}
+          data-placement={placement}
+          className="w-80 max-w-[calc(100vw-32px)] rounded-xl border border-outline-variant/20 bg-surface shadow-2xl p-2 flex flex-col gap-1 text-left"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-on-surface-variant flex items-center gap-1.5 border-b border-outline-variant/10 pb-1.5">
@@ -406,7 +462,8 @@ export default function QueueWorkflowSelector({
               {t('queue.workflowHeaderHint') || 'Mặc định áp dụng cho tất cả truyện đang chờ tải'}
             </span>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

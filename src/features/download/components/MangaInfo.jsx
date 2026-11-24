@@ -283,3 +283,108 @@ export default function MangaInfo({
     </div>
   );
 }
+
+/**
+ * Thẻ thông tin truyện mặc định khi chưa fetch URL nào, giữ cân đối bố cục Sidebar.
+ */
+export function MangaInfoEmptyCard({ loading = false, selectedSiteLabel = '' }) {
+  const { t } = useI18n();
+  const siteText = String(selectedSiteLabel || '').trim() || t('mangaInfo.emptySourcePlaceholder');
+
+  return (
+    <div
+      className="w-full"
+      data-testid="manga-info-empty-card"
+      aria-busy={loading || undefined}
+    >
+      <div className="rounded-2xl border border-dashed border-outline-variant/35 bg-surface-container-low/65 p-3.5 space-y-3">
+        <div className="flex gap-3.5 items-start">
+          <div
+            className={`relative flex aspect-[2/3] w-28 shrink-0 flex-col items-center justify-center gap-1.5 overflow-hidden rounded-xl border border-dashed border-outline-variant/30 bg-surface-container-highest/55 text-on-surface-variant/45 sm:w-32 ${
+              loading ? 'animate-pulse' : ''
+            }`}
+          >
+            {loading ? (
+              <span
+                className="material-symbols-outlined text-[26px] leading-none text-primary/70 animate-spin"
+                style={{ animationDuration: '0.9s' }}
+                aria-hidden="true"
+              >
+                sync
+              </span>
+            ) : (
+              <>
+                <span className="material-symbols-outlined text-[28px] leading-none" aria-hidden="true">
+                  menu_book
+                </span>
+                <span className="px-2 text-center text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/55">
+                  {t('mangaInfo.emptyCoverLabel')}
+                </span>
+              </>
+            )}
+          </div>
+
+          <div className="flex-1 min-w-0 space-y-1.5">
+            <h2 className="min-w-0 text-sm sm:text-base font-bold leading-snug text-on-surface/80 line-clamp-2 tracking-tight">
+              {loading ? t('mangaInfo.emptyLoadingTitle') : t('mangaInfo.emptyTitle')}
+            </h2>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="inline-flex items-center gap-1 rounded-md bg-surface-container-highest/80 text-on-surface-variant/75 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider shrink-0">
+                <span className="material-symbols-outlined text-[13px]" aria-hidden="true">public</span>
+                <span className="truncate max-w-[120px]">{siteText}</span>
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-lg bg-surface-container-highest/80 text-on-surface-variant/75 px-2 py-0.5 text-xs font-semibold tabular-nums shrink-0">
+                <span className="material-symbols-outlined text-[14px]" aria-hidden="true">auto_stories</span>
+                <span>0 {t('mangaInfo.chapterSuffix', 'chương')}</span>
+              </span>
+            </div>
+
+            {loading ? (
+              <div className="space-y-1.5 pt-0.5 animate-pulse">
+                <div className="h-2.5 w-full rounded bg-outline-variant/25" />
+                <div className="h-2.5 w-3/4 rounded bg-outline-variant/20" />
+                <p className="pt-1 text-xs leading-relaxed text-on-surface-variant/75">
+                  {t('mangaInfo.emptyLoadingDescription')}
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs leading-relaxed text-on-surface-variant/75 pt-0.5">
+                {t('mangaInfo.emptyDescription')}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 pt-2.5 border-t border-outline-variant/15">
+          <span className="block w-full cursor-not-allowed" data-tooltip={t('mangaInfo.emptyActionDisabledTooltip')}>
+            <button
+              type="button"
+              disabled
+              aria-label={t('chapterList.openDrawerShort')}
+              className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-surface-container-high text-on-surface border border-outline-variant/25 px-3 text-center text-xs font-semibold shadow-2xs opacity-45 cursor-not-allowed disabled:pointer-events-none"
+            >
+              <span className="material-symbols-outlined shrink-0 select-none text-[18px] leading-none" aria-hidden="true">
+                format_list_bulleted
+              </span>
+              <span className="truncate whitespace-nowrap">{t('chapterList.openDrawerShort')}</span>
+            </button>
+          </span>
+          <span className="block w-full cursor-not-allowed" data-tooltip={t('mangaInfo.emptyActionDisabledTooltip')}>
+            <button
+              type="button"
+              disabled
+              aria-label={t('mangaInfo.enqueueAllShort')}
+              className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-primary px-3 text-center text-xs font-semibold text-on-primary shadow-xs opacity-45 cursor-not-allowed disabled:pointer-events-none"
+            >
+              <span className="material-symbols-outlined shrink-0 select-none text-[18px] leading-none" aria-hidden="true">
+                playlist_add
+              </span>
+              <span className="truncate">{t('mangaInfo.enqueueAllShort')}</span>
+            </button>
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}

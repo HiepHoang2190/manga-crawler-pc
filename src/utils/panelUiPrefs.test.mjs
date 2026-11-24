@@ -41,3 +41,14 @@ test('Property 1: tab persistence round-trip — all valid tabs survive save/loa
     { numRuns: 100 }
   );
 });
+
+test('offlineRead.sortMode falls back safely from legacy hasNewFirst to titleAsc', () => {
+  localStorageMock.clear();
+  localStorageMock.setItem('mangaPanelUi', JSON.stringify({ offlineRead: { sortMode: 'hasNewFirst' } }));
+  const loaded = loadPanelUi();
+  assert.equal(loaded.offlineRead.sortMode, 'titleAsc');
+
+  savePanelUi({ offlineRead: { sortMode: 'chaptersDesc' } });
+  const updated = loadPanelUi();
+  assert.equal(updated.offlineRead.sortMode, 'chaptersDesc');
+});

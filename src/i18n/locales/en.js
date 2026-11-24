@@ -1133,16 +1133,20 @@ export const en = {
   'settings.section.duplicateScan': 'Duplicate image scan',
   'settings.section.favoritesSync': 'Favorites — new chapter check',
   'settings.favoritesSyncHint':
-    'Only while the app is open. Use the bell on each favorite to opt into periodic checks and in-app notifications.',
-  'settings.favoritesAutoCheck': 'Enable periodic check (manga with bell enabled)',
+    'Runs in the background while the app is open to detect new chapters across your Followed Manga list.',
+  'settings.favoritesAutoCheck': 'Enable periodic new-chapter check',
   'settings.favoritesAutoCheckInterval': 'Check interval',
   'settings.favoritesAutoCheckIntervalHelp':
-    'Time interval between checking for new chapters of bell-enabled favorites. Allowed from 15 to 1440 minutes (1440 = max once every 24 hours).',
+    'Interval between background chapter scans. Allowed from 15 to 1440 minutes (max once every 24 hours).',
+  'settings.favoritesAutoCheckPresets': 'Quick intervals',
+  'settings.favoritesAutoCheckNever': 'Never',
+  'settings.favoritesAutoCheckStatusSummary':
+    'Applies to {count} followed series • Last checked: {last}',
   'settings.favoritesBellHint':
     'Turn on the bell per manga (cover or actions column) to watch for updates.',
   'settings.favoritesAutoDownload': 'Automatically download new chapters when detected',
   'settings.favoritesAutoDownloadHint':
-    'Automatically download newly released chapters of bell-enabled favorites after each background check.',
+    'Automatically enqueue new chapters (to Queue or Workflow) after each periodic background check.',
   'settings.favoritesAutoDownloadRequiresCheck':
     'Requires periodic check to be enabled in order to automatically download.',
   'settings.favoritesAutoDownloadMode': 'Download Mode',
@@ -1643,6 +1647,14 @@ export const en = {
     'This manga has no chapters — cannot open the list or add to the queue.',
   'mangaInfo.enqueueDisabledNoChapters':
     'This manga has no chapters — cannot add to the queue.',
+  'mangaInfo.emptyTitle': 'No manga loaded',
+  'mangaInfo.emptyLoadingTitle': 'Fetching manga info...',
+  'mangaInfo.emptyCoverLabel': 'Cover',
+  'mangaInfo.emptySourcePlaceholder': 'Source',
+  'mangaInfo.emptyDescription':
+    'Paste a manga URL above and click Fetch to preview details, chapters, and add to the queue.',
+  'mangaInfo.emptyLoadingDescription': 'Loading cover art and chapter list from the source...',
+  'mangaInfo.emptyActionDisabledTooltip': 'Paste a manga URL and click Fetch first',
 
   'queue.tab.queue': 'Current Queue',
   'queue.tab.history': 'History',
@@ -2420,7 +2432,11 @@ export const en = {
   'queue.filterStatusCompleted': 'Completed',
   'queue.filterStatusError': 'Has errors',
   'queue.empty': 'No items yet. Select chapters on the left and click “Add selected to Queue”.',
+  'queue.emptyTitle': 'Download queue is empty',
   'queue.emptyFiltered': 'No items match the current filter in download queue.',
+  'queue.selectAll': 'Select all',
+  'queue.selectedCount': '{selected}/{total} selected',
+  'queue.resetFilters': 'Reset filters',
   'queue.checkboxTitle': 'Select series to download (Start), pause / resume',
   'queue.dragTitle': 'Drag to set download order (top first)',
   'queue.startNeedSelection': 'Select at least one series with the checkbox before Start',
@@ -4490,6 +4506,12 @@ export const en = {
   'followedManga.actions.enqueueShort': 'Queue',
   'followedManga.actions.removeFavorite': 'Remove Bookmark',
   'followedManga.actions.viewChapters': 'View Chapters',
+  'followedManga.autoCheck.enabledShort': 'Auto: {interval}',
+  'followedManga.autoCheck.offShort': 'Auto-check',
+  'followedManga.autoCheck.tooltipOn':
+    'Auto-check enabled every {interval} (last: {last}). Click to open settings',
+  'followedManga.autoCheck.tooltipOff':
+    'Periodic auto-check is off. Click to open settings',
   'followedManga.progress.downloading': 'Downloading {done}/{total} ch',
   'followedManga.progress.waiting': 'Waiting {done}/{total} ch',
   'followedManga.progress.downloadingAll': 'Downloading... ({percent}%)',
@@ -4627,6 +4649,8 @@ export const en = {
   'chapterList.clearSearch': 'Clear chapter search',
   'chapterList.selectUndownloaded': 'Undownloaded',
   'chapterList.selectUndownloadedTooltip': 'Quick-select all chapters not yet downloaded',
+  'chapterList.selectUndownloadedAllDownloaded': 'All visible chapters are already downloaded',
+  'chapterList.selectUndownloadedAllQueuedOrDone': 'No undownloaded chapters left (all are downloaded or already in queue)',
   'chapterList.rangeBtn': 'Range',
   'chapterList.rangePlaceholder': 'e.g. 1-50, 75, 100-110',
   'chapterList.rangeApply': 'Apply',

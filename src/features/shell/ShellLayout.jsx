@@ -263,6 +263,7 @@ export default function ShellLayout() {
   } = useReader();
   const {
     favorites,
+    favoritesNotifyWatchCount,
     toggleFavorite,
     toggleFavoriteFromLatest,
     removeFavorite,
@@ -290,6 +291,7 @@ export default function ShellLayout() {
     setFavoriteAutoCheckEnabled,
     favoriteAutoCheckIntervalMin,
     setFavoriteAutoCheckIntervalMin,
+    lastFavoriteAutoCheckAt,
     favoriteAutoDownloadEnabled,
     setFavoriteAutoDownloadEnabled,
     favoriteAutoDownloadMode,
@@ -1677,6 +1679,13 @@ export default function ShellLayout() {
                 favoriteSyncById={favoriteSyncById}
                 onEnqueuePendingChapters={enqueueFavoritePendingChapters}
                 onToggleFavorite={toggleFavoriteFromLatest}
+                favoriteAutoCheckEnabled={favoriteAutoCheckEnabled}
+                favoriteAutoCheckIntervalMin={favoriteAutoCheckIntervalMin}
+                lastFavoriteAutoCheckAt={lastFavoriteAutoCheckAt}
+                onOpenFavoriteAutoCheckSettings={() => {
+                  setMenuView('settings');
+                  setScrollSettingsToSection('favorites');
+                }}
               />
             </Suspense>
           </TabErrorBoundary>
@@ -1743,6 +1752,8 @@ export default function ShellLayout() {
           setFavoriteAutoCheckEnabled={setFavoriteAutoCheckEnabled}
           favoriteAutoCheckIntervalMin={favoriteAutoCheckIntervalMin}
           setFavoriteAutoCheckIntervalMin={setFavoriteAutoCheckIntervalMin}
+          lastFavoriteAutoCheckAt={lastFavoriteAutoCheckAt}
+          favoritesWatchedCount={favoritesNotifyWatchCount}
           favoriteAutoDownloadEnabled={favoriteAutoDownloadEnabled}
           setFavoriteAutoDownloadEnabled={setFavoriteAutoDownloadEnabled}
           favoriteAutoDownloadMode={favoriteAutoDownloadMode}

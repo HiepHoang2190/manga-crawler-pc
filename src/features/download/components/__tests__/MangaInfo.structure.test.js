@@ -30,4 +30,18 @@ describe('MangaInfo Component Structure & Normalization', () => {
     expect(content).not.toMatch(/\bhover:underline\b/);
     expect(content).not.toMatch(/\bunderline\b/);
   });
+
+  test('exports MangaInfoEmptyCard matching MangaInfo geometry with loading state and E2E-safe testids', () => {
+    expect(content).toMatch(/export\s+function\s+MangaInfoEmptyCard\b/);
+    const emptyBlock = content.slice(content.indexOf('export function MangaInfoEmptyCard'));
+    expect(emptyBlock).toContain('data-testid="manga-info-empty-card"');
+    expect(emptyBlock).toContain('aspect-[2/3]');
+    expect(emptyBlock).toContain('grid grid-cols-2');
+    expect(emptyBlock).toContain('animate-pulse');
+    expect(emptyBlock).toContain('disabled:pointer-events-none');
+    expect(emptyBlock).toContain("data-tooltip={t('mangaInfo.emptyActionDisabledTooltip')}");
+    expect(emptyBlock).not.toContain('data-testid="manga-info-card"');
+    expect(emptyBlock).not.toContain('data-testid="open-drawer-btn"');
+    expect(emptyBlock).not.toContain('data-testid="enqueue-all-btn"');
+  });
 });

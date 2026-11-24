@@ -62,6 +62,10 @@ export default function ExplorePanel({
   favoriteSyncById = {},
   onEnqueuePendingChapters = null,
   onToggleFavorite = null,
+  favoriteAutoCheckEnabled = false,
+  favoriteAutoCheckIntervalMin = 60,
+  lastFavoriteAutoCheckAt = 0,
+  onOpenFavoriteAutoCheckSettings = null,
   initialSubtab = null,
 }) {
   const { t } = useI18n();
@@ -236,6 +240,10 @@ export default function ExplorePanel({
             onDownloadMangadexCovers={onDownloadMangadexCovers}
             viewMode={viewMode}
             onViewModeChange={handleViewModeChange}
+            favoriteAutoCheckEnabled={favoriteAutoCheckEnabled}
+            favoriteAutoCheckIntervalMin={favoriteAutoCheckIntervalMin}
+            lastFavoriteAutoCheckAt={lastFavoriteAutoCheckAt}
+            onOpenFavoriteAutoCheckSettings={onOpenFavoriteAutoCheckSettings}
           />
         </KeepAliveSubtab>
       ) : null}

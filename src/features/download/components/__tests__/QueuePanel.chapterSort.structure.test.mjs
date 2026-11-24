@@ -18,17 +18,16 @@ describe('QueuePanel chapter status sort', () => {
     expect(src).toMatch(/function sortChaptersByStatusPriority\s*\(/);
   });
 
-  test('sortChaptersByStatusPriority is called in render (at least 2 usages for mobile + desktop)', () => {
+  test('sortChaptersByStatusPriority is called in unified responsive card render', () => {
     const matches = src.match(/sortChaptersByStatusPriority\(item\.chapters\)/g);
     expect(matches).not.toBeNull();
-    expect(matches.length).toBeGreaterThanOrEqual(2);
+    expect(matches.length).toBeGreaterThanOrEqual(1);
   });
 
   test('origIdx is used for drag operations instead of raw idx', () => {
     expect(src).toMatch(/index:\s*origIdx/);
     const origIdxCount = (src.match(/origIdx/g) || []).length;
-    // At least 8 usages: 4 per render path (isDragOver, onDragStart, onDragOver, onDrop) × 2 paths
-    expect(origIdxCount).toBeGreaterThanOrEqual(8);
+    expect(origIdxCount).toBeGreaterThanOrEqual(4);
   });
 
   test('no raw item.chapters.map((c, idx) pattern remains for chapter iteration', () => {
@@ -83,9 +82,9 @@ describe('QueuePanel UI improvements', () => {
     expect(src).toMatch(/visualIdx\s*%\s*2/);
   });
 
-  test('expand/collapse chapter buttons have proper container size, border and 20px icon', () => {
-    expect(src).toMatch(/w-7 h-7 flex items-center justify-center rounded-lg border/);
-    expect(src).toMatch(/material-symbols-outlined text-\[20px\] leading-none transition-transform/);
+  test('expand/collapse chapter buttons have proper container size, border and 19px icon', () => {
+    expect(src).toMatch(/h-8 w-8 rounded-lg border/);
+    expect(src).toMatch(/material-symbols-outlined text-\[19px\] leading-none transition-transform/);
   });
 
   test('open manga folder button is disabled when no files are downloaded or active', () => {

@@ -1133,16 +1133,20 @@ export const vi = {
   'settings.section.duplicateScan': 'Quét ảnh trùng lặp',
   'settings.section.favoritesSync': 'Yêu thích — kiểm tra chương mới',
   'settings.favoritesSyncHint':
-    'Chỉ khi ứng dụng đang mở. Bật chuông trên từng truyện trong tab Yêu thích để tham gia kiểm tra định kỳ và nhận thông báo trong app.',
-  'settings.favoritesAutoCheck': 'Bật kiểm tra định kỳ (các truyện đã bật chuông)',
+    'Tự động chạy ngầm khi ứng dụng đang mở để phát hiện chương mới trong danh sách Đang theo dõi.',
+  'settings.favoritesAutoCheck': 'Bật kiểm tra chương mới định kỳ',
   'settings.favoritesAutoCheckInterval': 'Chu kỳ kiểm tra',
   'settings.favoritesAutoCheckIntervalHelp':
-    'Khoảng thời gian giữa hai lần kiểm tra truyện đã bật chuông. Cho phép từ 15 tới 1440 phút (1440 = tối đa một lần mỗi 24 giờ).',
+    'Khoảng thời gian giữa hai lần quét chương mới. Cho phép từ 15 tới 1440 phút (tối đa mỗi 24 giờ).',
+  'settings.favoritesAutoCheckPresets': 'Chọn nhanh chu kỳ',
+  'settings.favoritesAutoCheckNever': 'Chưa chạy',
+  'settings.favoritesAutoCheckStatusSummary':
+    'Áp dụng cho {count} truyện theo dõi • Kiểm tra gần nhất: {last}',
   'settings.favoritesBellHint':
     'Bật chuông (trên bìa truyện hoặc cột thao tác) cho từng truyện cần theo dõi.',
   'settings.favoritesAutoDownload': 'Tự động tải chương mới khi phát hiện',
   'settings.favoritesAutoDownloadHint':
-    'Tự động tải các chương mới phát hành của những truyện đã bật chuông theo dõi sau mỗi lần quét nền.',
+    'Tự động thêm chương mới vào Hàng đợi hoặc Workflow sau mỗi lần kiểm tra định kỳ.',
   'settings.favoritesAutoDownloadRequiresCheck':
     'Cần bật kiểm tra định kỳ để kích hoạt tính năng tự động tải.',
   'settings.favoritesAutoDownloadMode': 'Chế độ tải',
@@ -1644,6 +1648,14 @@ export const vi = {
     'Truyện không có chương — không thể mở danh sách hoặc thêm vào hàng đợi.',
   'mangaInfo.enqueueDisabledNoChapters':
     'Truyện không có chương — không thể thêm vào hàng đợi.',
+  'mangaInfo.emptyTitle': 'Chưa tải truyện',
+  'mangaInfo.emptyLoadingTitle': 'Đang tải thông tin...',
+  'mangaInfo.emptyCoverLabel': 'Ảnh bìa',
+  'mangaInfo.emptySourcePlaceholder': 'Nguồn truyện',
+  'mangaInfo.emptyDescription':
+    'Dán URL truyện ở trên rồi nhấn Fetch để xem thông tin, danh sách chương và thêm vào hàng đợi.',
+  'mangaInfo.emptyLoadingDescription': 'Đang lấy ảnh bìa và danh sách chương từ trang nguồn...',
+  'mangaInfo.emptyActionDisabledTooltip': 'Hãy dán URL truyện và nhấn Fetch trước',
 
   'queue.tab.queue': 'Hàng đợi',
   'queue.tab.history': 'Lịch sử',
@@ -2420,7 +2432,11 @@ export const vi = {
   'queue.filterStatusCompleted': 'Đã hoàn thành',
   'queue.filterStatusError': 'Có lỗi',
   'queue.empty': 'Chưa có mục nào. Chọn chương bên trái và bấm “Thêm phần chọn vào hàng đợi”.',
+  'queue.emptyTitle': 'Hàng đợi đang trống',
   'queue.emptyFiltered': 'Không tìm thấy truyện nào khớp với bộ lọc trong hàng đợi.',
+  'queue.selectAll': 'Chọn tất cả',
+  'queue.selectedCount': 'Đã chọn {selected}/{total}',
+  'queue.resetFilters': 'Đặt lại bộ lọc',
   'queue.checkboxTitle': 'Chọn truyện để tải (Start), tạm dừng / tiếp tục',
   'queue.dragTitle': 'Kéo để sắp thứ tự ưu tiên (trên tải trước)',
   'queue.startNeedSelection': 'Chọn ít nhất một truyện bằng checkbox rồi mới bấm Start',
@@ -4468,6 +4484,12 @@ export const vi = {
   'followedManga.actions.enqueueShort': 'Hàng đợi',
   'followedManga.actions.removeFavorite': 'Bỏ theo dõi',
   'followedManga.actions.viewChapters': 'Xem chương',
+  'followedManga.autoCheck.enabledShort': 'Định kỳ: {interval}',
+  'followedManga.autoCheck.offShort': 'Kiểm tra định kỳ',
+  'followedManga.autoCheck.tooltipOn':
+    'Đang bật tự động kiểm tra mỗi {interval} (lần cuối: {last}). Nhấn để mở cài đặt',
+  'followedManga.autoCheck.tooltipOff':
+    'Tự động kiểm tra định kỳ đang tắt. Nhấn để mở cài đặt',
   'followedManga.progress.downloading': 'Đang tải {done}/{total} chap',
   'followedManga.progress.waiting': 'Chờ tải {done}/{total} chap',
   'followedManga.progress.downloadingAll': 'Đang tải... ({percent}%)',
@@ -4605,6 +4627,8 @@ export const vi = {
   'chapterList.clearSearch': 'Xóa tìm kiếm chương',
   'chapterList.selectUndownloaded': 'Chưa tải',
   'chapterList.selectUndownloadedTooltip': 'Chọn nhanh các chương chưa tải về máy',
+  'chapterList.selectUndownloadedAllDownloaded': 'Tất cả chương đang hiển thị đã được tải về máy',
+  'chapterList.selectUndownloadedAllQueuedOrDone': 'Không còn chương chưa tải (tất cả đã tải hoặc đã nằm trong hàng đợi)',
   'chapterList.rangeBtn': 'Chọn khoảng',
   'chapterList.rangePlaceholder': 'VD: 1-50, 75, 100-110',
   'chapterList.rangeApply': 'Áp dụng',

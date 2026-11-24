@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useI18n } from '../../../context/I18nContext';
-import MangaInfo from './MangaInfo.jsx';
+import MangaInfo, { MangaInfoEmptyCard } from './MangaInfo.jsx';
 import { SearchableSelect, SectionTitle, classifyFetchError } from '../../../shared';
 import {
   buildCookieExtractFeedback,
@@ -493,10 +493,9 @@ export default function Sidebar({
           ) : null}
         </div>
 
+        <div className="h-px bg-outline-variant/20" />
         {manga ? (
-          <>
-            <div className="h-px bg-outline-variant/20" />
-            <div ref={mangaInfoRef}>
+          <div ref={mangaInfoRef}>
             <MangaInfo
               manga={manga}
               chapterCount={chapters.length}
@@ -515,9 +514,13 @@ export default function Sidebar({
               guestFavoriteLocked={guestFavoriteLocked}
               onGuestFavoriteBlocked={onGuestFavoriteBlocked}
             />
-            </div>
-          </>
-        ) : null}
+          </div>
+        ) : (
+          <MangaInfoEmptyCard
+            loading={Boolean(loading)}
+            selectedSiteLabel={selectedConnector?.label || ''}
+          />
+        )}
       </div>
 
       {messageDialog && (

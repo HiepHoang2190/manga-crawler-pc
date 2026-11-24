@@ -22,6 +22,10 @@ import {
 } from '../../../utils/queueProgress';
 import { getReaderProgressKey, getReadingProgressEntry } from '../../../utils/readingProgress';
 import {
+  formatFavoriteAutoCheckInterval,
+  formatFavoriteAutoCheckLastAt,
+} from '../../../utils/appSettings';
+import {
   filterFavorites,
   computeFavoritesStats,
   runFavoriteCheckQueue,
@@ -164,6 +168,10 @@ export default function FollowedMangaPanel({
   onDownloadMangadexCovers = null,
   viewMode: propViewMode,
   onViewModeChange,
+  favoriteAutoCheckEnabled = false,
+  favoriteAutoCheckIntervalMin = 60,
+  lastFavoriteAutoCheckAt = 0,
+  onOpenFavoriteAutoCheckSettings = null,
 }) {
   const { t } = useI18n();
   const { appendLog } = useAppLog();
@@ -1177,18 +1185,51 @@ export default function FollowedMangaPanel({
               </div>
             </div>
 
-            {/* 3. Sắp xếp (Sorting dropdown) */}
+            {/* 3. Sắp xếp (Sorting dropdown + Periodic Check settings shortcut) */}
             <div>
               <SectionTitle className="mb-1.5 px-0.5">
                 {t('followedManga.sort.title')}
               </SectionTitle>
-              <SearchableSelect
-                value={sortBy}
-                onChange={handleSortChange}
-                options={sortOptions}
-                className="w-full"
-                showPlaceholderOption={false}
-              />
+              <div className="flex items-center gap-2">
+                <SearchableSelect
+                  value={sortBy}
+                  onChange={handleSortChange}
+                  options={sortOptions}
+                  className="flex-1 min-w-0"
+                  showPlaceholderOption={false}
+                />
+                {typeof onOpenFavoriteAutoCheckSettings === 'function' ? (() => {
+                  const intervalLabel = formatFavoriteAutoCheckInterval(favoriteAutoCheckIntervalMin, t);
+                  const lastLabel = formatFavoriteAutoCheckLastAt(lastFavoriteAutoCheckAt, t);
+                  const tooltipText = favoriteAutoCheckEnabled
+                    ? t('followedManga.autoCheck.tooltipOn', { interval: intervalLabel, last: lastLabel })
+                    : t('followedManga.autoCheck.tooltipOff');
+                  return (
+                    <button
+                      type="button"
+                      data-testid="followed-auto-check-settings-btn"
+                      onClick={() => onOpenFavoriteAutoCheckSettings()}
+                      data-tooltip={tooltipText}
+                      aria-label={tooltipText}
+                      className={`relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition-all active:scale-95 cursor-pointer shadow-2xs ${
+                        favoriteAutoCheckEnabled
+                          ? 'border-primary/35 bg-primary/10 text-primary hover:bg-primary/15 hover:border-primary/50'
+                          : 'border-outline-variant/25 bg-surface-container-high text-on-surface hover:text-primary hover:border-primary/40 hover:bg-primary/10'
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-[18px] leading-none">
+                        tune
+                      </span>
+                      {favoriteAutoCheckEnabled && (
+                        <span
+                          aria-hidden="true"
+                          className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-surface-container-low"
+                        />
+                      )}
+                    </button>
+                  );
+                })() : null}
+              </div>
             </div>
 
             {/* 4. Tìm kiếm (Search Box with Clear button) */}
