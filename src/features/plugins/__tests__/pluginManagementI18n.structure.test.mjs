@@ -93,7 +93,7 @@ describe('PluginManagementPanel i18n & UI structure', () => {
     expect(panelSrc).not.toContain('py-0.2');
   });
 
-  test('AutoGeneratorWizard exposes CMS template badge, advanced selector overrides, latest updates toggle, and dry-run testing', () => {
+  test('AutoGeneratorWizard & StudioLayout unification controls meet UI/structure standards', () => {
     expect(panelSrc).toContain('data.template?.label');
     expect(panelSrc).toContain("t('plugins.autoGen.includeLatestUpdates')");
     expect(panelSrc).toContain("t('plugins.autoGen.advancedSelectors')");
@@ -107,6 +107,13 @@ describe('PluginManagementPanel i18n & UI structure', () => {
     expect(panelSrc).toContain('subscribePluginAnalyzeProgress');
     expect(panelSrc).toContain('prepareChapterRetryMatrix');
     expect(panelSrc).toContain('AnalysisProgressMatrix');
+    expect(panelSrc).toContain('<ViewModeToggle');
+    expect(panelSrc).toContain('<SearchableSelect');
+    expect(panelSrc).toContain('onToggleLeftSidebar={toggleLeftSidebar}');
+    expect(panelSrc).toContain('PluginsLoadingSkeleton');
+    expect(panelSrc).toContain('aria-busy="true"');
+    expect(panelSrc).toContain('border-t border-outline-variant/20 bg-surface-container-low/80 backdrop-blur-md');
+    expect(panelSrc).not.toMatch(/<select\b/);
     expect(matrixSrc).toContain('role="progressbar"');
     expect(matrixSrc).not.toMatch(/<(?:[a-z][a-zA-Z0-9-]*)\b[^>]*?\btitle=/);
     expect(matrixSrc).not.toMatch(/\b(?:hover:)?underline\b/);

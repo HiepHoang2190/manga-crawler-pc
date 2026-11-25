@@ -1,6 +1,13 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useI18n } from '../../context/I18nContext';
-import { StudioLayout, useStudioLayout, EmptyState, SectionTitle } from '../../shared';
+import {
+  StudioLayout,
+  useStudioLayout,
+  EmptyState,
+  SectionTitle,
+  SearchableSelect,
+  ViewModeToggle,
+} from '../../shared';
 import AnalysisProgressMatrix from './AnalysisProgressMatrix';
 import {
   createInitialAnalysisMatrix,
@@ -10,16 +17,23 @@ import {
   sanitizePluginId,
   extractPluginIdFromSource,
 } from './analysisProgressState.mjs';
+import {
+  filterAndSortPlugins,
+  loadPluginViewMode,
+  savePluginViewMode,
+  loadPluginSortPref,
+  savePluginSortPref,
+} from './pluginListUtils.mjs';
 
 const BTN_ROW =
-  'inline-flex items-center justify-center gap-2 min-h-9 px-3.5 rounded-lg text-xs font-semibold transition-all active:scale-[0.98] disabled:opacity-45 disabled:pointer-events-none cursor-pointer select-none';
+  'inline-flex items-center justify-center gap-2 min-h-9 px-3.5 rounded-xl text-xs font-semibold transition-all active:scale-[0.98] disabled:opacity-45 disabled:pointer-events-none cursor-pointer select-none';
 const BTN_SURFACE = `${BTN_ROW} bg-surface-container-high text-on-surface hover:bg-surface-bright border border-outline-variant/20`;
 const BTN_PRIMARY = `${BTN_ROW} bg-primary text-on-primary border border-primary hover:opacity-95 shadow-2xs`;
 const BTN_TOOLBAR =
   'inline-flex items-center justify-center gap-1.5 h-8 px-3.5 rounded-lg text-xs font-semibold transition-all active:scale-95 disabled:opacity-45 disabled:pointer-events-none cursor-pointer select-none whitespace-nowrap shrink-0 bg-surface-container-high text-on-surface hover:bg-surface-bright border border-outline-variant/20';
 
 const PANEL_CARD =
-  'rounded-xl border border-outline-variant/15 bg-surface-container-low/50 shadow-sm dark:bg-surface-container-low/25';
+  'rounded-2xl border border-outline-variant/20 bg-surface-container-low/50 shadow-sm dark:bg-surface-container-low/25';
 
 /** Official example plugin Gist — matches assets/example_plugin.js in the repo. */
 const EXAMPLE_PLUGIN_GIST_URL =
@@ -80,21 +94,38 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
   // StudioLayout integration
   const {
     leftWidth,
+    showLeftSidebar,
+    toggleLeftSidebar,
     handleLeftResizeStart,
   } = useStudioLayout({
     storagePrefix: 'plugins',
-    defaultLeftWidth: 280,
-    minLeftWidth: 220,
-    maxLeftWidth: 460,
+    defaultLeftWidth: 320,
+    minLeftWidth: 260,
+    maxLeftWidth: 560,
+    defaultLeftOpen: true,
   });
 
   const [activeSubtab, setActiveSubtab] = useState('installed'); // 'installed' | 'add' | 'generator'
   const [plugins, setPlugins] = useState([]);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'enabled' | 'disabled' | 'url'
+  const [viewMode, setViewMode] = useState(() => loadPluginViewMode('grid'));
+  const [sortBy, setSortBy] = useState(() => loadPluginSortPref('enabled_first'));
   const [message, setMessage] = useState(null);
   const [isToastHovered, setIsToastHovered] = useState(false);
+
+  const handleViewModeChange = useCallback((nextMode) => {
+    const safeMode = nextMode === 'list' ? 'list' : 'grid';
+    setViewMode(safeMode);
+    savePluginViewMode(safeMode);
+  }, []);
+
+  const handleSortChange = useCallback((nextSort) => {
+    setSortBy(nextSort);
+    savePluginSortPref(nextSort);
+  }, []);
 
   const showMessage = useCallback((type, text) => {
     setIsToastHovered(false);
@@ -248,6 +279,18 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
       setPlugins(result || []);
     } catch (e) {
       console.error('Failed to load plugins:', e);
+    } finally {
+      setInitialLoading(false);
+    }
+  }
+
+  async function handleRefreshPlugins() {
+    if (loading) return;
+    setLoading(true);
+    try {
+      await loadPlugins();
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -807,25 +850,26 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
     return { total, enabled, disabled };
   }, [plugins]);
 
-  // Filtered plugins list
-  const filteredPlugins = useMemo(() => {
-    return plugins.filter((p) => {
-      const name = String(p.metadata?.name || '').toLowerCase();
-      const id = String(p.metadata?.id || '').toLowerCase();
-      const author = String(p.metadata?.author || '').toLowerCase();
-      const domains = Array.isArray(p.metadata?.allowedDomains)
-        ? p.metadata.allowedDomains.join(' ').toLowerCase()
-        : '';
-      const q = searchTerm.toLowerCase().trim();
-      const matchesSearch = !q || name.includes(q) || id.includes(q) || author.includes(q) || domains.includes(q);
-      if (!matchesSearch) return false;
+  // Filtered & sorted plugins list
+  const filteredPlugins = useMemo(
+    () => filterAndSortPlugins(plugins, { searchTerm, statusFilter, sortBy }),
+    [plugins, searchTerm, statusFilter, sortBy],
+  );
 
-      if (statusFilter === 'enabled') return p.isEnabled;
-      if (statusFilter === 'disabled') return !p.isEnabled;
-      if (statusFilter === 'url') return Boolean(p?.sourceUrl || p?.metadata?.sourceUrl);
-      return true;
-    });
-  }, [plugins, searchTerm, statusFilter]);
+  const sortOptions = useMemo(
+    () => [
+      { value: 'enabled_first', label: t('plugins.sort.enabledFirst'), icon: 'check_circle' },
+      { value: 'disabled_first', label: t('plugins.sort.disabledFirst'), icon: 'pause_circle' },
+      { value: 'name_asc', label: t('plugins.sort.nameAsc'), icon: 'sort_by_alpha' },
+      { value: 'name_desc', label: t('plugins.sort.nameDesc'), icon: 'sort_by_alpha' },
+    ],
+    [t],
+  );
+
+  const isAutoGenBusy =
+    autoGenPhase === 'analyzing' ||
+    autoGenPhase === 'analyzingChapter' ||
+    autoGenPhase === 'generating';
 
   const hasActiveFilters = statusFilter !== 'all' || searchTerm.trim().length > 0;
   const handleResetFilters = () => {
@@ -848,16 +892,19 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
       label: t('plugins.subtabInstalled'),
       icon: 'extension',
       badge: plugins.length,
+      busy: false,
     },
     {
       id: 'add',
       label: t('plugins.subtabAdd'),
       icon: 'add_circle',
+      busy: false,
     },
     {
       id: 'generator',
       label: t('plugins.subtabGenerator'),
       icon: 'auto_fix_high',
+      busy: isAutoGenBusy,
     },
   ];
 
@@ -865,6 +912,8 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
     <StudioLayout>
       {/* Top Header Bar */}
       <StudioLayout.Toolbar
+        showLeftSidebar={showLeftSidebar}
+        onToggleLeftSidebar={toggleLeftSidebar}
         leftSlot={
           <div className="flex items-center gap-2 min-w-0 overflow-x-auto no-scrollbar">
             <div
@@ -892,8 +941,17 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
                         : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/60'
                     }`}
                   >
-                    <span className="material-symbols-outlined text-[16px] leading-none">{tab.icon}</span>
+                    {tab.busy ? (
+                      <span className="material-symbols-outlined text-[15px] leading-none text-cyan-400 animate-spin shrink-0">
+                        progress_activity
+                      </span>
+                    ) : (
+                      <span className="material-symbols-outlined text-[16px] leading-none shrink-0">{tab.icon}</span>
+                    )}
                     <span>{tab.label}</span>
+                    {tab.busy && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping ml-0.5" />
+                    )}
                     {tab.badge !== undefined && (
                       <span
                         className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full tabular-nums ${
@@ -948,53 +1006,104 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
             ) : null}
           </div>
         }
+        rightSlot={
+          activeSubtab === 'installed' ? (
+            <div className="flex items-center gap-1.5 shrink-0">
+              <ViewModeToggle viewMode={viewMode} onChange={handleViewModeChange} size="md" />
+              <button
+                type="button"
+                onClick={handleRefreshPlugins}
+                disabled={loading}
+                data-tooltip={t('plugins.refreshList')}
+                aria-label={t('plugins.refreshList')}
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-outline-variant/20 bg-surface-container-highest/60 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all active:scale-95 disabled:pointer-events-none disabled:opacity-45 cursor-pointer"
+              >
+                <span className={`material-symbols-outlined text-[18px] leading-none ${loading ? 'animate-spin' : ''}`}>
+                  refresh
+                </span>
+              </button>
+            </div>
+          ) : null
+        }
       />
 
       {/* Main Workspace Body */}
       <StudioLayout.Body>
-        {/* Left Sidebar: Search, KPI Cards and Guides */}
+        {/* Left Sidebar: Search, Sort, KPI Cards and Guides */}
         <StudioLayout.LeftSidebar
-          open={true}
+          open={showLeftSidebar}
           width={leftWidth}
           onResizeStart={handleLeftResizeStart}
         >
-          <div className="p-3.5 space-y-4">
-            {/* Search Box */}
-            <div className="relative">
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => {
-                  const next = e.target.value;
-                  setSearchTerm(next);
-                  if (next.trim() && activeSubtab !== 'installed') {
-                    setActiveSubtab('installed');
-                  }
-                }}
-                placeholder={t('plugins.searchPlaceholder')}
-                className="w-full bg-surface-container-high border-none rounded-xl text-xs h-10 pl-8 pr-8 text-on-surface outline-none focus:ring-1 focus:ring-primary"
-              />
-              <span className="material-symbols-outlined text-[16px] text-on-surface-variant/60 absolute left-2.5 top-3">
-                search
-              </span>
-              {searchTerm && (
-                <button
-                  type="button"
-                  onClick={() => setSearchTerm('')}
-                  data-tooltip={t('plugins.clearSearch')}
-                  aria-label={t('plugins.clearSearch')}
-                  className="absolute right-2 top-2.5 rounded-full p-0.5 text-on-surface-variant/60 hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer"
-                >
-                  <span className="material-symbols-outlined text-[14px]">close</span>
-                </button>
-              )}
+          <div className="p-4 space-y-4 flex flex-col min-h-full">
+            {/* 1. Search Box */}
+            <div>
+              <SectionTitle className="mb-1.5 px-0.5">
+                {t('plugins.searchTitle')}
+              </SectionTitle>
+              <div className="relative flex items-center">
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setSearchTerm(next);
+                    if (next.trim() && activeSubtab !== 'installed') {
+                      setActiveSubtab('installed');
+                    }
+                  }}
+                  placeholder={t('plugins.searchPlaceholder')}
+                  aria-label={t('plugins.searchPlaceholder')}
+                  className="h-10 w-full rounded-xl border border-outline-variant/25 bg-surface-container-highest pl-9 pr-8 text-xs sm:text-sm text-on-surface placeholder:text-on-surface-variant/50 outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/30"
+                />
+                <span className="material-symbols-outlined text-[17px] text-on-surface-variant/60 absolute left-3 pointer-events-none">
+                  search
+                </span>
+                {searchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchTerm('')}
+                    data-tooltip={t('plugins.clearSearch')}
+                    aria-label={t('plugins.clearSearch')}
+                    className="absolute right-2.5 text-on-surface-variant/60 hover:text-on-surface cursor-pointer p-0.5 rounded"
+                  >
+                    <span className="material-symbols-outlined text-[15px] leading-none">close</span>
+                  </button>
+                )}
+              </div>
             </div>
 
-            {/* KPI Cards Grid (matching Site Checker standard) */}
-            <div className="space-y-1.5">
-              <SectionTitle as="span" className="block">
-                {t('plugins.statsTitle')}
+            {/* 2. Sort Selector */}
+            <div>
+              <SectionTitle className="mb-1.5 px-0.5">
+                {t('plugins.sortTitle')}
               </SectionTitle>
+              <SearchableSelect
+                value={sortBy}
+                onChange={handleSortChange}
+                options={sortOptions}
+                showPlaceholderOption={false}
+                ariaLabel={t('plugins.sortTitle')}
+              />
+            </div>
+
+            {/* 3. KPI Cards Grid (matching Explore / Site Checker standard) */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2 px-0.5">
+                <SectionTitle as="span" className="block">
+                  {t('plugins.statsTitle')}
+                </SectionTitle>
+                {hasActiveFilters && (
+                  <button
+                    type="button"
+                    onClick={handleResetFilters}
+                    className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:opacity-80 transition-opacity cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-[13px]">filter_alt_off</span>
+                    <span>{t('plugins.resetFilters')}</span>
+                  </button>
+                )}
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
@@ -1074,17 +1183,17 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
               </div>
             </div>
 
-            {/* Quick Gist Guide Links */}
-            <div className="space-y-2 pt-2 border-t border-outline-variant/15">
-              <SectionTitle as="span" className="flex items-center gap-1">
-                <span className="material-symbols-outlined text-[15px] text-primary">menu_book</span>
-                <span>{t('plugins.quickGuides')}</span>
-              </SectionTitle>
+            {/* 4. Quick Gist Guide Links & Bottom Tip */}
+            <div className="mt-auto space-y-3 pt-3 border-t border-outline-variant/15">
               <div className="space-y-1.5 text-xs">
+                <SectionTitle as="span" className="flex items-center gap-1 px-0.5 mb-1.5">
+                  <span className="material-symbols-outlined text-[15px] text-primary">menu_book</span>
+                  <span>{t('plugins.quickGuides')}</span>
+                </SectionTitle>
                 <button
                   type="button"
                   onClick={() => openGistUrl(EXAMPLE_PLUGIN_GIST_URL)}
-                  className="w-full text-left p-2 rounded-xl bg-surface-container-low hover:bg-surface-container-high border border-outline-variant/15 text-primary flex items-center justify-between group cursor-pointer"
+                  className="w-full text-left px-2.5 py-2 rounded-xl bg-surface-container-low hover:bg-surface-container-high border border-outline-variant/15 text-primary flex items-center justify-between group cursor-pointer transition-colors"
                 >
                   <span className="truncate font-medium">{t('plugins.exampleTemplateTitle')}</span>
                   <span className="material-symbols-outlined text-[15px] opacity-70 group-hover:opacity-100 group-hover:translate-x-0.5 transition-transform">
@@ -1094,7 +1203,7 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
                 <button
                   type="button"
                   onClick={() => openGistUrl(CREATE_PLUGIN_GUIDE_GIST_URL)}
-                  className="w-full text-left p-2 rounded-xl bg-surface-container-low hover:bg-surface-container-high border border-outline-variant/15 text-primary flex items-center justify-between group cursor-pointer"
+                  className="w-full text-left px-2.5 py-2 rounded-xl bg-surface-container-low hover:bg-surface-container-high border border-outline-variant/15 text-primary flex items-center justify-between group cursor-pointer transition-colors"
                 >
                   <span className="truncate font-medium">{t('plugins.createGuideTitle')}</span>
                   <span className="material-symbols-outlined text-[15px] opacity-70 group-hover:opacity-100 group-hover:translate-x-0.5 transition-transform">
@@ -1104,7 +1213,7 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
                 <button
                   type="button"
                   onClick={() => openGistUrl(PLUGIN_DEVELOPER_GUIDE_GIST_URL)}
-                  className="w-full text-left p-2 rounded-xl bg-surface-container-low hover:bg-surface-container-high border border-outline-variant/15 text-primary flex items-center justify-between group cursor-pointer"
+                  className="w-full text-left px-2.5 py-2 rounded-xl bg-surface-container-low hover:bg-surface-container-high border border-outline-variant/15 text-primary flex items-center justify-between group cursor-pointer transition-colors"
                 >
                   <span className="truncate font-medium">{t('plugins.devGuideTitle')}</span>
                   <span className="material-symbols-outlined text-[15px] opacity-70 group-hover:opacity-100 group-hover:translate-x-0.5 transition-transform">
@@ -1112,58 +1221,47 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
                   </span>
                 </button>
               </div>
+              <div className="rounded-xl border border-primary/15 bg-primary/5 p-2.5 flex items-start gap-2 text-[10px] text-on-surface-variant/80 leading-relaxed">
+                <span className="material-symbols-outlined text-[14px] text-primary shrink-0 mt-0.5" aria-hidden>
+                  touch_app
+                </span>
+                <span className="min-w-0 leading-snug">{t('plugins.sidebarTip')}</span>
+              </div>
             </div>
           </div>
         </StudioLayout.LeftSidebar>
 
         {/* Central Content Area */}
-        <StudioLayout.Content className="overflow-y-auto custom-scrollbar p-5 sm:p-7">
-          <div className="max-w-4xl mx-auto w-full space-y-5">
+        <StudioLayout.Content className="flex flex-col min-h-0 overflow-hidden bg-surface">
+          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4 sm:p-6">
             {/* Subtab: Installed Plugins */}
             {activeSubtab === 'installed' && (
               <section className="space-y-4">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-[20px] text-primary">extension</span>
-                    <SectionTitle as="h2">
-                      {t('plugins.sectionInstalled')} ({filteredPlugins.length}/{plugins.length})
-                    </SectionTitle>
-                  </div>
-                  {hasActiveFilters && plugins.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={handleResetFilters}
-                      className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs font-medium text-on-surface-variant hover:text-on-surface bg-surface-container-high/70 hover:bg-surface-container-high border border-outline-variant/20 transition-colors cursor-pointer"
-                    >
-                      <span className="material-symbols-outlined text-[15px]">filter_alt_off</span>
-                      <span>{t('plugins.resetFilters')}</span>
-                    </button>
-                  )}
-                </div>
-
-                {filteredPlugins.length === 0 ? (
+                {initialLoading ? (
+                  <PluginsLoadingSkeleton viewMode={viewMode} t={t} />
+                ) : filteredPlugins.length === 0 ? (
                   <EmptyState
-                    icon="extension"
+                    icon={plugins.length === 0 ? 'extension' : 'search_off'}
                     title={plugins.length === 0 ? t('plugins.emptyTitle') : t('plugins.emptyFilteredTitle')}
                     description={plugins.length === 0 ? t('plugins.emptyHint') : t('plugins.emptyFilteredHint')}
                     action={
                       plugins.length === 0 ? (
-                        <div className="flex justify-center gap-2.5 mt-2">
+                        <div className="flex flex-wrap justify-center gap-2.5 mt-2">
                           <button
                             type="button"
                             onClick={() => setActiveSubtab('add')}
-                            className={BTN_PRIMARY}
+                            className={`${BTN_PRIMARY} h-10`}
                           >
-                            <span className="material-symbols-outlined text-[16px]">add</span>
-                            {t('plugins.subtabAdd')}
+                            <span className="material-symbols-outlined text-[17px]">add</span>
+                            <span>{t('plugins.subtabAdd')}</span>
                           </button>
                           <button
                             type="button"
                             onClick={handleStartAutoGen}
-                            className={BTN_SURFACE}
+                            className={`${BTN_SURFACE} h-10`}
                           >
-                            <span className="material-symbols-outlined text-[16px] text-primary">auto_fix_high</span>
-                            {t('plugins.autoGen.button')}
+                            <span className="material-symbols-outlined text-[17px] text-primary">auto_fix_high</span>
+                            <span>{t('plugins.autoGen.button')}</span>
                           </button>
                         </div>
                       ) : (
@@ -1171,7 +1269,7 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
                           <button
                             type="button"
                             onClick={handleResetFilters}
-                            className={BTN_SURFACE}
+                            className={`${BTN_SURFACE} h-10`}
                           >
                             <span className="material-symbols-outlined text-[16px]">filter_alt_off</span>
                             <span>{t('plugins.resetFilters')}</span>
@@ -1180,12 +1278,30 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
                       )
                     }
                   />
-                ) : (
-                  <ul className="flex flex-col gap-3 list-none p-0 m-0">
+                ) : viewMode === 'list' ? (
+                  <ul className="flex flex-col gap-2 list-none p-0 m-0">
                     {filteredPlugins.map((plugin) => (
                       <li key={plugin.metadata.id}>
                         <PluginCard
                           plugin={plugin}
+                          viewMode="list"
+                          onToggle={handleTogglePlugin}
+                          onDelete={requestDeletePlugin}
+                          onReload={handleReloadPlugin}
+                          onEditSource={(p) => setSelectedPluginForSource(p)}
+                          disabled={loading}
+                          t={t}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <ul className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-3.5 list-none p-0 m-0">
+                    {filteredPlugins.map((plugin) => (
+                      <li key={plugin.metadata.id} className="min-w-0 flex">
+                        <PluginCard
+                          plugin={plugin}
+                          viewMode="grid"
                           onToggle={handleTogglePlugin}
                           onDelete={requestDeletePlugin}
                           onReload={handleReloadPlugin}
@@ -1202,19 +1318,12 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
 
             {/* Subtab: Add & Import */}
             {activeSubtab === 'add' && (
-              <section className="space-y-5">
-                <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-[20px] text-primary">download</span>
-                  <SectionTitle as="h2">
-                    {t('plugins.sectionImport')}
-                  </SectionTitle>
-                </div>
-
+              <section className="max-w-5xl mx-auto w-full space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* File Import Card */}
                   <div className={`${PANEL_CARD} p-5 flex flex-col justify-between space-y-4`}>
                     <div className="space-y-2">
-                      <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                      <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center border border-primary/20">
                         <span className="material-symbols-outlined text-[22px]">folder_open</span>
                       </div>
                       <h3 className="text-sm font-bold text-on-surface">
@@ -1228,7 +1337,7 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
                       type="button"
                       onClick={handleImportFromFile}
                       disabled={loading}
-                      className={`${BTN_PRIMARY} w-full`}
+                      className={`${BTN_PRIMARY} w-full h-10`}
                     >
                       <span className="material-symbols-outlined text-[18px]">file_open</span>
                       <span>{t('plugins.importFromFile')}</span>
@@ -1238,7 +1347,7 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
                   {/* URL Import Card */}
                   <div className={`${PANEL_CARD} p-5 flex flex-col justify-between space-y-4`}>
                     <div className="space-y-2">
-                      <div className="w-10 h-10 rounded-xl bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 flex items-center justify-center">
+                      <div className="w-10 h-10 rounded-xl bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 flex items-center justify-center border border-cyan-500/20">
                         <span className="material-symbols-outlined text-[22px]">link</span>
                       </div>
                       <h3 className="text-sm font-bold text-on-surface">
@@ -1255,14 +1364,14 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
                         onChange={(e) => setImportUrl(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleImportFromUrl()}
                         placeholder={t('plugins.urlPlaceholder')}
-                        className="w-full bg-surface-container-highest border border-outline-variant/15 rounded-xl text-xs sm:text-sm h-10 px-3.5 text-on-surface focus:ring-2 focus:ring-primary/40 focus:border-transparent outline-none"
+                        className="w-full bg-surface-container-highest border border-outline-variant/25 rounded-xl text-xs sm:text-sm h-10 px-3.5 text-on-surface placeholder:text-on-surface-variant/50 focus:border-primary focus:ring-1 focus:ring-primary/30 outline-none"
                         disabled={loading}
                       />
                       <button
                         type="button"
                         onClick={handleImportFromUrl}
                         disabled={loading || !importUrl.trim()}
-                        className={`${BTN_SURFACE} w-full`}
+                        className={`${BTN_SURFACE} w-full h-10`}
                       >
                         <span className="material-symbols-outlined text-[18px]">download</span>
                         <span>{t('plugins.importSubmit')}</span>
@@ -1270,56 +1379,122 @@ export default function PluginManagementPanel({ onPluginsChanged }) {
                     </div>
                   </div>
                 </div>
+
+                {/* Quick Jump Banner to Auto-Generator */}
+                <div className={`${PANEL_CARD} p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-primary/20 bg-primary/5`}>
+                  <div className="flex items-start gap-3.5 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-primary/15 text-primary flex items-center justify-center border border-primary/25 shrink-0">
+                      <span className="material-symbols-outlined text-[22px]">auto_fix_high</span>
+                    </div>
+                    <div className="min-w-0 space-y-1">
+                      <h3 className="text-sm font-bold text-on-surface">
+                        {t('plugins.addAutoGenTitle')}
+                      </h3>
+                      <p className="text-xs text-on-surface-variant leading-relaxed">
+                        {t('plugins.addAutoGenDesc')}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleStartAutoGen}
+                    className={`${BTN_PRIMARY} h-10 shrink-0 px-4`}
+                  >
+                    <span className="material-symbols-outlined text-[18px]">auto_fix_high</span>
+                    <span>{t('plugins.subtabGenerator')}</span>
+                  </button>
+                </div>
               </section>
             )}
 
             {/* Subtab: Auto-Generator Wizard */}
             {activeSubtab === 'generator' && (
-              <AutoGeneratorWizard
-                t={t}
-                phase={autoGenPhase}
-                url={autoGenUrl}
-                onUrlChange={setAutoGenUrl}
-                chapterUrl={autoGenChapterUrl}
-                onChapterUrlChange={setAutoGenChapterUrl}
-                data={autoGenData}
-                chapterData={autoGenChapterData}
-                error={autoGenError}
-                editName={autoGenEditName}
-                onEditNameChange={setAutoGenEditName}
-                editId={autoGenEditId}
-                onEditIdChange={setAutoGenEditId}
-                selectors={autoGenSelectors}
-                onSelectorsChange={setAutoGenSelectors}
-                includeLatest={autoGenIncludeLatest}
-                onIncludeLatestChange={setAutoGenIncludeLatest}
-                autoGenSource={autoGenSource}
-                onAutoGenSourceChange={(val) => {
-                  setAutoGenManualEdit(true);
-                  setAutoGenSource(val);
-                  setAutoGenTestResult(null);
-                }}
-                manualEdit={autoGenManualEdit}
-                onRegenerateSource={() => setAutoGenManualEdit(false)}
-                copiedAutoGenSource={copiedAutoGenSource}
-                onCopyAutoGenSource={handleCopyAutoGenSource}
-                testRunning={autoGenTestRunning}
-                testResult={autoGenTestResult}
-                onTest={handleTestGeneratedPlugin}
-                onAnalyze={handleAnalyzeMangaPage}
-                onAnalyzeChapter={handleAnalyzeChapterPage}
-                onGenerate={handleGeneratePlugin}
-                onCancel={() => {
-                  handleCancelAutoGen();
-                  setActiveSubtab('installed');
-                }}
-                onClearError={() => setAutoGenError(null)}
-                analysisMatrix={analysisMatrix}
-                analysisElapsedMs={analysisElapsedMs}
-                existingMatchedPlugin={existingMatchedPlugin}
-              />
+              <div className="max-w-5xl mx-auto w-full">
+                <AutoGeneratorWizard
+                  t={t}
+                  phase={autoGenPhase}
+                  url={autoGenUrl}
+                  onUrlChange={setAutoGenUrl}
+                  chapterUrl={autoGenChapterUrl}
+                  onChapterUrlChange={setAutoGenChapterUrl}
+                  data={autoGenData}
+                  chapterData={autoGenChapterData}
+                  error={autoGenError}
+                  editName={autoGenEditName}
+                  onEditNameChange={setAutoGenEditName}
+                  editId={autoGenEditId}
+                  onEditIdChange={setAutoGenEditId}
+                  selectors={autoGenSelectors}
+                  onSelectorsChange={setAutoGenSelectors}
+                  includeLatest={autoGenIncludeLatest}
+                  onIncludeLatestChange={setAutoGenIncludeLatest}
+                  autoGenSource={autoGenSource}
+                  onAutoGenSourceChange={(val) => {
+                    setAutoGenManualEdit(true);
+                    setAutoGenSource(val);
+                    setAutoGenTestResult(null);
+                  }}
+                  manualEdit={autoGenManualEdit}
+                  onRegenerateSource={() => setAutoGenManualEdit(false)}
+                  copiedAutoGenSource={copiedAutoGenSource}
+                  onCopyAutoGenSource={handleCopyAutoGenSource}
+                  testRunning={autoGenTestRunning}
+                  testResult={autoGenTestResult}
+                  onTest={handleTestGeneratedPlugin}
+                  onAnalyze={handleAnalyzeMangaPage}
+                  onAnalyzeChapter={handleAnalyzeChapterPage}
+                  onGenerate={handleGeneratePlugin}
+                  onCancel={() => {
+                    handleCancelAutoGen();
+                    setActiveSubtab('installed');
+                  }}
+                  onClearError={() => setAutoGenError(null)}
+                  analysisMatrix={analysisMatrix}
+                  analysisElapsedMs={analysisElapsedMs}
+                  existingMatchedPlugin={existingMatchedPlugin}
+                />
+              </div>
             )}
           </div>
+
+          {/* Unified Bottom Summary Footer Bar (matching Explore / Followed Manga / Bulk Scan standard) */}
+          {activeSubtab === 'installed' && !initialLoading && plugins.length > 0 && (
+            <footer className="border-t border-outline-variant/20 bg-surface-container-low/80 backdrop-blur-md px-4 py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 select-none shrink-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="inline-flex items-center rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary tabular-nums shadow-2xs">
+                  {t('plugins.footerCount', { shown: filteredPlugins.length, total: plugins.length })}
+                </span>
+                {hasActiveFilters && (
+                  <button
+                    type="button"
+                    onClick={handleResetFilters}
+                    className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-[11px] font-medium border border-outline-variant/25 bg-surface-container-highest/60 text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-[14px]">filter_alt_off</span>
+                    <span>{t('plugins.resetFilters')}</span>
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-2 flex-wrap text-[11px] font-semibold tabular-nums">
+                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-0.5 text-emerald-700 dark:text-emerald-300">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  <span>{t('plugins.statEnabled')}: {stats.enabled}</span>
+                </span>
+                {stats.disabled > 0 && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/25 bg-amber-500/10 px-2.5 py-0.5 text-amber-700 dark:text-amber-300">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                    <span>{t('plugins.statDisabled')}: {stats.disabled}</span>
+                  </span>
+                )}
+                {reloadablePlugins.length > 0 && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-blue-500/25 bg-blue-500/10 px-2.5 py-0.5 text-blue-700 dark:text-blue-300">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                    <span>{t('plugins.statUrlSynced')}: {reloadablePlugins.length}</span>
+                  </span>
+                )}
+              </div>
+            </footer>
+          )}
         </StudioLayout.Content>
       </StudioLayout.Body>
 
@@ -1522,6 +1697,7 @@ function PluginSourceModal({ t, plugin, isOpen, onClose, onSave }) {
   useEffect(() => {
     if (!isOpen || !plugin) return;
     let cancelled = false;
+    setSource('');
     setLoading(true);
     setError(null);
     window.electronAPI
@@ -1658,179 +1834,388 @@ function PluginSourceModal({ t, plugin, isOpen, onClose, onSave }) {
   );
 }
 
-function PluginCard({ plugin, onToggle, onDelete, onReload, onEditSource, disabled, t }) {
-  const [expanded, setExpanded] = useState(false);
-  const { metadata, isEnabled, autoDisabled, sourceUrl } = plugin;
-  const allowedDomains = Array.isArray(metadata.allowedDomains) ? metadata.allowedDomains : [];
+const PLUGIN_SKELETON_ITEMS = [0, 1, 2, 3, 4, 5];
 
-  const accentBg = isEnabled ? 'bg-primary' : autoDisabled ? 'bg-error' : 'bg-surface-container-high';
+function PluginsLoadingSkeleton({ viewMode, t }) {
+  if (viewMode === 'list') {
+    return (
+      <div role="status" aria-busy="true" aria-label={t('plugins.sectionInstalled')} className="space-y-2">
+        {PLUGIN_SKELETON_ITEMS.map((idx) => (
+          <div
+            key={idx}
+            className="flex items-center justify-between gap-3 px-3 py-2.5 sm:px-4 rounded-xl border border-outline-variant/20 bg-surface-container-high/35 animate-pulse"
+          >
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className="size-10 shrink-0 rounded-xl bg-surface-container-highest" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="h-4 w-44 max-w-[55%] rounded bg-surface-container-highest" />
+                <div className="h-3 w-64 max-w-[75%] rounded bg-surface-container-highest/70" />
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <div className="h-8 w-8 rounded-lg bg-surface-container-highest" />
+              <div className="h-[26px] w-[42px] rounded-full bg-surface-container-highest" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   return (
-    <div className="rounded-xl border border-outline-variant/15 bg-surface-container-low/40 shadow-sm overflow-hidden transition-[box-shadow,border-color] hover:shadow-md hover:border-outline-variant/25 dark:bg-surface-container-low/20 flex min-w-0">
-      <div className={`w-1 shrink-0 self-stretch ${accentBg}`} aria-hidden />
-      <div className="min-w-0 flex-1 flex flex-col">
-        <div className="p-4 sm:p-5">
-          <div className="flex gap-4 min-w-0 items-start">
-            {metadata.icon ? (
-              <img
-                src={metadata.icon}
-                alt=""
-                className="size-13 rounded-xl object-cover shrink-0 bg-surface-container-high ring-1 ring-outline-variant/10 self-start"
-                onError={(e) => {
-                  e.target.style.display = 'none';
-                }}
-              />
-            ) : (
-              <div
-                className="size-13 rounded-xl bg-surface-container-high flex items-center justify-center shrink-0 text-on-surface-variant ring-1 ring-outline-variant/10 self-start"
-                aria-hidden
-              >
-                <span className="material-symbols-outlined text-[26px]">extension</span>
-              </div>
-            )}
+    <div
+      role="status"
+      aria-busy="true"
+      aria-label={t('plugins.sectionInstalled')}
+      className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-3.5"
+    >
+      {PLUGIN_SKELETON_ITEMS.map((idx) => (
+        <div
+          key={idx}
+          className="rounded-2xl border border-outline-variant/20 bg-surface-container-high/35 p-4 space-y-3 animate-pulse"
+        >
+          <div className="flex items-start gap-3">
+            <div className="size-11 shrink-0 rounded-xl bg-surface-container-highest" />
+            <div className="flex-1 min-w-0 space-y-2">
+              <div className="h-4 w-36 rounded bg-surface-container-highest" />
+              <div className="h-3 w-24 rounded bg-surface-container-highest/75" />
+            </div>
+            <div className="h-[26px] w-[42px] rounded-full bg-surface-container-highest shrink-0" />
+          </div>
+          <div className="h-3 w-5/6 rounded bg-surface-container-highest/70" />
+          <div className="flex items-center gap-2 pt-2 border-t border-outline-variant/10">
+            <div className="h-8 w-28 rounded-lg bg-surface-container-highest" />
+            <div className="h-8 w-8 rounded-lg bg-surface-container-highest/80 ml-auto" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
-            <div className="min-w-0 flex-1 flex flex-col gap-1.5">
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <h3 className="font-bold text-on-surface text-sm sm:text-base leading-snug">{metadata.name}</h3>
-                <span className="text-[11px] font-semibold tabular-nums px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant border border-outline-variant/15">
-                  {t('plugins.version', { version: metadata.version })}
-                </span>
-                {isEnabled ? (
-                  <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md bg-primary-container text-on-primary-container">
-                    {t('plugins.statusActive')}
+function PluginCard({ plugin, viewMode = 'grid', onToggle, onDelete, onReload, onEditSource, disabled, t }) {
+  const [expanded, setExpanded] = useState(false);
+  const [iconError, setIconError] = useState(false);
+  const { metadata, isEnabled, autoDisabled, sourceUrl } = plugin;
+  const effectiveSourceUrl = sourceUrl || metadata?.sourceUrl || '';
+  const allowedDomains = Array.isArray(metadata.allowedDomains) ? metadata.allowedDomains : [];
+  const accentBg = isEnabled ? 'bg-primary' : autoDisabled ? 'bg-error' : 'bg-surface-container-high';
+
+  useEffect(() => {
+    setIconError(false);
+  }, [metadata?.icon]);
+
+  const metaLine =
+    metadata.author && metadata.baseUrl
+      ? t('plugins.authorLine', { author: metadata.author, baseUrl: metadata.baseUrl })
+      : metadata.author || metadata.baseUrl || metadata.id || '';
+
+  const iconBox = metadata.icon && !iconError ? (
+    <img
+      src={metadata.icon}
+      alt=""
+      className={`${viewMode === 'list' ? 'size-10' : 'size-11'} rounded-xl object-cover shrink-0 bg-surface-container-high ring-1 ring-outline-variant/15`}
+      onError={() => setIconError(true)}
+    />
+  ) : (
+    <div
+      className={`${viewMode === 'list' ? 'size-10' : 'size-11'} rounded-xl bg-surface-container-high flex items-center justify-center shrink-0 text-on-surface-variant ring-1 ring-outline-variant/15`}
+      aria-hidden
+    >
+      <span className={`material-symbols-outlined ${viewMode === 'list' ? 'text-[22px]' : 'text-[24px]'}`}>
+        extension
+      </span>
+    </div>
+  );
+
+  const expandedDetails = expanded ? (
+    <div className="border-t border-outline-variant/15 bg-surface-container-highest/55 dark:bg-surface-container-highest/25 px-4 py-3 space-y-2.5 text-xs">
+      {metadata.tags && metadata.tags.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5">
+          {metadata.tags.map((tag, idx) => (
+            <span
+              key={`${tag}-${idx}`}
+              className="text-[11px] px-2 py-0.5 rounded-lg bg-primary/10 text-primary border border-primary/20 font-medium"
+            >
+              {tag}
+            </span>
+          ))}
+        </div>
+      ) : null}
+
+      {allowedDomains.length > 0 ? (
+        <div>
+          <SectionTitle as="p" className="mb-1">
+            {t('plugins.allowedDomains')}
+          </SectionTitle>
+          <div className="flex flex-wrap gap-1.5">
+            {allowedDomains.map((domain, idx) => (
+              <span
+                key={`${domain}-${idx}`}
+                className="text-[11px] px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant border border-outline-variant/15 font-mono"
+              >
+                {domain}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {effectiveSourceUrl ? (
+        <p className="text-[11px] text-on-surface-variant font-mono truncate" data-tooltip={effectiveSourceUrl}>
+          {effectiveSourceUrl}
+        </p>
+      ) : null}
+
+      <div className="flex flex-wrap items-center gap-2 pt-0.5">
+        {effectiveSourceUrl ? (
+          <button
+            type="button"
+            onClick={() => onReload(metadata.id, effectiveSourceUrl)}
+            disabled={disabled}
+            className={`${BTN_SURFACE} min-h-8 px-3 rounded-lg`}
+          >
+            <span className="material-symbols-outlined text-[15px] leading-none">refresh</span>
+            <span>{t('plugins.reload')}</span>
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => onDelete(metadata.id, metadata.name)}
+          disabled={disabled}
+          className="inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold border border-error/25 bg-error-container/80 text-on-error-container hover:opacity-95 cursor-pointer transition-opacity"
+        >
+          <span className="material-symbols-outlined text-[15px] leading-none">delete</span>
+          <span>{t('plugins.delete')}</span>
+        </button>
+      </div>
+    </div>
+  ) : null;
+
+  if (viewMode === 'list') {
+    return (
+      <div className="rounded-xl border border-outline-variant/20 bg-surface-container-high/35 hover:border-outline-variant/45 hover:bg-surface-container-high/55 transition-all overflow-hidden">
+        <div className="flex items-center justify-between gap-3 px-3 py-2.5 sm:px-4">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            {iconBox}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3
+                  className="font-bold text-on-surface text-xs sm:text-sm truncate min-w-0 max-w-full"
+                  data-tooltip={metadata.name}
+                >
+                  {metadata.name}
+                </h3>
+                {metadata.version ? (
+                  <span className="text-[10px] font-semibold tabular-nums px-1.5 py-0.5 rounded-md bg-surface-container-highest text-on-surface-variant border border-outline-variant/15">
+                    {t('plugins.version', { version: metadata.version })}
                   </span>
                 ) : null}
+                {allowedDomains[0] && (
+                  <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20 truncate max-w-[11rem]">
+                    {allowedDomains[0]}
+                  </span>
+                )}
                 {autoDisabled ? (
-                  <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md bg-error-container text-on-error-container">
+                  <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-md bg-error-container text-on-error-container">
                     {t('plugins.statusAutoDisabled')}
                   </span>
                 ) : null}
               </div>
-
-              {metadata.description ? (
-                <p className="text-xs sm:text-sm text-on-surface-variant leading-relaxed line-clamp-2">{metadata.description}</p>
+              {(metadata.description || metaLine) ? (
+                <p className="text-[11px] text-on-surface-variant/80 truncate mt-0.5">
+                  {metadata.description || metaLine}
+                </p>
               ) : null}
-              <p className="text-xs text-on-surface-variant/80 truncate">
-                {t('plugins.authorLine', { author: metadata.author, baseUrl: metadata.baseUrl })}
-              </p>
-
-              {allowedDomains.length > 0 ? (
-                <div className="flex flex-wrap gap-1.5 pt-0.5">
-                  {allowedDomains.map((domain) => (
-                    <span
-                      key={domain}
-                      className="text-[10px] px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant border border-outline-variant/10 font-mono"
-                    >
-                      {domain}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-
-              {sourceUrl ? (
-                <div className="flex flex-wrap items-center gap-2 pt-1">
-                  <span className="text-[11px] text-on-surface-variant truncate max-w-md font-mono" data-tooltip={sourceUrl}>
-                    {sourceUrl}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => onReload(metadata.id, sourceUrl)}
-                    disabled={disabled}
-                    aria-label={t('plugins.reloadFromSavedUrl')}
-                    data-tooltip={t('plugins.reloadFromSavedUrl')}
-                    className={`${BTN_SURFACE} shrink-0 self-start sm:self-center text-xs min-h-8`}
-                  >
-                    <span className="material-symbols-outlined text-[16px] leading-none">refresh</span>
-                    <span>{t('plugins.reload')}</span>
-                  </button>
-                </div>
-              ) : null}
-
-              <div className="flex flex-wrap items-center gap-2 pt-1.5">
-                <button
-                  type="button"
-                  onClick={() => onEditSource(plugin)}
-                  disabled={disabled}
-                  className={`${BTN_SURFACE} shrink-0 text-xs min-h-8 border border-outline-variant/20 hover:border-primary/40`}
-                >
-                  <span className="material-symbols-outlined text-[16px] leading-none text-primary">code</span>
-                  <span>{t('plugins.editSourceBtn')}</span>
-                </button>
-              </div>
             </div>
+          </div>
 
-            <div className="flex flex-col items-center gap-0.5 shrink-0 self-center pt-0.5">
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => onEditSource(plugin)}
+              disabled={disabled}
+              data-tooltip={t('plugins.editSourceBtn')}
+              aria-label={t('plugins.editSourceBtn')}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-outline-variant/20 bg-surface-container-highest/60 text-primary hover:bg-surface-container-high transition-colors cursor-pointer disabled:opacity-45"
+            >
+              <span className="material-symbols-outlined text-[16px] leading-none">code</span>
+            </button>
+            {effectiveSourceUrl ? (
+              <button
+                type="button"
+                onClick={() => onReload(metadata.id, effectiveSourceUrl)}
+                disabled={disabled}
+                data-tooltip={t('plugins.reloadFromSavedUrl')}
+                aria-label={t('plugins.reloadFromSavedUrl')}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-outline-variant/20 bg-surface-container-highest/60 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors cursor-pointer disabled:opacity-45"
+              >
+                <span className="material-symbols-outlined text-[16px] leading-none">refresh</span>
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => onDelete(metadata.id, metadata.name)}
+              disabled={disabled}
+              data-tooltip={t('plugins.delete')}
+              aria-label={t('plugins.delete')}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-outline-variant/20 bg-surface-container-highest/60 text-error hover:bg-error/10 transition-colors cursor-pointer disabled:opacity-45"
+            >
+              <span className="material-symbols-outlined text-[16px] leading-none">delete</span>
+            </button>
+            <div className="px-1">
               <PluginEnableSwitch
                 enabled={isEnabled}
                 disabled={disabled}
                 onToggle={() => onToggle(metadata.id, isEnabled)}
                 ariaLabel={isEnabled ? t('plugins.toggleOff') : t('plugins.toggleOn')}
               />
-              <button
-                type="button"
-                onClick={() => setExpanded(!expanded)}
-                aria-expanded={expanded}
-                data-tooltip={expanded ? t('plugins.detailsClose') : t('plugins.detailsOpen')}
-                aria-label={expanded ? t('plugins.detailsClose') : t('plugins.detailsOpen')}
-                className="p-1 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors cursor-pointer"
-              >
-                <span
-                  className="material-symbols-outlined text-[20px] leading-none block transition-transform duration-200 ease-out"
-                  style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
-                >
-                  expand_more
-                </span>
-              </button>
             </div>
+            <button
+              type="button"
+              onClick={() => setExpanded(!expanded)}
+              aria-expanded={expanded}
+              data-tooltip={expanded ? t('plugins.detailsClose') : t('plugins.detailsOpen')}
+              aria-label={expanded ? t('plugins.detailsClose') : t('plugins.detailsOpen')}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-outline-variant/20 bg-surface-container-highest/60 text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors cursor-pointer"
+            >
+              <span
+                className="material-symbols-outlined text-[18px] leading-none transition-transform duration-200 ease-out"
+                style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
+              >
+                expand_more
+              </span>
+            </button>
           </div>
         </div>
+        {expandedDetails}
+      </div>
+    );
+  }
 
-        {expanded ? (
-          <div className="border-t border-outline-variant/15 bg-surface-container-highest/60 dark:bg-surface-container-highest/25 px-4 py-3.5 sm:px-5 sm:py-4 space-y-3">
-            {metadata.tags && metadata.tags.length > 0 ? (
-              <div className="flex flex-wrap gap-1.5">
-                {metadata.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="text-[11px] px-2.5 py-0.5 rounded-lg bg-primary-container/25 text-on-surface border border-outline-variant/10"
-                  >
-                    {tag}
+  const visibleDomains = allowedDomains.slice(0, 3);
+  const extraDomainsCount = Math.max(0, allowedDomains.length - visibleDomains.length);
+
+  return (
+    <div className="w-full rounded-2xl border border-outline-variant/20 bg-surface-container-low/50 shadow-sm overflow-hidden transition-all hover:shadow-md hover:border-outline-variant/35 dark:bg-surface-container-low/25 flex min-w-0">
+      <div className={`w-1 shrink-0 self-stretch ${accentBg}`} aria-hidden />
+      <div className="min-w-0 flex-1 flex flex-col">
+        <div className="flex-1 p-4 space-y-3">
+          <div className="flex gap-3 min-w-0 items-start">
+            {iconBox}
+            <div className="min-w-0 flex-1 flex flex-col gap-1">
+              <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                <h3
+                  className="font-bold text-on-surface text-sm leading-snug truncate min-w-0 max-w-full"
+                  data-tooltip={metadata.name}
+                >
+                  {metadata.name}
+                </h3>
+                {metadata.version ? (
+                  <span className="text-[10px] font-semibold tabular-nums px-1.5 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant border border-outline-variant/15">
+                    {t('plugins.version', { version: metadata.version })}
                   </span>
-                ))}
+                ) : null}
+                {isEnabled ? (
+                  <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-md bg-primary/15 text-primary border border-primary/20">
+                    {t('plugins.statusActive')}
+                  </span>
+                ) : null}
+                {autoDisabled ? (
+                  <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-md bg-error-container text-on-error-container">
+                    {t('plugins.statusAutoDisabled')}
+                  </span>
+                ) : null}
               </div>
-            ) : null}
+              {metaLine ? (
+                <p className="text-[11px] text-on-surface-variant/80 truncate">{metaLine}</p>
+              ) : null}
+            </div>
+            <PluginEnableSwitch
+              enabled={isEnabled}
+              disabled={disabled}
+              onToggle={() => onToggle(metadata.id, isEnabled)}
+              ariaLabel={isEnabled ? t('plugins.toggleOff') : t('plugins.toggleOn')}
+            />
+          </div>
 
-            {allowedDomains.length > 0 ? (
-              <div>
-                <SectionTitle as="p" className="mb-1.5">
-                  {t('plugins.allowedDomains')}
-                </SectionTitle>
-                <div className="flex flex-wrap gap-1.5">
-                  {allowedDomains.map((domain) => (
-                    <span
-                      key={domain}
-                      className="text-[11px] px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant border border-outline-variant/10 font-mono"
-                    >
-                      {domain}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ) : null}
+          {metadata.description ? (
+            <p className="text-xs text-on-surface-variant leading-relaxed line-clamp-2">{metadata.description}</p>
+          ) : null}
 
-            <div className="flex flex-wrap gap-2 pt-1">
+          {visibleDomains.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {visibleDomains.map((domain, idx) => (
+                <span
+                  key={`${domain}-${idx}`}
+                  className="text-[10px] px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant border border-outline-variant/15 font-mono"
+                >
+                  {domain}
+                </span>
+              ))}
+              {extraDomainsCount > 0 && (
+                <span className="text-[10px] px-2 py-0.5 rounded-md bg-surface-container-high text-on-surface-variant border border-outline-variant/15 font-medium">
+                  {t('plugins.moreDomains', { count: extraDomainsCount })}
+                </span>
+              )}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="px-4 py-2.5 border-t border-outline-variant/15 bg-surface-container-high/25 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+            <button
+              type="button"
+              onClick={() => onEditSource(plugin)}
+              disabled={disabled}
+              className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs font-semibold bg-surface-container-high text-on-surface hover:bg-surface-bright border border-outline-variant/20 hover:border-primary/40 transition-colors cursor-pointer disabled:opacity-45 min-w-0 max-w-full"
+            >
+              <span className="material-symbols-outlined text-[15px] leading-none text-primary shrink-0">code</span>
+              <span className="truncate">{t('plugins.editSourceBtn')}</span>
+            </button>
+            {effectiveSourceUrl ? (
               <button
                 type="button"
-                onClick={() => onDelete(metadata.id, metadata.name)}
+                onClick={() => onReload(metadata.id, effectiveSourceUrl)}
                 disabled={disabled}
-                className="inline-flex items-center justify-center gap-1.5 min-h-8 px-3 rounded-lg text-xs font-semibold border border-error/25 bg-error-container/80 text-on-error-container hover:opacity-95 cursor-pointer transition-colors"
+                aria-label={t('plugins.reloadFromSavedUrl')}
+                data-tooltip={t('plugins.reloadFromSavedUrl')}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-outline-variant/20 bg-surface-container-high text-on-surface-variant hover:text-on-surface hover:bg-surface-bright transition-colors cursor-pointer disabled:opacity-45"
               >
-                <span className="material-symbols-outlined text-[16px] leading-none">delete</span>
-                <span>{t('plugins.delete')}</span>
+                <span className="material-symbols-outlined text-[16px] leading-none">refresh</span>
               </button>
-            </div>
+            ) : null}
           </div>
-        ) : null}
+
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => onDelete(metadata.id, metadata.name)}
+              disabled={disabled}
+              data-tooltip={t('plugins.delete')}
+              aria-label={t('plugins.delete')}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-outline-variant/20 bg-surface-container-high text-error hover:bg-error/10 transition-colors cursor-pointer disabled:opacity-45"
+            >
+              <span className="material-symbols-outlined text-[16px] leading-none">delete</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setExpanded(!expanded)}
+              aria-expanded={expanded}
+              data-tooltip={expanded ? t('plugins.detailsClose') : t('plugins.detailsOpen')}
+              aria-label={expanded ? t('plugins.detailsClose') : t('plugins.detailsOpen')}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-outline-variant/20 bg-surface-container-high text-on-surface-variant hover:bg-surface-bright hover:text-on-surface transition-colors cursor-pointer"
+            >
+              <span
+                className="material-symbols-outlined text-[18px] leading-none transition-transform duration-200 ease-out"
+                style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
+              >
+                expand_more
+              </span>
+            </button>
+          </div>
+        </div>
+        {expandedDetails}
       </div>
     </div>
   );
@@ -1900,6 +2285,7 @@ function AutoGeneratorWizard({
           type="button"
           onClick={onCancel}
           disabled={isLoading}
+          data-tooltip={t('plugins.autoGen.cancel')}
           className="shrink-0 p-1.5 -m-1.5 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors cursor-pointer disabled:opacity-45 disabled:pointer-events-none"
           aria-label={t('plugins.autoGen.cancel')}
         >
@@ -2376,6 +2762,7 @@ function AutoGeneratorWizard({
                         type="button"
                         onClick={(e) => {
                           e.preventDefault();
+                          e.stopPropagation();
                           onRegenerateSource();
                         }}
                         className={BTN_SURFACE}
@@ -2388,6 +2775,7 @@ function AutoGeneratorWizard({
                       type="button"
                       onClick={(e) => {
                         e.preventDefault();
+                        e.stopPropagation();
                         onCopyAutoGenSource();
                       }}
                       className={BTN_SURFACE}
@@ -2416,7 +2804,7 @@ function AutoGeneratorWizard({
                 type="button"
                 onClick={onTest}
                 disabled={isLoading || testRunning || !autoGenSource}
-                className={BTN_SURFACE}
+                className={`${BTN_SURFACE} h-10`}
               >
                 <span className={`material-symbols-outlined text-[18px] leading-none ${testRunning ? 'animate-spin' : 'text-primary'}`}>
                   {testRunning ? 'progress_activity' : 'play_arrow'}
@@ -2427,12 +2815,12 @@ function AutoGeneratorWizard({
                 type="button"
                 onClick={onGenerate}
                 disabled={isLoading || testRunning}
-                className={BTN_PRIMARY}
+                className={`${BTN_PRIMARY} h-10`}
               >
                 <span className="material-symbols-outlined text-[18px] leading-none">auto_fix_high</span>
                 <span>{t('plugins.autoGen.generate')}</span>
               </button>
-              <button type="button" onClick={onCancel} disabled={isLoading || testRunning} className={BTN_SURFACE}>
+              <button type="button" onClick={onCancel} disabled={isLoading || testRunning} className={`${BTN_SURFACE} h-10`}>
                 {t('plugins.autoGen.cancel')}
               </button>
             </div>

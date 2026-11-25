@@ -8,6 +8,8 @@ test('BACKUP_SECTIONS in userDataBackup.js includes plugins and site_checker lay
   const src = fs.readFileSync(path.join(dirname, 'userDataBackup.js'), 'utf8');
   expect(src).toMatch(/plugins_left_width_v1/);
   expect(src).toMatch(/plugins_left_open_v1/);
+  expect(src).toMatch(/plugins_view_mode_v1/);
+  expect(src).toMatch(/plugins_sort_pref_v1/);
   expect(src).toMatch(/site_checker_left_width_v1/);
   expect(src).toMatch(/site_checker_left_open_v1/);
   expect(src).toMatch(/manga-crawler-theme-preset/);

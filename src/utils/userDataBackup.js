@@ -72,6 +72,8 @@ export const BACKUP_SECTIONS = {
       'ebook_studio_bottom_open_v1',
       'plugins_left_width_v1',
       'plugins_left_open_v1',
+      'plugins_view_mode_v1',
+      'plugins_sort_pref_v1',
       'site_checker_left_width_v1',
       'site_checker_left_open_v1',
       'crawler:site-test-results',
