@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-3.0.55-blue.svg" alt="Version 3.0.55" />
+  <img src="https://img.shields.io/badge/version-3.0.56-blue.svg" alt="Version 3.0.56" />
   <img src="https://img.shields.io/badge/Electron-34+-47848F?logo=electron&logoColor=white" alt="Electron" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black" alt="React 19" />
   <img src="https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white" alt="Vite" />
