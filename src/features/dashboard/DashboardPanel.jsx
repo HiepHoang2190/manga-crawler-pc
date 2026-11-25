@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useI18n } from '../../context/I18nContext';
 import { StudioLayout } from '../../shared';
 import ContinueReadingCard from './dashboard/ContinueReadingCard';
@@ -9,8 +9,12 @@ import KpiDetailDialog from './dashboard/KpiDetailDialog';
 import DownloadsBarChart from './dashboard/DownloadsBarChart';
 import ConnectorDonutChart from './dashboard/ConnectorDonutChart';
 import SectionHeader from './dashboard/SectionHeader';
-import TrendDaysFilter from './dashboard/TrendDaysFilter';
 import { formatDurationSeconds } from '../../utils/usageLog';
+import {
+  loadDashboardTrendDays,
+  saveDashboardTrendDays,
+  extractPathBasename,
+} from './dashboardPrefs.mjs';
 
 function formatBytes(n) {
   const bytes = Number(n);
@@ -36,6 +40,9 @@ function sumBucketCounts(buckets) {
   return (buckets || []).reduce((s, d) => s + (Number(d.count) || 0), 0);
 }
 
+const TOOLBAR_SECONDARY_BTN =
+  'inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-outline-variant/20 bg-surface-container-high text-on-surface hover:bg-surface-bright text-xs font-semibold transition-all active:scale-95 cursor-pointer whitespace-nowrap shrink-0';
+
 export default function DashboardPanel({
   data,
   storageLoading = false,
@@ -57,20 +64,32 @@ export default function DashboardPanel({
   onSelectRecentChapter,
 }) {
   const { t, locale } = useI18n();
-  const [trendDays, setTrendDays] = useState(30);
+  const [trendDays, setTrendDays] = useState(() => loadDashboardTrendDays());
   const [kpiDetailId, setKpiDetailId] = useState(null);
-  const kpi = data.kpi || {
+
+  const handleTrendDaysChange = useCallback((nextDays) => {
+    setTrendDays(nextDays);
+    saveDashboardTrendDays(nextDays);
+  }, []);
+
+  const safeData = data || {};
+  const kpi = safeData.kpi || {
     mangaCount: 0,
     chapterCount: 0,
     storageBytes: null,
     downloadsToday: 0,
     usageSecondsToday: 0,
   };
+  const recent = safeData.recent || {
+    items: [],
+    totalMangas: 0,
+    totalChapters: 0,
+  };
   const downloadsPerDay =
-    trendDays === 7 ? data.downloadsPerDay7 || [] : data.downloadsPerDay30 || [];
+    trendDays === 7 ? safeData.downloadsPerDay7 || [] : safeData.downloadsPerDay30 || [];
   const usagePerDay =
-    trendDays === 7 ? data.usagePerDay7 || [] : data.usagePerDay30 || [];
-  const connectorBreakdown = data.connectorBreakdown || {
+    trendDays === 7 ? safeData.usagePerDay7 || [] : safeData.usagePerDay30 || [];
+  const connectorBreakdown = safeData.connectorBreakdown || {
     items: [],
     others: null,
     total: 0,
@@ -84,8 +103,20 @@ export default function DashboardPanel({
       ? t('dashboard.chart.usage.empty7')
       : t('dashboard.chart.usage.empty30');
 
-  const downloads7 = data.downloadsPerDay7 || [];
-  const usage7 = data.usagePerDay7 || [];
+  const downloads7 = safeData.downloadsPerDay7 || [];
+  const usage7 = safeData.usagePerDay7 || [];
+  const downloads7Total = sumBucketCounts(downloads7);
+  const usage7Total = sumBucketCounts(usage7);
+  const downloadsPeriodTotal = sumBucketCounts(downloadsPerDay);
+  const usagePeriodTotal = sumBucketCounts(usagePerDay);
+  const downloadsPeriodMax = downloadsPerDay.reduce(
+    (m, d) => Math.max(m, Number(d.count) || 0),
+    0
+  );
+  const usagePeriodMax = usagePerDay.reduce((m, d) => Math.max(m, Number(d.count) || 0), 0);
+
+  const connectorSourceCount = connectorBreakdown.items?.length || 0;
+
   const topConnector = connectorBreakdown.items?.[0];
   const topConnectorLabel = topConnector
     ? t('dashboard.kpi.detail.library.topSourceValue', {
@@ -93,6 +124,9 @@ export default function DashboardPanel({
         count: topConnector.mangas,
       })
     : t('dashboard.kpi.detail.library.noSource');
+
+  const trimmedSavePath = String(savePath || '').trim();
+  const savePathFolder = extractPathBasename(trimmedSavePath);
 
   const kpiDetailConfig = (() => {
     if (!kpiDetailId) return null;
@@ -118,17 +152,16 @@ export default function DashboardPanel({
             { label: t('dashboard.kpi.detail.chapters.total'), value: formatCount(kpi.chapterCount) },
           ],
           listTitle: t('dashboard.kpi.detail.listTitle.chapters'),
-          listItems: (mangaRankings.byChapters || []).map((x) => ({
+          listItems: (mangaRankings?.byChapters || []).map((x) => ({
             title: x.title,
             value: formatCount(x.chapterCount),
           })),
-          listLoading: mangaRankings.chaptersLoading,
+          listLoading: Boolean(mangaRankings?.chaptersLoading),
           listEmptyLabel: t('dashboard.kpi.detail.listEmpty'),
           listLoadingLabel: t('dashboard.kpi.detail.listLoading'),
           listHint: t('dashboard.kpi.detail.listHiddenHint'),
         };
-      case 'storage': {
-        const trimmedSavePath = String(savePath || '').trim();
+      case 'storage':
         return {
           title: t('dashboard.kpi.storage'),
           value: kpi.storageBytes == null ? '—' : formatBytes(kpi.storageBytes),
@@ -147,23 +180,22 @@ export default function DashboardPanel({
             <button
               type="button"
               onClick={() => window.electronAPI?.openPath?.(trimmedSavePath)}
-              className="cursor-pointer rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-on-primary hover:bg-primary/90 transition-colors inline-flex items-center gap-1.5"
+              className="cursor-pointer rounded-xl bg-primary h-9 px-4 text-xs font-semibold text-on-primary hover:opacity-95 transition-all inline-flex items-center gap-1.5 shadow-2xs"
             >
               <span className="material-symbols-outlined text-[16px]">folder_open</span>
               <span>{t('dashboard.kpi.detail.storage.openFolder')}</span>
             </button>
           ) : null,
           listTitle: t('dashboard.kpi.detail.listTitle.storage'),
-          listItems: (mangaRankings.byStorage || []).map((x) => ({
+          listItems: (mangaRankings?.byStorage || []).map((x) => ({
             title: x.title,
             value: formatBytes(x.bytes),
           })),
-          listLoading: mangaRankings.storageLoading,
+          listLoading: Boolean(mangaRankings?.storageLoading),
           listEmptyLabel: t('dashboard.kpi.detail.listEmpty'),
           listLoadingLabel: t('dashboard.kpi.detail.listLoading'),
           listHint: t('dashboard.kpi.detail.listHiddenHint'),
         };
-      }
       case 'today': {
         const yesterday = downloads7.length >= 2 ? downloads7[downloads7.length - 2].count : 0;
         return {
@@ -173,7 +205,7 @@ export default function DashboardPanel({
           rows: [
             { label: t('dashboard.kpi.detail.today.today'), value: chaptersFmt(kpi.downloadsToday) },
             { label: t('dashboard.kpi.detail.today.yesterday'), value: chaptersFmt(yesterday) },
-            { label: t('dashboard.kpi.detail.today.last7'), value: chaptersFmt(sumBucketCounts(downloads7)) },
+            { label: t('dashboard.kpi.detail.today.last7'), value: chaptersFmt(downloads7Total) },
           ],
         };
       }
@@ -189,7 +221,7 @@ export default function DashboardPanel({
             },
             {
               label: t('dashboard.kpi.detail.usage.last7'),
-              value: formatDurationSeconds(sumBucketCounts(usage7)),
+              value: formatDurationSeconds(usage7Total),
             },
           ],
         };
@@ -214,7 +246,7 @@ export default function DashboardPanel({
                 await onClearCache();
                 setKpiDetailId(null);
               }}
-              className="cursor-pointer rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary hover:bg-primary/90 transition-colors disabled:opacity-50"
+              className="cursor-pointer rounded-xl bg-primary h-9 px-4 text-xs font-semibold text-on-primary hover:opacity-95 transition-all disabled:opacity-50 shadow-2xs"
             >
               {cacheClearing ? t('dashboard.cache.clearing') : t('dashboard.cache.clearConfirm')}
             </button>
@@ -225,152 +257,288 @@ export default function DashboardPanel({
     }
   })();
 
+  const trendOptions = [
+    { days: 7, label: t('dashboard.trends.days7') },
+    { days: 30, label: t('dashboard.trends.days30') },
+  ];
+
   return (
     <StudioLayout className="w-full h-full">
+      <StudioLayout.Toolbar
+        leftSlot={
+          <div className="flex items-center gap-2 min-w-0 overflow-x-auto no-scrollbar">
+            <div
+              role="tablist"
+              aria-label={t('dashboard.toolbar.rangeLabel')}
+              className="inline-flex items-center gap-0.5 p-0.5 rounded-xl bg-surface-container-high/70 border border-outline-variant/25 overflow-x-auto no-scrollbar shrink-0"
+            >
+              {trendOptions.map((opt) => {
+                const isActive = trendDays === opt.days;
+                return (
+                  <button
+                    key={opt.days}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    onClick={() => handleTrendDaysChange(opt.days)}
+                    className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium transition-all cursor-pointer select-none whitespace-nowrap shrink-0 ${
+                      isActive
+                        ? 'bg-primary text-on-primary font-semibold shadow-xs'
+                        : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/60'
+                    }`}
+                  >
+                    <span>{opt.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        }
+        rightSlot={
+          cacheBytes > 0 ? (
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setKpiDetailId('cache')}
+                data-tooltip={t('dashboard.toolbar.manageCache')}
+                aria-label={t('dashboard.toolbar.manageCache')}
+                className={TOOLBAR_SECONDARY_BTN}
+              >
+                <span className="material-symbols-outlined text-[16px] leading-none text-rose-500">
+                  delete_sweep
+                </span>
+                <span className="tabular-nums">{formatBytes(cacheBytes)}</span>
+              </button>
+            </div>
+          ) : null
+        }
+      />
+
       <StudioLayout.Body>
-        <StudioLayout.Content className="overflow-y-auto custom-scrollbar px-6 py-5 flex flex-col gap-6">
-      {data.error ? (
-        <section
-          role="alert"
-          className="rounded-md border border-error/40 bg-error/10 p-2 text-xs text-error"
-        >
-          Dashboard error: {data.error}
-        </section>
-      ) : null}
+        <StudioLayout.Content className="overflow-y-auto custom-scrollbar p-4 sm:p-6 bg-surface">
+          <div className="w-full space-y-6">
+            {safeData.error ? (
+              <section
+                role="alert"
+                className="rounded-2xl border border-error/30 bg-error/10 px-4 py-3 text-xs font-medium text-error flex items-center gap-2"
+              >
+                <span className="material-symbols-outlined text-[18px] leading-none shrink-0">
+                  error
+                </span>
+                <span>{safeData.error}</span>
+              </section>
+            ) : null}
 
-      <section>
-        <SectionHeader label={t('dashboard.section.overview')} />
-        <KpiTilesRow>
-          <KpiTile
-            label={t('dashboard.kpi.library')}
-            value={formatCount(kpi.mangaCount)}
-            hint={t('dashboard.kpi.library.hint')}
-            onClick={() => setKpiDetailId('library')}
-          />
-          <KpiTile
-            label={t('dashboard.kpi.chapters')}
-            value={formatCount(kpi.chapterCount)}
-            hint={t('dashboard.kpi.chapters.hint')}
-            onClick={() => setKpiDetailId('chapters')}
-          />
-          <KpiTile
-            label={t('dashboard.kpi.storage')}
-            value={kpi.storageBytes == null ? '—' : formatBytes(kpi.storageBytes)}
-            loading={storageLoading && kpi.storageBytes == null}
-            hint={t('dashboard.kpi.storage.hint')}
-            onClick={() => {
-              setKpiDetailId('storage');
-              onLoadStorageRanking?.();
-            }}
-          />
-          <KpiTile
-            label={t('dashboard.kpi.today')}
-            value={formatCount(kpi.downloadsToday)}
-            hint={t('dashboard.kpi.today.hint')}
-            onClick={() => setKpiDetailId('today')}
-          />
-          <KpiTile
-            label={t('dashboard.kpi.usage')}
-            value={formatDurationSeconds(kpi.usageSecondsToday || 0)}
-            hint={t('dashboard.kpi.usage.hint')}
-            accent
-            onClick={() => setKpiDetailId('usage')}
-          />
-          <KpiTile
-            label={t('dashboard.kpi.cache')}
-            value={cacheBytes == null ? '—' : formatBytes(cacheBytes)}
-            loading={cacheLoading && cacheBytes == null}
-            hint={t('dashboard.kpi.cache.hint')}
-            onClick={() => setKpiDetailId('cache')}
-          />
-        </KpiTilesRow>
-      </section>
+            {/* Overview KPI Bento Row */}
+            <section>
+              <SectionHeader label={t('dashboard.section.overview')} />
+              <KpiTilesRow>
+                <KpiTile
+                  icon="collections_bookmark"
+                  tone="primary"
+                  label={t('dashboard.kpi.library')}
+                  value={formatCount(kpi.mangaCount)}
+                  subtext={topConnectorLabel}
+                  onClick={() => setKpiDetailId('library')}
+                />
+                <KpiTile
+                  icon="menu_book"
+                  tone="violet"
+                  label={t('dashboard.kpi.chapters')}
+                  value={formatCount(kpi.chapterCount)}
+                  subtext={
+                    kpi.mangaCount > 0
+                      ? t('dashboard.kpi.chapters.avgPerManga', {
+                          avg: Math.round((Number(kpi.chapterCount) || 0) / kpi.mangaCount),
+                        })
+                      : t('dashboard.kpi.detail.listEmpty')
+                  }
+                  onClick={() => setKpiDetailId('chapters')}
+                />
+                <KpiTile
+                  icon="hard_drive"
+                  tone="amber"
+                  label={t('dashboard.kpi.storage')}
+                  value={kpi.storageBytes == null ? '—' : formatBytes(kpi.storageBytes)}
+                  loading={storageLoading && kpi.storageBytes == null}
+                  subtext={savePathFolder || t('dashboard.kpi.detail.storage.noPath')}
+                  onClick={() => {
+                    setKpiDetailId('storage');
+                    onLoadStorageRanking?.();
+                  }}
+                />
+                <KpiTile
+                  icon="download"
+                  tone="emerald"
+                  label={t('dashboard.kpi.today')}
+                  value={formatCount(kpi.downloadsToday)}
+                  subtext={t('dashboard.kpi.today.last7Short', {
+                    count: formatCount(downloads7Total),
+                  })}
+                  onClick={() => setKpiDetailId('today')}
+                />
+                <KpiTile
+                  icon="schedule"
+                  tone="primary"
+                  label={t('dashboard.kpi.usage')}
+                  value={formatDurationSeconds(kpi.usageSecondsToday || 0)}
+                  subtext={t('dashboard.kpi.usage.last7Short', {
+                    duration: formatDurationSeconds(usage7Total),
+                  })}
+                  accent
+                  onClick={() => setKpiDetailId('usage')}
+                />
+                <KpiTile
+                  icon="delete_sweep"
+                  tone="rose"
+                  label={t('dashboard.kpi.cache')}
+                  value={cacheBytes == null ? '—' : formatBytes(cacheBytes)}
+                  loading={cacheLoading && cacheBytes == null}
+                  subtext={
+                    cacheBytes > 0
+                      ? t('dashboard.kpi.cache.manage')
+                      : t('dashboard.kpi.cache.empty')
+                  }
+                  onClick={() => setKpiDetailId('cache')}
+                />
+              </KpiTilesRow>
+            </section>
 
-      {kpiDetailConfig ? (
-        <KpiDetailDialog
-          open
-          title={kpiDetailConfig.title}
-          value={kpiDetailConfig.value}
-          rows={kpiDetailConfig.rows}
-          icon={kpiDetailConfig.icon}
-          onClose={() => setKpiDetailId(null)}
-          closeLabel={t('dashboard.kpi.detail.close')}
-          listTitle={kpiDetailConfig.listTitle}
-          listItems={kpiDetailConfig.listItems}
-          listLoading={kpiDetailConfig.listLoading}
-          listEmptyLabel={kpiDetailConfig.listEmptyLabel}
-          listLoadingLabel={kpiDetailConfig.listLoadingLabel}
-          listHint={kpiDetailConfig.listHint}
-          actions={kpiDetailConfig.actions}
-        />
-      ) : null}
+            {kpiDetailConfig ? (
+              <KpiDetailDialog
+                open
+                title={kpiDetailConfig.title}
+                value={kpiDetailConfig.value}
+                rows={kpiDetailConfig.rows}
+                icon={kpiDetailConfig.icon}
+                onClose={() => setKpiDetailId(null)}
+                closeLabel={t('dashboard.kpi.detail.close')}
+                listTitle={kpiDetailConfig.listTitle}
+                listItems={kpiDetailConfig.listItems}
+                listLoading={kpiDetailConfig.listLoading}
+                listEmptyLabel={kpiDetailConfig.listEmptyLabel}
+                listLoadingLabel={kpiDetailConfig.listLoadingLabel}
+                listHint={kpiDetailConfig.listHint}
+                actions={kpiDetailConfig.actions}
+              />
+            ) : null}
 
-      <section>
-        <SectionHeader
-          label={t('dashboard.section.trends')}
-          action={
-            <TrendDaysFilter
-              value={trendDays}
-              onChange={setTrendDays}
-              label7={t('dashboard.trends.days7')}
-              label30={t('dashboard.trends.days30')}
-            />
-          }
-        />
-        <div className="grid grid-cols-1 min-[900px]:grid-cols-2 gap-4">
-          <div className="order-1 min-[900px]:order-2 min-[900px]:col-start-2 min-[900px]:row-start-1 rounded-xl border border-outline-variant/30 bg-surface-container-low p-4">
-            <div className="mb-2 text-xs font-medium text-on-surface-variant">
-              {t('dashboard.chart.connectors.title')}
-            </div>
-            <ConnectorDonutChart
-              data={connectorBreakdown}
-              centerLabel={t('dashboard.chart.connectors.centerLabel')}
-              emptyLabel={t('dashboard.chart.connectors.empty')}
-              othersLabel={t('dashboard.chart.connectors.others')}
-            />
+            {/* Trends Bento Grid */}
+            <section>
+              <SectionHeader label={t('dashboard.section.trends')} />
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                <div className="lg:col-span-7 rounded-2xl border border-outline-variant/20 bg-surface-container-low/50 dark:bg-surface-container-low/25 p-4 sm:p-5 flex flex-col gap-3">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="material-symbols-outlined text-[18px] text-primary shrink-0">
+                        trending_up
+                      </span>
+                      <span className="text-xs sm:text-sm font-bold text-on-surface truncate">
+                        {t('dashboard.chart.downloads.title', { days: trendDays })}
+                      </span>
+                    </div>
+                    <span className="inline-flex items-center rounded-full border border-outline-variant/25 bg-surface-container-high px-2.5 py-0.5 text-[11px] font-semibold text-on-surface-variant tabular-nums shrink-0">
+                      {t('dashboard.chart.totalDownloads', {
+                        count: formatCount(downloadsPeriodTotal),
+                      })}
+                    </span>
+                  </div>
+                  <DownloadsBarChart
+                    data={downloadsPerDay}
+                    emptyLabel={downloadsEmptyLabel}
+                    height={148}
+                    locale={locale}
+                    chartAriaLabel={t('dashboard.chart.downloads.title', { days: trendDays })}
+                    peakLabel={t('dashboard.chart.maxLabel', {
+                      value: formatCount(downloadsPeriodMax),
+                    })}
+                    weekPagesAria={t('dashboard.chart.weekPagesAria')}
+                    weekPageLabel={(idx) => t('dashboard.chart.weekPage', { index: idx })}
+                  />
+                </div>
+
+                <div className="lg:col-span-5 rounded-2xl border border-outline-variant/20 bg-surface-container-low/50 dark:bg-surface-container-low/25 p-4 sm:p-5 flex flex-col gap-3">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="material-symbols-outlined text-[18px] text-primary shrink-0">
+                        donut_large
+                      </span>
+                      <span className="text-xs sm:text-sm font-bold text-on-surface truncate">
+                        {t('dashboard.chart.connectors.title')}
+                      </span>
+                    </div>
+                    <span className="inline-flex items-center rounded-full border border-outline-variant/25 bg-surface-container-high px-2.5 py-0.5 text-[11px] font-semibold text-on-surface-variant tabular-nums shrink-0">
+                      {t('dashboard.chart.connectors.sourceCount', { count: connectorSourceCount })}
+                    </span>
+                  </div>
+                  <ConnectorDonutChart
+                    data={connectorBreakdown}
+                    centerLabel={t('dashboard.chart.connectors.centerLabel')}
+                    emptyLabel={t('dashboard.chart.connectors.empty')}
+                    othersLabel={t('dashboard.chart.connectors.others')}
+                  />
+                </div>
+
+                <div className="lg:col-span-12 rounded-2xl border border-outline-variant/20 bg-surface-container-low/50 dark:bg-surface-container-low/25 p-4 sm:p-5 flex flex-col gap-3">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="material-symbols-outlined text-[18px] text-primary shrink-0">
+                        schedule
+                      </span>
+                      <span className="text-xs sm:text-sm font-bold text-on-surface truncate">
+                        {t('dashboard.chart.usage.title', { days: trendDays })}
+                      </span>
+                    </div>
+                    <span className="inline-flex items-center rounded-full border border-outline-variant/25 bg-surface-container-high px-2.5 py-0.5 text-[11px] font-semibold text-on-surface-variant tabular-nums shrink-0">
+                      {t('dashboard.chart.totalUsage', {
+                        duration: formatDurationSeconds(usagePeriodTotal),
+                      })}
+                    </span>
+                  </div>
+                  <DownloadsBarChart
+                    data={usagePerDay}
+                    emptyLabel={usageEmptyLabel}
+                    height={148}
+                    formatValue={formatDurationSeconds}
+                    locale={locale}
+                    chartAriaLabel={t('dashboard.chart.usage.title', { days: trendDays })}
+                    peakLabel={t('dashboard.chart.maxLabel', {
+                      value: formatDurationSeconds(usagePeriodMax),
+                    })}
+                    weekPagesAria={t('dashboard.chart.weekPagesAria')}
+                    weekPageLabel={(idx) => t('dashboard.chart.weekPage', { index: idx })}
+                  />
+                </div>
+              </div>
+            </section>
+
+            {/* Quick Access & Recent Activity Balanced Row */}
+            <section className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-stretch">
+              <div className="xl:col-span-5 flex flex-col min-w-0">
+                <SectionHeader label={t('dashboard.section.quickAccess')} />
+                <div className="flex-1 min-h-0">
+                  <ContinueReadingCard
+                    data={safeData.continueReading}
+                    onOpen={() => onOpenReader?.(safeData.continueReading)}
+                    onEmptyAction={onOpenLibrary}
+                  />
+                </div>
+              </div>
+
+              <div className="xl:col-span-7 flex flex-col min-w-0">
+                <SectionHeader label={t('dashboard.section.activity')} />
+                <div className="flex-1 min-h-0">
+                  <RecentDownloadsCarousel
+                    items={recent.items}
+                    totalMangas={recent.totalMangas}
+                    totalChapters={recent.totalChapters}
+                    onSelectChapter={onSelectRecentChapter || (() => {})}
+                    onEmptyAction={onOpenLibrary}
+                  />
+                </div>
+              </div>
+            </section>
           </div>
-          <div className="order-2 min-[900px]:order-1 min-[900px]:col-start-1 min-[900px]:row-start-1 rounded-xl border border-outline-variant/30 bg-surface-container-low p-4">
-            <div className="mb-2 text-xs font-medium text-on-surface-variant">
-              {t('dashboard.chart.downloads.title', { days: trendDays })}
-            </div>
-            <DownloadsBarChart
-              data={downloadsPerDay}
-              emptyLabel={downloadsEmptyLabel}
-              locale={locale}
-            />
-          </div>
-          <div className="order-3 min-[900px]:col-span-2 rounded-xl border border-outline-variant/30 bg-surface-container-low p-4">
-            <div className="mb-2 text-xs font-medium text-on-surface-variant">
-              {t('dashboard.chart.usage.title', { days: trendDays })}
-            </div>
-            <DownloadsBarChart
-              data={usagePerDay}
-              emptyLabel={usageEmptyLabel}
-              formatValue={formatDurationSeconds}
-              locale={locale}
-            />
-          </div>
-        </div>
-      </section>
-
-      <section>
-        <SectionHeader label={t('dashboard.section.quickAccess')} />
-        <ContinueReadingCard
-          data={data.continueReading}
-          onOpen={() => onOpenReader(data.continueReading)}
-          onEmptyAction={onOpenLibrary}
-        />
-      </section>
-
-      <section>
-        <SectionHeader label={t('dashboard.section.activity')} />
-        <RecentDownloadsCarousel
-          items={data.recent.items}
-          totalMangas={data.recent.totalMangas}
-          totalChapters={data.recent.totalChapters}
-          onSelectChapter={onSelectRecentChapter || (() => {})}
-        />
-      </section>
         </StudioLayout.Content>
       </StudioLayout.Body>
     </StudioLayout>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 const PALETTE = ['#3b82f6', '#a855f7', '#ec4899', '#f97316', '#22c55e', '#94a3b8'];
 
@@ -22,55 +22,131 @@ function arcPath(cx, cy, rOuter, rInner, startAngle, endAngle) {
 }
 
 export default function ConnectorDonutChart({ data, centerLabel, emptyLabel, othersLabel }) {
+  const [hoveredId, setHoveredId] = useState(null);
   const items = Array.isArray(data?.items) ? data.items : [];
   const others = data?.others || null;
   const total = Number(data?.total) || 0;
 
-  if (total === 0 || items.length === 0) {
+  if (total <= 0 || items.length === 0) {
     return (
-      <div className="flex items-center justify-center h-32 text-xs text-on-surface-variant/70">
-        {emptyLabel}
+      <div className="rounded-xl border border-dashed border-outline-variant/25 bg-surface-container-lowest/50 flex flex-col items-center justify-center gap-1.5 h-36 text-xs text-on-surface-variant/70">
+        <span className="material-symbols-outlined text-[24px] text-on-surface-variant/40">
+          donut_large
+        </span>
+        <span>{emptyLabel}</span>
       </div>
     );
   }
 
   const segments = others
-    ? [...items, { siteId: '__others__', name: othersLabel || 'Others', mangas: others.mangas, pct: others.pct }]
+    ? [
+        ...items,
+        {
+          siteId: '__others__',
+          name: othersLabel || 'Others',
+          mangas: others.mangas,
+          pct: others.pct,
+        },
+      ]
     : items;
-  const cx = 60, cy = 60, rOuter = 55, rInner = 38;
+
+  const cx = 64;
+  const cy = 64;
+  const rOuter = 56;
+  const rInner = 39;
   let angle = -Math.PI / 2;
+
   const paths = segments.map((seg, i) => {
-    const span = (Number(seg.pct) || 0) * 2 * Math.PI;
+    const pctNum = Math.max(0, Number(seg.pct) || 0);
+    const span = pctNum * 2 * Math.PI;
     const start = angle;
     const end = angle + span;
     angle = end;
     const color = PALETTE[i % PALETTE.length];
-    return { d: arcPath(cx, cy, rOuter, rInner, start, end - 0.005), color, seg };
+    const safeEnd = span > 0.008 ? end - 0.008 : end;
+    return {
+      d: span > 0 ? arcPath(cx, cy, rOuter, rInner, start, safeEnd) : '',
+      color,
+      seg,
+      percent: Math.round(pctNum * 100),
+    };
   });
 
+  const activeSeg = hoveredId ? paths.find((p) => p.seg.siteId === hoveredId) : null;
+
   return (
-    <div className="flex items-center gap-4">
-      <div className="relative shrink-0" style={{ width: 120, height: 120 }}>
-        <svg viewBox="0 0 120 120" width={120} height={120}>
-          {paths.map((p) => (
-            <path key={p.seg.siteId} d={p.d} fill={p.color}>
-              <title>{`${p.seg.name}: ${p.seg.mangas}`}</title>
-            </path>
-          ))}
+    <div
+      className="flex flex-col sm:flex-row sm:items-center gap-4"
+      onMouseLeave={() => setHoveredId(null)}
+    >
+      <div className="relative shrink-0 mx-auto sm:mx-0" style={{ width: 128, height: 128 }}>
+        <svg viewBox="0 0 128 128" width={128} height={128}>
+          {paths.length === 1 ? (
+            <circle
+              cx={cx}
+              cy={cy}
+              r={(rOuter + rInner) / 2}
+              fill="none"
+              stroke={paths[0].color}
+              strokeWidth={rOuter - rInner}
+              className="cursor-pointer transition-opacity duration-150"
+              onMouseEnter={() => setHoveredId(paths[0].seg.siteId)}
+            />
+          ) : (
+            paths.map((p) => {
+              if (!p.d) return null;
+              const dimmed = Boolean(hoveredId && hoveredId !== p.seg.siteId);
+              return (
+                <path
+                  key={p.seg.siteId}
+                  d={p.d}
+                  fill={p.color}
+                  className={`cursor-pointer transition-opacity duration-150 ${
+                    dimmed ? 'opacity-30' : 'opacity-100'
+                  }`}
+                  onMouseEnter={() => setHoveredId(p.seg.siteId)}
+                />
+              );
+            })
+          )}
         </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-          <div className="text-2xl font-semibold tabular-nums leading-tight">{total}</div>
-          <div className="text-[10px] uppercase tracking-wide text-on-surface-variant/70">{centerLabel}</div>
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none px-3 text-center">
+          <div className="text-2xl font-extrabold tabular-nums leading-tight text-on-surface">
+            {activeSeg ? activeSeg.seg.mangas : total}
+          </div>
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant/75 truncate max-w-full">
+            {activeSeg ? `${activeSeg.percent}%` : centerLabel}
+          </div>
         </div>
       </div>
+
       <ul className="flex-1 min-w-0 space-y-1 text-xs">
-        {paths.map((p) => (
-          <li key={p.seg.siteId} className="flex items-center gap-2">
-            <span className="inline-block h-2.5 w-2.5 rounded-sm shrink-0" style={{ backgroundColor: p.color }} />
-            <span className="flex-1 truncate">{p.seg.name}</span>
-            <span className="tabular-nums text-on-surface-variant/70">{p.seg.mangas}</span>
-          </li>
-        ))}
+        {paths.map((p) => {
+          const isActive = hoveredId === p.seg.siteId;
+          return (
+            <li
+              key={p.seg.siteId}
+              onMouseEnter={() => setHoveredId(p.seg.siteId)}
+              className={`flex items-center gap-2 rounded-lg px-2 py-1 transition-colors cursor-default ${
+                isActive ? 'bg-surface-container-high text-on-surface' : 'text-on-surface-variant'
+              }`}
+            >
+              <span
+                className="inline-block h-2.5 w-2.5 rounded-sm shrink-0"
+                style={{ backgroundColor: p.color }}
+              />
+              <span className="flex-1 min-w-0 truncate font-medium text-on-surface">
+                {p.seg.name}
+              </span>
+              <span className="tabular-nums font-semibold text-on-surface shrink-0">
+                {p.seg.mangas}
+              </span>
+              <span className="tabular-nums text-[10px] text-on-surface-variant/75 w-8 text-right shrink-0">
+                {p.percent}%
+              </span>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
