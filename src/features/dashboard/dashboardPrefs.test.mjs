@@ -3,6 +3,8 @@ import {
   loadDashboardTrendDays,
   saveDashboardTrendDays,
   extractPathBasename,
+  resolveTargetChapterIndex,
+  computeHorizontalWheelDelta,
 } from './dashboardPrefs.mjs';
 
 describe('dashboardPrefs helpers', () => {
@@ -57,5 +59,134 @@ describe('dashboardPrefs helpers', () => {
     expect(extractPathBasename('')).toBe('');
     expect(extractPathBasename('   ')).toBe('');
     expect(extractPathBasename(null)).toBe('');
+  });
+
+  test('resolveTargetChapterIndex prefers exact URL, normalized URL/title/folder, chapter number, then 0', () => {
+    const chapters = [
+      { title: 'Chapter 1', url: 'https://x.com/ch-1' },
+      { title: 'Chapter 2', url: 'https://x.com/ch-2/' },
+      { title: 'Chương 3: Đấu trí', url: '/offline/chuong-3' },
+      { title: 'Chapter 004', folderBasename: 'Chapter 004', url: 'offline://local/ch4' },
+    ];
+    expect(resolveTargetChapterIndex(chapters, { chapterUrl: 'https://x.com/ch-1' })).toBe(0);
+    expect(resolveTargetChapterIndex(chapters, { chapterUrl: 'http://x.com/ch-2' })).toBe(1);
+    expect(
+      resolveTargetChapterIndex(chapters, {
+        chapterUrl: 'https://old-domain.com/ch-3',
+        chapterTitle: '  chương 3: đấu trí ',
+      })
+    ).toBe(2);
+    expect(
+      resolveTargetChapterIndex(chapters, {
+        chapterUrl: 'https://x.com/manga/chap-4',
+        chapterTitle: '4',
+      })
+    ).toBe(3);
+    expect(
+      resolveTargetChapterIndex(chapters, {
+        chapterUrl: 'https://x.com/missing',
+        chapterTitle: 'missing',
+      })
+    ).toBe(0);
+    expect(resolveTargetChapterIndex([], { chapterUrl: 'https://x.com/ch-1' })).toBe(0);
+    expect(resolveTargetChapterIndex(null)).toBe(0);
+  });
+
+  test('computeHorizontalWheelDelta converts vertical wheel to horizontal delta only when overflowing', () => {
+    expect(
+      computeHorizontalWheelDelta({
+        deltaX: 0,
+        deltaY: 120,
+        deltaMode: 0,
+        ctrlKey: false,
+        scrollWidth: 900,
+        clientWidth: 500,
+      })
+    ).toEqual({ handled: true, delta: 120 });
+
+    // Line mode (deltaMode === 1 -> 16px per line) & page mode (deltaMode === 2 -> clientWidth)
+    expect(
+      computeHorizontalWheelDelta({
+        deltaX: 0,
+        deltaY: -3,
+        deltaMode: 1,
+        ctrlKey: false,
+        scrollWidth: 900,
+        clientWidth: 500,
+      })
+    ).toEqual({ handled: true, delta: -48 });
+    expect(
+      computeHorizontalWheelDelta({
+        deltaX: 0,
+        deltaY: 1,
+        deltaMode: 2,
+        ctrlKey: false,
+        scrollWidth: 900,
+        clientWidth: 500,
+      })
+    ).toEqual({ handled: true, delta: 500 });
+
+    // Ignored when no horizontal overflow, ctrlKey zoom, zero deltaY, or trackpad horizontal swipe
+    expect(
+      computeHorizontalWheelDelta({
+        deltaX: 0,
+        deltaY: 100,
+        deltaMode: 0,
+        ctrlKey: false,
+        scrollWidth: 500,
+        clientWidth: 500,
+      })
+    ).toEqual({ handled: false, delta: 0 });
+    expect(
+      computeHorizontalWheelDelta({
+        deltaX: 0,
+        deltaY: 100,
+        deltaMode: 0,
+        ctrlKey: true,
+        scrollWidth: 900,
+        clientWidth: 500,
+      })
+    ).toEqual({ handled: false, delta: 0 });
+    expect(
+      computeHorizontalWheelDelta({
+        deltaX: 0,
+        deltaY: 100,
+        deltaMode: 0,
+        ctrlKey: false,
+        scrollWidth: 400,
+        clientWidth: 500,
+      })
+    ).toEqual({ handled: false, delta: 0 });
+    expect(
+      computeHorizontalWheelDelta({
+        deltaX: 40,
+        deltaY: 10,
+        deltaMode: 0,
+        ctrlKey: false,
+        scrollWidth: 900,
+        clientWidth: 500,
+      })
+    ).toEqual({ handled: false, delta: 0 });
+    expect(
+      computeHorizontalWheelDelta({
+        deltaX: -40,
+        deltaY: 40,
+        deltaMode: 0,
+        ctrlKey: false,
+        scrollWidth: 900,
+        clientWidth: 500,
+      })
+    ).toEqual({ handled: false, delta: 0 });
+    expect(computeHorizontalWheelDelta()).toEqual({ handled: false, delta: 0 });
+    expect(
+      computeHorizontalWheelDelta({
+        deltaX: 0,
+        deltaY: 0,
+        deltaMode: 0,
+        ctrlKey: false,
+        scrollWidth: 900,
+        clientWidth: 500,
+      })
+    ).toEqual({ handled: false, delta: 0 });
   });
 });

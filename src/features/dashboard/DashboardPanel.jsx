@@ -1,7 +1,9 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../context/I18nContext';
-import { StudioLayout } from '../../shared';
+import { StudioLayout, useStudioLayout } from '../../shared';
 import ContinueReadingCard from './dashboard/ContinueReadingCard';
+import QueueStatusCard from './dashboard/QueueStatusCard';
+import NewChaptersCard from './dashboard/NewChaptersCard';
 import RecentDownloadsCarousel from './dashboard/RecentDownloadsCarousel';
 import KpiTile from './dashboard/KpiTile';
 import KpiTilesRow from './dashboard/KpiTilesRow';
@@ -62,10 +64,29 @@ export default function DashboardPanel({
   onOpenReader,
   onOpenLibrary,
   onSelectRecentChapter,
+  onOpenQueue,
+  onOpenExplore,
+  onSelectNewChapterFavorite,
 }) {
   const { t, locale } = useI18n();
+  const { leftWidth, handleLeftResizeStart } = useStudioLayout({
+    storagePrefix: 'dashboard',
+    defaultLeftWidth: 320,
+    minLeftWidth: 260,
+    maxLeftWidth: 520,
+  });
   const [trendDays, setTrendDays] = useState(() => loadDashboardTrendDays());
   const [kpiDetailId, setKpiDetailId] = useState(null);
+  const [openingReader, setOpeningReader] = useState(false);
+  const isMountedRef = useRef(true);
+  const openingBusyRef = useRef(false);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const handleTrendDaysChange = useCallback((nextDays) => {
     setTrendDays(nextDays);
@@ -73,6 +94,38 @@ export default function DashboardPanel({
   }, []);
 
   const safeData = data || {};
+  const continueReadingData = safeData.continueReading || null;
+  const queueSummary = safeData.queue || {
+    runningCount: 0,
+    waitingCount: 0,
+    currentJob: null,
+  };
+  const newChapters = safeData.favorites || { items: [], totalCount: 0 };
+
+  const handleOpenContinueReading = useCallback(async () => {
+    if (openingBusyRef.current || !onOpenReader || !continueReadingData) return;
+    openingBusyRef.current = true;
+    setOpeningReader(true);
+    try {
+      await onOpenReader(continueReadingData);
+    } finally {
+      openingBusyRef.current = false;
+      if (isMountedRef.current) setOpeningReader(false);
+    }
+  }, [onOpenReader, continueReadingData]);
+
+  const handleSelectRecentChapter = useCallback(
+    async (item) => {
+      if (!item || !onSelectRecentChapter || openingBusyRef.current) return;
+      openingBusyRef.current = true;
+      try {
+        await onSelectRecentChapter(item);
+      } finally {
+        openingBusyRef.current = false;
+      }
+    },
+    [onSelectRecentChapter]
+  );
   const kpi = safeData.kpi || {
     mangaCount: 0,
     chapterCount: 0,
@@ -315,6 +368,45 @@ export default function DashboardPanel({
       />
 
       <StudioLayout.Body>
+        <StudioLayout.LeftSidebar
+          open={true}
+          width={leftWidth}
+          onResizeStart={handleLeftResizeStart}
+        >
+          <div className="p-3.5 flex flex-col gap-4">
+            <div>
+              <SectionHeader label={t('dashboard.section.quickAccess')} />
+              <ContinueReadingCard
+                compact
+                data={continueReadingData}
+                loading={openingReader}
+                onOpen={handleOpenContinueReading}
+                onEmptyAction={onOpenLibrary}
+              />
+            </div>
+
+            <div className="pt-3 border-t border-outline-variant/15">
+              <QueueStatusCard
+                runningCount={queueSummary.runningCount}
+                waitingCount={queueSummary.waitingCount}
+                currentJob={queueSummary.currentJob}
+                onOpenQueue={onOpenQueue || onOpenLibrary}
+                onEmptyAction={onOpenLibrary}
+              />
+            </div>
+
+            <div className="pt-3 border-t border-outline-variant/15">
+              <NewChaptersCard
+                items={newChapters.items}
+                totalCount={newChapters.totalCount}
+                onSelect={onSelectNewChapterFavorite || onOpenExplore || onOpenLibrary}
+                onViewAll={onOpenExplore || onOpenLibrary}
+                onEmptyAction={onOpenExplore || onOpenLibrary}
+              />
+            </div>
+          </div>
+        </StudioLayout.LeftSidebar>
+
         <StudioLayout.Content className="overflow-y-auto custom-scrollbar p-4 sm:p-6 bg-surface">
           <div className="w-full space-y-6">
             {safeData.error ? (
@@ -328,6 +420,18 @@ export default function DashboardPanel({
                 <span>{safeData.error}</span>
               </section>
             ) : null}
+
+            {/* Recent Activity Row (Top of main workspace) */}
+            <section>
+              <SectionHeader label={t('dashboard.section.activity')} />
+              <RecentDownloadsCarousel
+                items={recent.items}
+                totalMangas={recent.totalMangas}
+                totalChapters={recent.totalChapters}
+                onSelectChapter={handleSelectRecentChapter}
+                onEmptyAction={onOpenLibrary}
+              />
+            </section>
 
             {/* Overview KPI Bento Row */}
             <section>
@@ -507,33 +611,6 @@ export default function DashboardPanel({
                     })}
                     weekPagesAria={t('dashboard.chart.weekPagesAria')}
                     weekPageLabel={(idx) => t('dashboard.chart.weekPage', { index: idx })}
-                  />
-                </div>
-              </div>
-            </section>
-
-            {/* Quick Access & Recent Activity Balanced Row */}
-            <section className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-stretch">
-              <div className="xl:col-span-5 flex flex-col min-w-0">
-                <SectionHeader label={t('dashboard.section.quickAccess')} />
-                <div className="flex-1 min-h-0">
-                  <ContinueReadingCard
-                    data={safeData.continueReading}
-                    onOpen={() => onOpenReader?.(safeData.continueReading)}
-                    onEmptyAction={onOpenLibrary}
-                  />
-                </div>
-              </div>
-
-              <div className="xl:col-span-7 flex flex-col min-w-0">
-                <SectionHeader label={t('dashboard.section.activity')} />
-                <div className="flex-1 min-h-0">
-                  <RecentDownloadsCarousel
-                    items={recent.items}
-                    totalMangas={recent.totalMangas}
-                    totalChapters={recent.totalChapters}
-                    onSelectChapter={onSelectRecentChapter || (() => {})}
-                    onEmptyAction={onOpenLibrary}
                   />
                 </div>
               </div>

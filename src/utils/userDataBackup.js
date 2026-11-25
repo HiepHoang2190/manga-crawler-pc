@@ -78,6 +78,8 @@ export const BACKUP_SECTIONS = {
       'site_checker_left_open_v1',
       'site_checker_view_mode_v1',
       'site_checker_sort_pref_v1',
+      'dashboard_left_width_v1',
+      'dashboard_left_open_v1',
       'dashboard_trend_days_v1',
       'crawler:site-test-results',
       'settings_left_width_v1',

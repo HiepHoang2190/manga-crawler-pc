@@ -173,7 +173,7 @@ export function useCurrentMangaSession() {
       if (!force && manga && chapters.length > 0 && trimmedUrl === currentUrl) {
         setSourceUrl(trimmedUrl);
         if (siteForRequest) setSite(siteForRequest);
-        return { ok: true, skipped: true, chapters };
+        return { ok: true, skipped: true, manga, chapters };
       }
 
       const baseSavePath = String(savePath || '').trim();
@@ -211,7 +211,7 @@ export function useCurrentMangaSession() {
             }),
             'success'
           );
-          return { ok: true, skipped: true, offline: true, chapters: off.chapters };
+          return { ok: true, skipped: true, offline: true, manga: offline_manga, chapters: off.chapters };
         }
       }
 
@@ -258,7 +258,7 @@ export function useCurrentMangaSession() {
               }),
               'success'
             );
-            return { ok: true, offline: true, chapters: offRetry.chapters };
+            return { ok: true, offline: true, manga: offline_manga, chapters: offRetry.chapters };
           }
           setManga(null);
           setChapters([]);
@@ -302,7 +302,7 @@ export function useCurrentMangaSession() {
             'success'
           );
         }
-        return { ok: true, skipped: false, chapters: nextChapters };
+        return { ok: true, skipped: false, manga: res.manga, chapters: nextChapters };
       } catch (e) {
         const offRetry = await tryOfflineFromDisk();
         if (offRetry?.ok && offRetry.chapters?.length > 0) {
@@ -326,7 +326,7 @@ export function useCurrentMangaSession() {
             }),
             'success'
           );
-          return { ok: true, offline: true, chapters: offRetry.chapters };
+          return { ok: true, offline: true, manga: offline_manga, chapters: offRetry.chapters };
         }
         setFetchError(String(e?.message || e));
         setChapterListNoticeKey('');

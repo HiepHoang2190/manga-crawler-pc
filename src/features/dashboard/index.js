@@ -14,3 +14,4 @@ export {
   prettifyUrlForTitle,
   prettifyChapterTitle,
 } from './dashboardAggregator.js';
+export { resolveTargetChapterIndex } from './dashboardPrefs.mjs';

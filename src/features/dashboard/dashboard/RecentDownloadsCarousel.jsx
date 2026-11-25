@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useI18n } from '../../../context/I18nContext';
+import { QueueCoverThumb } from '../../download';
+import { computeHorizontalWheelDelta } from '../dashboardPrefs.mjs';
 
 export default function RecentDownloadsCarousel({
   items,
@@ -9,18 +11,34 @@ export default function RecentDownloadsCarousel({
   onEmptyAction,
 }) {
   const { t } = useI18n();
-  const [brokenCovers, setBrokenCovers] = useState(() => new Set());
+  const cardRef = useRef(null);
+  const scrollRef = useRef(null);
+  const hasItems = Array.isArray(items) && items.length > 0;
 
-  const markBrokenCover = (key) => {
-    setBrokenCovers((prev) => {
-      if (prev.has(key)) return prev;
-      const next = new Set(prev);
-      next.add(key);
-      return next;
-    });
-  };
+  useEffect(() => {
+    const cardEl = cardRef.current;
+    const scrollerEl = scrollRef.current;
+    if (!hasItems || !cardEl || !scrollerEl) return undefined;
 
-  if (!items || items.length === 0) {
+    const handleWheel = (e) => {
+      const { handled, delta } = computeHorizontalWheelDelta({
+        deltaX: e.deltaX,
+        deltaY: e.deltaY,
+        deltaMode: e.deltaMode,
+        ctrlKey: e.ctrlKey,
+        scrollWidth: scrollerEl.scrollWidth,
+        clientWidth: scrollerEl.clientWidth,
+      });
+      if (!handled) return;
+      e.preventDefault();
+      scrollerEl.scrollLeft += delta;
+    };
+
+    cardEl.addEventListener('wheel', handleWheel, { passive: false });
+    return () => cardEl.removeEventListener('wheel', handleWheel);
+  }, [hasItems]);
+
+  if (!hasItems) {
     return (
       <section className="h-full rounded-2xl border border-outline-variant/20 bg-surface-container-low/50 dark:bg-surface-container-low/25 p-5 flex flex-col items-center justify-center text-center gap-3 min-h-[168px]">
         <div className="w-11 h-11 rounded-xl border border-outline-variant/20 bg-surface-container-high flex items-center justify-center text-on-surface-variant/65">
@@ -51,7 +69,10 @@ export default function RecentDownloadsCarousel({
   }
 
   return (
-    <section className="h-full rounded-2xl border border-outline-variant/20 bg-surface-container-low/50 dark:bg-surface-container-low/25 p-4 sm:p-5 flex flex-col gap-3">
+    <section
+      ref={cardRef}
+      className="h-full rounded-2xl border border-outline-variant/20 bg-surface-container-low/50 dark:bg-surface-container-low/25 p-4 sm:p-5 flex flex-col gap-3"
+    >
       <header className="flex items-center justify-between gap-2 flex-wrap">
         <span className="inline-flex items-center gap-1.5 text-sm font-bold text-on-surface">
           <span className="material-symbols-outlined text-[17px] text-primary leading-none">
@@ -64,35 +85,27 @@ export default function RecentDownloadsCarousel({
         </span>
       </header>
 
-      <div className="flex items-stretch gap-3 overflow-x-auto custom-scrollbar pb-1">
+      <div
+        ref={scrollRef}
+        className="flex items-stretch gap-3 overflow-x-auto custom-scrollbar pb-1"
+      >
         {items.map((it) => {
           const itemKey = `${it.mangaId}::${it.chapterUrl}`;
-          const coverKey = `${itemKey}::${it.coverUrl || ''}`;
-          const showCover = Boolean(it.coverUrl) && !brokenCovers.has(coverKey);
 
           return (
             <button
               key={itemKey}
               type="button"
-              onClick={() => onSelectChapter(it)}
+              onClick={() => onSelectChapter?.(it)}
               className="group shrink-0 cursor-pointer w-24 flex flex-col gap-1.5 text-left"
               data-tooltip={`${it.mangaTitle} — ${it.chapterTitle}`}
               aria-label={`${it.mangaTitle} — ${it.chapterTitle}`}
             >
-              <div className="aspect-[3/4] w-full rounded-xl overflow-hidden border border-outline-variant/20 bg-surface-container-high flex items-center justify-center shadow-2xs">
-                {showCover ? (
-                  <img
-                    src={it.coverUrl}
-                    alt={it.mangaTitle || ''}
-                    onError={() => markBrokenCover(coverKey)}
-                    className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
-                  />
-                ) : (
-                  <span className="material-symbols-outlined text-[24px] text-on-surface-variant/45">
-                    collections_bookmark
-                  </span>
-                )}
-              </div>
+              <QueueCoverThumb
+                coverUrl={it.coverUrl}
+                frameClassName="aspect-[3/4] w-full rounded-xl overflow-hidden border border-outline-variant/20 bg-surface-container-high flex items-center justify-center shadow-2xs"
+                placeholderIconClassName="text-[24px]"
+              />
               <div className="min-w-0 w-full space-y-0.5">
                 <div className="text-xs font-semibold text-on-surface truncate group-hover:text-primary transition-colors">
                   {it.mangaTitle}

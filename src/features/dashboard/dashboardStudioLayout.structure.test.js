@@ -8,11 +8,16 @@ describe('DashboardPanel StudioLayout Structure & Compliance', () => {
   const dashboardPanelPath = path.join(dirname, 'DashboardPanel.jsx');
   const dashboardPanelSrc = fs.readFileSync(dashboardPanelPath, 'utf8');
 
-  test('uses StudioLayout and StudioLayout.Toolbar for unified design system consistency', () => {
+  test('uses StudioLayout, Toolbar, and permanent resizable LeftSidebar for unified design system consistency', () => {
     expect(dashboardPanelSrc).toMatch(/import\s*\{[^}]*StudioLayout[^}]*\}\s*from/);
+    expect(dashboardPanelSrc).toMatch(/import\s*\{[^}]*useStudioLayout[^}]*\}\s*from/);
+    expect(dashboardPanelSrc).toMatch(/storagePrefix:\s*'dashboard'/);
     expect(dashboardPanelSrc).toMatch(/<StudioLayout/);
     expect(dashboardPanelSrc).toMatch(/<StudioLayout\.Toolbar/);
+    expect(dashboardPanelSrc).toMatch(/<StudioLayout\.LeftSidebar[\s\S]{0,120}open=\{true\}/);
     expect(dashboardPanelSrc).toMatch(/<StudioLayout\.Content/);
+    expect(dashboardPanelSrc).not.toContain('onToggleLeftSidebar');
+    expect(dashboardPanelSrc).not.toContain('showLeftSidebar');
     expect(dashboardPanelSrc).not.toMatch(/<main\s+className=/);
   });
 
@@ -32,6 +37,8 @@ describe('DashboardPanel StudioLayout Structure & Compliance', () => {
   test('DashboardPanel and nested cards avoid forbidden UI/theme patterns and match EN/VI locales', () => {
     const nestedNames = [
       'ContinueReadingCard.jsx',
+      'QueueStatusCard.jsx',
+      'NewChaptersCard.jsx',
       'RecentDownloadsCarousel.jsx',
       'KpiTile.jsx',
       'KpiTilesRow.jsx',
@@ -74,5 +81,43 @@ describe('DashboardPanel StudioLayout Structure & Compliance', () => {
     }
     expect(missingVi).toEqual([]);
     expect(missingEn).toEqual([]);
+  });
+
+  test('places Quick Access/Queue/Favorites in LeftSidebar, orders Activity < Overview < Trends in Content, and wires ShellLayout callbacks', () => {
+    const leftIdx = dashboardPanelSrc.indexOf('<StudioLayout.LeftSidebar');
+    const contentIdx = dashboardPanelSrc.indexOf('<StudioLayout.Content');
+    const quickIdx = dashboardPanelSrc.indexOf("t('dashboard.section.quickAccess')");
+    const activityIdx = dashboardPanelSrc.indexOf("t('dashboard.section.activity')");
+    const overviewIdx = dashboardPanelSrc.indexOf("t('dashboard.section.overview')");
+    const trendsIdx = dashboardPanelSrc.indexOf("t('dashboard.section.trends')");
+
+    expect(leftIdx).toBeGreaterThan(-1);
+    expect(contentIdx).toBeGreaterThan(leftIdx);
+    expect(quickIdx).toBeGreaterThan(leftIdx);
+    expect(quickIdx).toBeLessThan(contentIdx);
+    expect(dashboardPanelSrc).toContain('<QueueStatusCard');
+    expect(dashboardPanelSrc).toContain('<NewChaptersCard');
+
+    expect(activityIdx).toBeGreaterThan(contentIdx);
+    expect(overviewIdx).toBeGreaterThan(activityIdx);
+    expect(trendsIdx).toBeGreaterThan(overviewIdx);
+
+    const shellSrc = fs.readFileSync(path.join(dirname, '../shell/ShellLayout.jsx'), 'utf8');
+    expect(shellSrc).toContain('handleOpenDashboardContinueReading');
+    expect(shellSrc).toContain('handleOpenDashboardRecentChapter');
+    expect(shellSrc).toContain('resolveTargetChapterIndex');
+    expect(shellSrc).toContain('onOpenReader={handleOpenDashboardContinueReading}');
+    expect(shellSrc).toContain('onSelectRecentChapter={handleOpenDashboardRecentChapter}');
+    expect(shellSrc).toContain('onOpenQueue=');
+    expect(shellSrc).toContain('onOpenExplore=');
+    expect(shellSrc).toContain('onSelectNewChapterFavorite=');
+
+    const recentSrc = fs.readFileSync(
+      path.join(dirname, 'dashboard/RecentDownloadsCarousel.jsx'),
+      'utf8'
+    );
+    expect(recentSrc).toContain('computeHorizontalWheelDelta');
+    expect(recentSrc).toMatch(/addEventListener\(\s*'wheel'\s*,[\s\S]*?passive:\s*false/);
+    expect(recentSrc).toMatch(/removeEventListener\(\s*'wheel'/);
   });
 });

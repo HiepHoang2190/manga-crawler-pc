@@ -4937,8 +4937,6 @@ export const vi = {
   'fetchError.detailLabel': 'Chi tiết lỗi',
   'dashboard.kpi.detail.storage.openFolder': 'Mở thư mục lưu',
   'dashboard.toolbar.rangeLabel': 'Khoảng thời gian thống kê',
-  'dashboard.toolbar.openLibrary': 'Mở thư viện',
-  'dashboard.toolbar.openSaveFolder': 'Mở thư mục lưu',
   'dashboard.toolbar.manageCache': 'Quản lý cache đọc online',
   'dashboard.kpi.chapters.avgPerManga': '~{avg} ch./truyện',
   'dashboard.kpi.today.last7Short': '7 ngày: {count} chương',
@@ -4952,6 +4950,7 @@ export const vi = {
   'dashboard.chart.weekPagesAria': 'Chọn tuần hiển thị',
   'dashboard.chart.weekPage': 'Tuần {index}',
   'dashboard.continueReading.resumeCta': 'Đọc tiếp',
+  'dashboard.continueReading.opening': 'Đang mở trình đọc…',
   'dashboard.recentDownloads.empty': 'Các chương vừa tải gần đây sẽ hiển thị tại đây.',
   'dashboard.recentDownloads.emptyCta': 'Tải truyện mới',
 };

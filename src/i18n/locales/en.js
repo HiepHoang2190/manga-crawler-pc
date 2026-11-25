@@ -4959,8 +4959,6 @@ export const en = {
   'fetchError.detailLabel': 'Error details',
   'dashboard.kpi.detail.storage.openFolder': 'Open Save Folder',
   'dashboard.toolbar.rangeLabel': 'Analytics time range',
-  'dashboard.toolbar.openLibrary': 'Open Library',
-  'dashboard.toolbar.openSaveFolder': 'Open Save Folder',
   'dashboard.toolbar.manageCache': 'Manage online read cache',
   'dashboard.kpi.chapters.avgPerManga': '~{avg} ch./manga',
   'dashboard.kpi.today.last7Short': '7d: {count} chapters',
@@ -4974,6 +4972,7 @@ export const en = {
   'dashboard.chart.weekPagesAria': 'Select chart week',
   'dashboard.chart.weekPage': 'Week {index}',
   'dashboard.continueReading.resumeCta': 'Resume',
+  'dashboard.continueReading.opening': 'Opening reader…',
   'dashboard.recentDownloads.empty': 'Recently downloaded chapters will appear here.',
   'dashboard.recentDownloads.emptyCta': 'Download manga',
 };

@@ -59,7 +59,9 @@ import DashboardPanel, {
   getMangaStorageRanking,
   prettifyUrlForTitle,
   prettifyChapterTitle,
+  resolveTargetChapterIndex,
 } from '../dashboard';
+import { getReadingProgressEntry } from '../../utils/readingProgress';
 import { getRecentDownloads } from '../../utils/recentDownloadsLog';
 import { addUsageSeconds, getUsagePerDay, getUsageTodaySeconds } from '../../utils/usageLog';
 import {
@@ -256,6 +258,7 @@ export default function ShellLayout() {
     recentExtractedCbzEntries,
     removeRecentExtractedCbzEntry,
     openReader,
+    openOfflineReader,
     openEbook,
     openArchivePath,
   } = useReader();
@@ -887,6 +890,7 @@ export default function ShellLayout() {
 
   const readerUsageStartRef = useRef(null);
   const readerUsageIntervalRef = useRef(null);
+  const wasReaderOpenRef = useRef(false);
 
   useEffect(() => {
     const flushReaderUsage = () => {
@@ -896,18 +900,23 @@ export default function ShellLayout() {
       readerUsageStartRef.current = null;
       if (elapsed > 0) {
         addUsageSeconds(elapsed);
-        setDashboardTick((n) => n + 1);
       }
     };
 
     if (!readerOpen) {
       flushReaderUsage();
+      if (wasReaderOpenRef.current) {
+        wasReaderOpenRef.current = false;
+        setDashboardTick((n) => n + 1);
+      }
       if (readerUsageIntervalRef.current) {
         clearInterval(readerUsageIntervalRef.current);
         readerUsageIntervalRef.current = null;
       }
       return undefined;
     }
+
+    wasReaderOpenRef.current = true;
 
     readerUsageStartRef.current = Date.now();
     readerUsageIntervalRef.current = window.setInterval(() => {
@@ -945,6 +954,187 @@ export default function ShellLayout() {
       });
     });
   }, [hydrateSession]);
+
+  /** Mở trực tiếp trình đọc trong app từ card "Tiếp tục đọc" trên Dashboard. */
+  const handleOpenDashboardContinueReading = useCallback(
+    async (crData) => {
+      const url = String(crData?.mangaUrl || '').trim();
+      if (!url) {
+        setMenuView('home');
+        return;
+      }
+
+      const siteId = String(crData?.siteId || '').trim();
+      const mangaTitleHint = String(crData?.mangaTitle || '').trim();
+      const targetChapterUrl = String(crData?.chapterUrl || '').trim();
+      const targetChapterTitle = String(crData?.chapterTitle || '').trim();
+      const api = typeof window !== 'undefined' ? window.electronAPI : null;
+      const base = String(savePath || '').trim();
+
+      const result = await loadMangaWithParams(siteId, url, {
+        force: false,
+        mangaTitleHint,
+      });
+
+      if (result?.ok && Array.isArray(result.chapters) && result.chapters.length > 0) {
+        const idx = resolveTargetChapterIndex(result.chapters, {
+          chapterUrl: targetChapterUrl,
+          chapterTitle: targetChapterTitle,
+        });
+        if (result.offline) {
+          openReader(idx);
+          return;
+        }
+
+        const targetChapter = result.chapters[idx];
+        const resolvedTitle = String(result.manga?.title || mangaTitleHint).trim();
+
+        if (!base) {
+          appendLog(t('app.log.needSavePathShort'), 'warn');
+          return;
+        }
+
+        if (api?.filterChaptersWithLocalImages && resolvedTitle && targetChapter) {
+          try {
+            const localCheck = await api.filterChaptersWithLocalImages(savePath, resolvedTitle, [
+              targetChapter,
+            ]);
+            if (
+              localCheck?.ok &&
+              Array.isArray(localCheck.chapters) &&
+              localCheck.chapters.some(
+                (c) => String(c?.url || '') === String(targetChapter.url || '')
+              )
+            ) {
+              openReader(idx);
+              return;
+            }
+          } catch {
+            /* fall through to stream */
+          }
+        }
+
+        if (targetChapter) {
+          await openReader(targetChapter, { stream: true });
+          return;
+        }
+        openReader(idx);
+        return;
+      }
+
+      // Offline fallback: open from local disk if manga directory exists
+      if (base && mangaTitleHint && api?.loadMangaOfflineFromDisk && typeof openOfflineReader === 'function') {
+        try {
+          const offlineRes = await api.loadMangaOfflineFromDisk(base, mangaTitleHint);
+          if (offlineRes?.ok && Array.isArray(offlineRes.chapters) && offlineRes.chapters.length > 0) {
+            const idx = resolveTargetChapterIndex(offlineRes.chapters, {
+              chapterUrl: targetChapterUrl,
+              chapterTitle: targetChapterTitle,
+            });
+            const localCover = String(offlineRes.localCoverPath || '').trim();
+            const offlineManga =
+              localCover && !offlineRes.manga?.coverUrl
+                ? { ...offlineRes.manga, coverUrl: localCover, localCoverPath: localCover }
+                : localCover
+                ? { ...offlineRes.manga, localCoverPath: localCover }
+                : offlineRes.manga;
+            openOfflineReader({
+              manga: offlineManga,
+              chapters: offlineRes.chapters,
+              initialChapterIndex: idx,
+            });
+            return;
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+
+      if (typeof appendLog === 'function') {
+        appendLog(t('offlineLibrary.openFailed'), 'warn');
+      }
+    },
+    [
+      savePath,
+      loadMangaWithParams,
+      openReader,
+      openOfflineReader,
+      setMenuView,
+      appendLog,
+      t,
+    ]
+  );
+
+  /** Mở trực tiếp trình đọc trong app khi chọn chương vừa tải xong trên Dashboard. */
+  const handleOpenDashboardRecentChapter = useCallback(
+    async (item) => {
+      if (!item) return;
+      const mangaTitle = String(item.mangaTitle || '').trim();
+      const chapterUrl = String(item.chapterUrl || '').trim();
+      const chapterTitle = String(item.chapterTitle || '').trim();
+      const api = typeof window !== 'undefined' ? window.electronAPI : null;
+      const base = String(savePath || '').trim();
+
+      if (base && mangaTitle && api?.loadMangaOfflineFromDisk && typeof openOfflineReader === 'function') {
+        try {
+          const offlineRes = await api.loadMangaOfflineFromDisk(base, mangaTitle);
+          if (offlineRes?.ok && Array.isArray(offlineRes.chapters) && offlineRes.chapters.length > 0) {
+            const idx = resolveTargetChapterIndex(offlineRes.chapters, {
+              chapterUrl,
+              chapterTitle,
+            });
+            const localCover = String(offlineRes.localCoverPath || '').trim();
+            const offlineManga =
+              localCover && !offlineRes.manga?.coverUrl
+                ? { ...offlineRes.manga, coverUrl: localCover, localCoverPath: localCover }
+                : localCover
+                ? { ...offlineRes.manga, localCoverPath: localCover }
+                : offlineRes.manga;
+            openOfflineReader({
+              manga: offlineManga,
+              chapters: offlineRes.chapters,
+              initialChapterIndex: idx,
+            });
+            return;
+          }
+        } catch {
+          /* fall through to online lookup */
+        }
+      }
+
+      const matchedFav = favorites.find(
+        (f) =>
+          (item.mangaId && f.id === item.mangaId) ||
+          (mangaTitle && String(f.title || '').trim() === mangaTitle)
+      );
+      const matchedHist = downloadHistory.find(
+        (h) =>
+          String(h?.chapterUrl || '') === chapterUrl ||
+          (mangaTitle && String(h?.mangaTitle || '').trim() === mangaTitle)
+      );
+      const mangaUrl = String(matchedFav?.mangaUrl || matchedHist?.mangaUrl || '').trim();
+      if (mangaUrl) {
+        await handleOpenDashboardContinueReading({
+          siteId: item.connectorId || matchedFav?.siteId || matchedHist?.siteId || '',
+          mangaUrl,
+          chapterUrl,
+          mangaTitle,
+          chapterTitle,
+        });
+        return;
+      }
+
+      setMenuView('home');
+    },
+    [
+      savePath,
+      openOfflineReader,
+      favorites,
+      downloadHistory,
+      handleOpenDashboardContinueReading,
+      setMenuView,
+    ]
+  );
 
   const handleDownloadMangadexCovers = useCallback(async (mangaTitle, covers) => {
     const title = String(mangaTitle || '').trim();
@@ -1308,13 +1498,21 @@ export default function ShellLayout() {
       let continueReading = null;
       if (cr) {
         const f = favorites.find((x) => String(x.mangaUrl) === cr.mangaUrl);
+        const hist = downloadHistory.find((h) => String(h.mangaUrl || '') === cr.mangaUrl);
+        const progressEntry = getReadingProgressEntry(`${cr.siteId}::${cr.mangaUrl}`);
+        const rawRatio = Number(progressEntry?.scrollRatio);
+        const percent = Number.isFinite(rawRatio) ? Math.max(0, Math.min(1, rawRatio)) : 0;
+        const resolvedConnectorName =
+          connectorList.find((c) => c.id === cr.siteId)?.name || cr.siteId;
         continueReading = {
+          siteId: cr.siteId,
           mangaUrl: cr.mangaUrl,
-          coverUrl: f?.coverUrl || '',
-          mangaTitle: f?.title || prettifyUrlForTitle(cr.mangaUrl),
+          chapterUrl: cr.chapterUrl,
+          coverUrl: f?.coverUrl || hist?.coverUrl || '',
+          mangaTitle: f?.title || hist?.mangaTitle || prettifyUrlForTitle(cr.mangaUrl),
           chapterTitle: prettifyChapterTitle(cr.chapterUrl),
-          percent: 0,
-          connectorName: cr.siteId,
+          percent,
+          connectorName: resolvedConnectorName,
         };
       }
       const nowMs = Date.now();
@@ -1364,6 +1562,7 @@ export default function ShellLayout() {
     queue,
     downloadHistory,
     dashboardStorageBytes,
+    connectorList,
   ]);
 
   let activeChapterLabel = '';
@@ -1641,13 +1840,18 @@ export default function ShellLayout() {
           mangaRankings={dashboardMangaRankings}
           onLoadStorageRanking={loadDashboardStorageRanking}
           connectorName={(id) => connectorList.find((c) => c.id === id)?.name || id}
-          onOpenReader={(crData) => {
-            const url = crData?.mangaUrl;
-            if (url) setSourceUrl(url);
-            setMenuView('home');
-          }}
+          onOpenReader={handleOpenDashboardContinueReading}
           onOpenLibrary={() => setMenuView('home')}
-          onSelectRecentChapter={() => setMenuView('home')}
+          onSelectRecentChapter={handleOpenDashboardRecentChapter}
+          onOpenQueue={() => {
+            setMenuView('home');
+            focusQueueTab?.();
+          }}
+          onOpenExplore={() => setMenuView('explore')}
+          onSelectNewChapterFavorite={(fav) => {
+            const full = favorites.find((x) => x.id === fav?.id) || fav;
+            handleBellFetchFavorite(full);
+          }}
         />
       ) : menuView === 'home' ? (
         <HomeWorkspace
