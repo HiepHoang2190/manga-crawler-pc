@@ -76,6 +76,8 @@ export const BACKUP_SECTIONS = {
       'plugins_sort_pref_v1',
       'site_checker_left_width_v1',
       'site_checker_left_open_v1',
+      'site_checker_view_mode_v1',
+      'site_checker_sort_pref_v1',
       'crawler:site-test-results',
       'settings_left_width_v1',
       'settings_left_open_v1',

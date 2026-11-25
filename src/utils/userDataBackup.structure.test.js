@@ -12,6 +12,8 @@ test('BACKUP_SECTIONS in userDataBackup.js includes plugins and site_checker lay
   expect(src).toMatch(/plugins_sort_pref_v1/);
   expect(src).toMatch(/site_checker_left_width_v1/);
   expect(src).toMatch(/site_checker_left_open_v1/);
+  expect(src).toMatch(/site_checker_view_mode_v1/);
+  expect(src).toMatch(/site_checker_sort_pref_v1/);
   expect(src).toMatch(/manga-crawler-theme-preset/);
   expect(src).toMatch(/mangaFavoriteChapterFrontierV1/);
   expect(src).toMatch(/ebookBookmarks_v1/);
