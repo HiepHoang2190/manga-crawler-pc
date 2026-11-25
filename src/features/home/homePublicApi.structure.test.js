@@ -16,7 +16,7 @@ test('HomeWorkspace consumes public hooks and barrels only', () => {
   expect(src).toMatch(/useExport\(\)/);
   expect(src).toMatch(/useReader\(\)/);
   expect(src).toMatch(/useSettings\(\)/);
-  expect(src).toMatch(/useAuth\(\)/);
+  expect(src).not.toMatch(/useAuth/);
   expect(src).toMatch(/useAppLog\(\)/);
   expect(src).toMatch(/from '\.\.\/download'/);
   expect(src).not.toMatch(/\bsetQueue\b/);

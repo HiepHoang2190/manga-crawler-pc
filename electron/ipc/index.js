@@ -5,7 +5,6 @@ const { registerReaderIpc } = require('./reader');
 const { registerDownloadIpc } = require('./download');
 const { registerExportIpc } = require('./export');
 const { registerPluginsIpc } = require('./plugins');
-const { registerAuthIpc } = require('./auth');
 const { registerKindleIpc } = require('./kindle');
 const { registerCookiesIpc } = require('./cookies');
 const { registerToolsIpc } = require('./tools');
@@ -25,7 +24,6 @@ function registerAllIpc(ipc_context) {
   registerDownloadIpc(ipc_context);
   registerExportIpc(ipc_context);
   registerPluginsIpc(ipc_context);
-  registerAuthIpc(ipc_context);
   registerKindleIpc(ipc_context);
   registerCookiesIpc(ipc_context);
   registerToolsIpc(ipc_context);

@@ -10,13 +10,11 @@ import BrandingSettingsSection from './BrandingSettingsSection.jsx';
 import { ExtrasSettingsSection } from '../extras';
 import { SiteCookieSection } from '../download';
 import { loadSavedWorkflows } from '../workflow/utils/workflowStorage.mjs';
-import { hasAppSession, isAdminSession, FREE_USER_TOKEN_MAX } from '../../utils/authSession';
 import {
   FAVORITE_AUTO_CHECK_INTERVAL_PRESETS,
   formatFavoriteAutoCheckInterval,
   formatFavoriteAutoCheckLastAt,
 } from '../../utils/appSettings';
-import { findLatestEntitlementRow } from '../../utils/packageEntitlementView.mjs';
 import { publicAsset } from '../../utils/publicAsset';
 import packageJson from '../../../package.json';
 
@@ -141,14 +139,9 @@ export default function SettingsPanel({
   scrollSettingsToSection,
   setScrollSettingsToSection,
 
-  onAfterLogout,
   scrollToUpdate = false,
   onScrollToUpdateDone,
   knownUpdate = null,
-  /** Phiên đăng nhập — đồng bộ từ App */
-  authSession = null,
-  /** (session | null) => void */
-  onAuthSessionChange,
 }) {
   const { locale, setLocale, t } = useI18n();
   const { themePreference, setThemePreference } = useTheme();
@@ -169,7 +162,7 @@ export default function SettingsPanel({
       const saved = localStorage.getItem('settings_active_tab_v1');
       if (
         saved &&
-        ['all', 'account', 'appearance', 'downloads', 'cookies', 'favorites', 'backup', 'contact', 'update', 'extras'].includes(saved)
+        ['all', 'appearance', 'downloads', 'cookies', 'favorites', 'backup', 'contact', 'update', 'extras'].includes(saved)
       ) {
         return saved;
       }
@@ -212,9 +205,6 @@ export default function SettingsPanel({
   }, [savePath]);
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [authBusy, setAuthBusy] = useState(false);
-  const [authMsg, setAuthMsg] = useState('');
-  const [showAdminContactAfterLoginFail, setShowAdminContactAfterLoginFail] = useState(false);
   const [contactQrFailed, setContactQrFailed] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState({});
   const updateSectionRef = useRef(null);
@@ -242,7 +232,7 @@ export default function SettingsPanel({
   };
 
   const allSectionIds = useMemo(
-    () => ['account', 'appearance', 'branding', 'downloads', 'cookies', 'favorites', 'backup', 'contact', 'update', 'extras'],
+    () => ['appearance', 'branding', 'downloads', 'cookies', 'favorites', 'backup', 'contact', 'update', 'extras'],
     []
   );
 
@@ -262,35 +252,6 @@ export default function SettingsPanel({
       setCollapsedSections(all);
     }
   };
-
-  const isSignedIn = Boolean(authSession?.refreshToken);
-  const has_app_package = hasAppSession(authSession);
-  const app_entitlement_row = findLatestEntitlementRow(authSession, 'app');
-  const remaining_token_count = Number.isFinite(Number(authSession?.remainingTokens))
-    ? Math.max(0, Math.floor(Number(authSession.remainingTokens)))
-    : 0;
-
-  const format_package_status = (raw_expires_at) => {
-    if (raw_expires_at == null || raw_expires_at === '') {
-      return t('settings.account.lifetime');
-    }
-    return t('settings.account.expiresOn', {
-      date: new Date(raw_expires_at).toLocaleDateString(undefined, {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      }),
-    });
-  };
-
-  const app_package_name = has_app_package
-    ? isAdminSession(authSession)
-      ? authSession?.userType || 'Admin'
-      : 'Member'
-    : 'Free';
-  const app_package_status = has_app_package
-    ? format_package_status(app_entitlement_row?.expiresAt ?? app_entitlement_row?.expires_at ?? null)
-    : `${remaining_token_count} / ${FREE_USER_TOKEN_MAX} tokens`;
 
   const handleSelectTab = (tabId) => {
     setActiveTab(tabId);
@@ -341,62 +302,6 @@ export default function SettingsPanel({
     setScrollSettingsToSection,
   ]);
 
-  const runGoogleLogin = async () => {
-    setAuthMsg('');
-    setShowAdminContactAfterLoginFail(false);
-    const api = typeof window !== 'undefined' ? window.electronAPI : null;
-    if (!api?.loginGoogle) {
-      setAuthMsg(t('settings.account.loginDesktopOnly'));
-      setShowAdminContactAfterLoginFail(true);
-      return;
-    }
-    setAuthBusy(true);
-    try {
-      const r = await api.loginGoogle();
-      if (r?.ok) {
-        setAuthMsg('');
-        setShowAdminContactAfterLoginFail(false);
-        try {
-          const s = await api.getAuthSession();
-          onAuthSessionChange?.(s?.refreshToken ? s : null);
-        } catch {
-          onAuthSessionChange?.(null);
-        }
-      } else if (r?.error === 'NOT_WHITELISTED') {
-        setAuthMsg(t('settings.account.notWhitelisted'));
-        setShowAdminContactAfterLoginFail(true);
-      } else if (r?.error === 'NOT_MEMBER') {
-        setAuthMsg(t('settings.account.notMember'));
-        setShowAdminContactAfterLoginFail(true);
-      } else {
-        setAuthMsg(r?.message || r?.error || t('auth.gate.loginFailed'));
-        setShowAdminContactAfterLoginFail(true);
-      }
-    } catch (e) {
-      setAuthMsg(String(e?.message || e));
-      setShowAdminContactAfterLoginFail(true);
-    } finally {
-      setAuthBusy(false);
-    }
-  };
-
-  const runLogout = async () => {
-    setAuthMsg('');
-    setShowAdminContactAfterLoginFail(false);
-    const api = typeof window !== 'undefined' ? window.electronAPI : null;
-    if (!api?.logout) return;
-    setAuthBusy(true);
-    try {
-      await api.logout();
-      onAuthSessionChange?.(null);
-      onAfterLogout?.();
-    } catch (e) {
-      setAuthMsg(String(e?.message || e));
-    } finally {
-      setAuthBusy(false);
-    }
-  };
-
   const bumpThreads = (delta) => {
     setThreads((prev) => {
       const cur = Math.floor(Number(prev) || 1);
@@ -420,13 +325,6 @@ export default function SettingsPanel({
         label: t('settings.tab.all'),
         shortLabel: t('settings.tab.all'),
         icon: 'tune',
-      },
-      {
-        id: 'account',
-        label: t('settings.tab.account'),
-        shortLabel: t('settings.tab.account'),
-        icon: 'person',
-        searchable: `${t('settings.tab.account')} ${authSession?.email || ''} ${app_package_name} tokens login logout`,
       },
       {
         id: 'appearance',
@@ -486,7 +384,7 @@ export default function SettingsPanel({
         searchable: `${t('extras.settings.title')} ${t('extras.settings.subtitle')} ${t('extras.settings.desc')} ai upscale onnx`,
       },
     ],
-    [t, authSession, app_package_name, checkResult, appUpdateState, knownUpdate]
+    [t, checkResult, appUpdateState, knownUpdate]
   );
 
   const isCardVisible = (cardId, searchableText = '') => {
@@ -566,33 +464,20 @@ export default function SettingsPanel({
               })}
             </div>
 
-            {/* Bottom Account Card */}
+            {/* Bottom Open Source Info Card */}
             <div className="mt-auto pt-3 border-t border-outline-variant/15 shrink-0">
               <div className="rounded-xl p-3 bg-surface-container-high/60 border border-outline-variant/15 space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <SectionTitle as="span">
-                    {t('settings.account.type')}
-                  </SectionTitle>
-                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-primary/15 text-primary">
-                    {app_package_name}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold text-on-surface truncate">Manga Crawler</span>
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-primary/15 text-primary shrink-0">
+                    {t('settings.openSourceBadge')}
                   </span>
                 </div>
-                {isSignedIn ? (
-                  <>
-                    <div className="text-xs font-medium text-on-surface truncate" data-tooltip={authSession?.email}>
-                      {authSession?.email || '—'}
-                    </div>
-                    <div className="text-[11px] text-on-surface-variant">
-                      {app_package_status}
-                    </div>
-                  </>
-                ) : (
-                  <div className="text-[11px] text-on-surface-variant leading-tight">
-                    {t('settings.guestAccountHint')}
-                  </div>
-                )}
+                <p className="text-[11px] text-on-surface-variant leading-tight">
+                  {t('settings.openSourceHint')}
+                </p>
                 <div className="flex items-center justify-between text-[11px] text-on-surface-variant/70 pt-1.5 border-t border-outline-variant/10">
-                  <span>Manga Crawler</span>
+                  <span>MIT License</span>
                   <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-surface-container-lowest border border-outline-variant/20">
                     v{packageJson.version}
                   </span>
@@ -650,79 +535,7 @@ export default function SettingsPanel({
                 </div>
               ) : null}
 
-              {/* 1. Account */}
-              {isCardVisible('account', categories.find((c) => c.id === 'account')?.searchable) ? (
-                <SettingsSectionCard
-                  id="account"
-                  icon="person"
-                  title={t('settings.tab.account')}
-                  isCollapsed={isSectionCollapsed('account')}
-                  onToggle={() => toggleSection('account')}
-                >
-                  <div className="space-y-4">
-                    {isSignedIn && authSession ? (
-                      <div className="rounded-xl bg-surface-container-highest/50 p-4 border border-outline-variant/15 text-sm text-on-surface space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <span className="text-xs text-on-surface-variant">{t('settings.account.signedIn')}</span>
-                            <p className="font-semibold text-base text-on-surface">{authSession.email || '—'}</p>
-                          </div>
-                          <span className="px-3 py-1 rounded-full text-xs font-bold bg-primary/15 text-primary border border-primary/20">
-                            {app_package_name}
-                          </span>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-outline-variant/10 text-xs">
-                          <div>
-                            <span className="text-on-surface-variant">{t('settings.account.type')}: </span>
-                            <span className="font-medium text-on-surface">{app_package_status}</span>
-                          </div>
-                          {!has_app_package && authSession.createdAt && (
-                            <div>
-                              <span className="text-on-surface-variant">{t('settings.account.registeredAt')}: </span>
-                              <span className="font-medium text-on-surface">
-                                {new Date(authSession.createdAt).toLocaleDateString(undefined, {
-                                  year: 'numeric',
-                                  month: 'long',
-                                  day: 'numeric',
-                                })}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="rounded-xl bg-surface-container-highest/40 p-4 border border-outline-variant/15 space-y-3">
-                        <p className="text-xs text-on-surface-variant leading-relaxed">
-                          {t('settings.guestAccountHint')}
-                        </p>
-                      </div>
-                    )}
-
-                    {authMsg && (
-                      <p className="text-xs text-red-500 dark:text-red-400 whitespace-pre-wrap">{authMsg}</p>
-                    )}
-
-                    {isSignedIn ? (
-                      <div className="flex items-center gap-3">
-                        <button
-                          type="button"
-                          disabled={authBusy || !authSession}
-                          onClick={runLogout}
-                          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-surface-container-high text-on-surface hover:bg-surface-bright border border-outline-variant/20 transition-all active:scale-95 cursor-pointer disabled:opacity-50"
-                        >
-                          <span className="material-symbols-outlined text-[16px]">logout</span>
-                          <span>{t('settings.account.logout')}</span>
-                        </button>
-                      </div>
-                    ) : null}
-
-                    {showAdminContactAfterLoginFail ? <AdminContactLinks className="mt-2" /> : null}
-                  </div>
-                </SettingsSectionCard>
-              ) : null}
-
-              {/* 2. Appearance & Language */}
+              {/* 1. Appearance & Language */}
               {isCardVisible('appearance', categories.find((c) => c.id === 'appearance')?.searchable) ? (
                 <SettingsSectionCard
                   id="appearance"

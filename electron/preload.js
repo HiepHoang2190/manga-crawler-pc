@@ -311,16 +311,6 @@ const api = {
     return () => ipcRenderer.removeListener('manga:cbzLoadProgress', listener);
   },
 
-  getAuthSession: () => ipcRenderer.invoke('auth:getSession'),
-  loginGoogle: () => ipcRenderer.invoke('auth:loginGoogle'),
-  logout: () => ipcRenderer.invoke('auth:logout'),
-  subscribeAuthSessionInvalidated: (callback) => {
-    const listener = (_event, data) => callback(data);
-    ipcRenderer.on('auth:sessionInvalidated', listener);
-    return () => ipcRenderer.removeListener('auth:sessionInvalidated', listener);
-  },
-  ensureFreeUserCreditsByEmail: (payload) => ipcRenderer.invoke('trial:ensureFreeUserCreditsByEmail', payload),
-  consumeFreeUserDownloadCredit: (payload) => ipcRenderer.invoke('trial:consumeFreeUserDownloadCredit', payload),
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
 
 

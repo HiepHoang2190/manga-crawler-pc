@@ -438,7 +438,7 @@ export const helpArticles = {
             '• Mỗi tùy chọn đều đã có chú thích chi tiết ngay bên dưới trong màn hình Cài đặt.',
           ],
           image: H('settings-general.png'),
-          imageCaption: 'Cài đặt: ngôn ngữ, giao diện, tải xuống, tài khoản.',
+          imageCaption: 'Cài đặt: ngôn ngữ, giao diện, tải xuống, sao lưu.',
         },
         {
           paragraphs: [
@@ -601,11 +601,10 @@ export const helpArticles = {
     },
     {
       id: 'donate',
-      title: 'Liên Hệ & Đăng Ký Thành Viên',
+      title: 'Liên Hệ & Cộng Đồng',
       paragraphs: [
         '• Tab Liên lạc cung cấp các kênh thông tin hỗ trợ và kết nối với đội ngũ phát triển:',
         '  - Kênh Telegram: Tham gia cộng đồng người dùng (@suutamebooktruyentranh) để nhận thông báo cập nhật, thảo luận và báo lỗi.',
-        '  - Đăng ký Member: Hướng dẫn đăng ký gói thành viên (@suutamebooktruyentranhdangky) để mở khóa tải không giới hạn và các tính năng AI cao cấp.',
         '  - Hỗ trợ trực tiếp: Liên hệ trực tiếp quản trị viên (@alexdandan) khi cần hỗ trợ kỹ thuật hoặc đóng góp ý kiến.',
       ],
     },
@@ -1038,7 +1037,7 @@ export const helpArticles = {
             '• Menu bar: hide items you do not need (Home and Settings always stay visible).',
           ],
           image: H('settings-general.png'),
-          imageCaption: 'Settings: language, appearance, downloads, account.',
+          imageCaption: 'Settings: language, appearance, downloads, backup.',
         },
         {
           paragraphs: [
@@ -1201,11 +1200,10 @@ export const helpArticles = {
     },
     {
       id: 'donate',
-      title: 'Contact & Member Registration',
+      title: 'Contact & Community',
       paragraphs: [
         '• The Contact tab provides official channels to reach the development team and community:',
         '  - Telegram Channels: Join the user community (@suutamebooktruyentranh) for updates, discussions, and bug reports.',
-        '  - Member Registration: Instructions for upgrading to Member (@suutamebooktruyentranhdangky) for unlimited downloads and advanced AI features.',
         '  - Direct Support: Contact admin (@alexdandan) directly for technical support and inquiries.',
       ],
     },

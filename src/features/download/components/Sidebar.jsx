@@ -70,9 +70,6 @@ export default function Sidebar({
   downloadedChapterCount = 0,
   threads,
   setThreads,
-  showCbzExport = true,
-  guestFavoriteLocked = false,
-  onGuestFavoriteBlocked,
 }) {
   const { t } = useI18n();
   const [extractBusy, setExtractBusy] = useState(false);
@@ -510,9 +507,6 @@ export default function Sidebar({
               onOpenpdfExport={onOpenpdfExport}
               onOpenReader={onOpenReader}
               onOpenEbookStudio={onOpenEbookStudio}
-              showCbzExport={showCbzExport}
-              guestFavoriteLocked={guestFavoriteLocked}
-              onGuestFavoriteBlocked={onGuestFavoriteBlocked}
             />
           </div>
         ) : (
@@ -539,8 +533,8 @@ export default function Sidebar({
                   type="button"
                   onClick={() => setMessageDialog(null)}
                   className="shrink-0 h-8 w-8 rounded-lg border border-outline-variant/20 bg-surface-container-highest inline-flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:border-outline-variant/40 transition-colors cursor-pointer"
-                  data-tooltip={t('guestCredit.modalClose')}
-                  aria-label={t('guestCredit.modalClose')}
+                  data-tooltip={t('common.close')}
+                  aria-label={t('common.close')}
                 >
                   <span className="material-symbols-outlined text-[18px] leading-none">close</span>
                 </button>
@@ -562,7 +556,7 @@ export default function Sidebar({
                   onClick={() => setMessageDialog(null)}
                   className="h-10 px-4 rounded-full bg-primary text-on-primary text-sm font-medium hover:opacity-90 transition-opacity active:scale-[0.98]"
                 >
-                  {t('guestCredit.modalClose')}
+                  {t('common.close')}
                 </button>
               </div>
             </div>

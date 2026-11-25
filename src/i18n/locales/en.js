@@ -1,47 +1,12 @@
 /** English UI strings — keys must match vi.js */
 export const en = {
-  'auth.gate.title': 'Sign in to continue',
-  'auth.gate.body':
-    'Sign in to use the app with 300 free tokens.\nRegister a member account for unlimited use.',
-  'auth.gate.registerLine': "Don't have a member account yet? Register here:",
-  'auth.gate.registerLinkLabel': 'Google Form',
-  'auth.gate.signIn': 'Sign in with Google',
-  'auth.gate.checking': 'Checking session…',
-  'auth.gate.sessionMissing': 'Session was not saved. Please try again.',
-  'auth.gate.loginFailed': 'Sign-in failed.',
-  'auth.gate.noElectron': 'Google sign-in is only available in the desktop (Electron) app.',
-  'auth.gate.clearCacheHint': 'If you have registered but sign-in keeps failing, try pressing Ctrl + R (or ⌘ R on Mac) to clear the cache, then sign in again.',
-
-  'guestCredit.modalTitle': 'You have used all free credits',
-  'guestCredit.modalBody':
-    'You downloaded 100 chapters for free. Sign in or create an account to continue without limits.',
-  'guestCredit.benefit1': 'Unlimited chapter downloads',
-  'guestCredit.benefit2': 'Synced reading history',
-  'guestCredit.benefit3': 'Favorites',
-  'guestCredit.benefit4': 'New chapter notifications',
-  'guestCredit.signIn': 'Sign in',
-  'guestCredit.register': 'Create a free account',
-  'guestCredit.continueTrial': 'Continue as guest (browse only, no downloads)',
-  'guestCredit.modalClose': 'Close',
-  'guestCredit.bannerLow': 'You have {n} credits left. Sign in to avoid interruption.',
-  'guestCredit.bannerUrgent': 'Almost out of credits ({n}). Sign in for unlimited downloads.',
-  'guestCredit.bannerCta': 'Sign in',
-  'guestCredit.titleBarSignIn': 'Sign in',
-  'guestCredit.favoritePrompt': 'Sign in to save favorites',
-  'guestCredit.cbzLockedToast': 'Sign in to export CBZ / pack volumes.',
-  'guestCredit.ebookBookmarkLocked': 'Sign in to use bookmarks.',
-  'freeUserToken.modalTitle': 'Free token exhausted',
-  'freeUserToken.modalBody': 'You have used all free account tokens. Please upgrade to Member.',
-  'freeUserToken.register': 'Register membership',
-  'freeUserToken.modalClose': 'Close',
-  'settings.guestAccountHint': 'Use the sign-in button in the title bar for unlimited downloads and favorites.',
+  'common.close': 'Close',
 
   'contact.adminHeading': 'Contact Admin',
   'contact.emailLabel': 'Email:',
   'contact.telegramLabel': 'Telegram:',
   'contact.telegramAlex': 't.me/alexdandan',
   'contact.telegramChannel': 't.me/suutamebooktruyentranh',
-  'contact.telegramRegister': 't.me/suutamebooktruyentranhdangky',
 
   'menu.dashboard': 'Dashboard',
   'menu.home': 'Crawler',
@@ -1152,15 +1117,9 @@ export const en = {
   'app.log.queueStartNeedManga': 'Select at least one series with the checkbox, then press Start.',
   'app.log.queueNoWaitingChapters':
     'No waiting chapters in the selected series (or series are paused).',
-  'app.log.noEmailForToken': 'No sign-in email found to verify account tokens.',
-  'app.log.tokenCheckBeforeDownload': 'Could not verify account tokens before download: {error}',
   'app.log.queueChapterStart': 'Starting: {mangaTitle} — {chapterTitle}',
   'app.log.queueStoppedMidDownload':
     'Stopped — the active chapter was reset to waiting (press Start to continue).',
-  'app.log.noEmailForTokenAuth': 'No sign-in email found to authenticate tokens.',
-  'app.log.tokenVerifyFailed': 'Could not authenticate account tokens: {error}',
-  'app.log.queuePausedAfterTokenError':
-    'Queue paused due to a token update error after a successful chapter download.',
   'app.log.retryChapter': 'Retry {retryCount}/{maxRetry}: {mangaTitle} — {chapterTitle}',
   'app.log.downloadChapterWarn': '{mangaTitle} — {chapterTitle}: {error}',
   'app.log.downloadIncompleteFallback': 'Missing files or page errors (see History for details).',
@@ -1169,8 +1128,6 @@ export const en = {
   'app.log.stoppingDownload': 'Stopping download…',
   'favorites.syncMissingUrl': 'Missing URL',
   'favorites.syncFetchError': 'Fetch error',
-
-  'settings.account.loginDesktopOnly': 'Google sign-in is only available in the desktop app.',
 
   'sidebar.cookieLabelSession': 'Session cookie',
   'sidebar.cookieLabel': 'Cookie',
@@ -1198,7 +1155,6 @@ export const en = {
 
   'settings.tab.all': 'All',
   'settings.tab.general': 'General',
-  'settings.tab.account': 'Account',
   'settings.tab.appearance': 'Appearance & Language',
   'settings.tab.appearanceShort': 'Appearance',
   'settings.tab.downloads': 'Downloads',
@@ -1371,25 +1327,8 @@ export const en = {
   'settings.languageHint': 'Choose the interface language. The choice is saved on this device.',
   'settings.language.en': 'English',
   'settings.language.vi': 'Vietnamese',
-  'settings.section.account': 'Google account',
-  'settings.account.signedIn': 'Signed in',
-  'settings.account.type': 'Account type',
-  'settings.account.appPackage': 'App package',
-  'settings.account.lifetime': 'Lifetime',
-  'settings.account.notSubscribed': 'Not subscribed',
-  'settings.account.expiresOn': 'Expires on {date}',
-  'settings.account.registeredAt': 'Registered',
-  'settings.account.notWhitelisted': 'This email is not registered as a member. Contact the admin.',
-  'settings.account.notMember': 'Account does not have member access. Contact an admin to upgrade.',
-  'settings.account.login': 'Sign in with Google',
-  'settings.account.logout': 'Sign out',
-  'settings.account.busy': 'Opening browser…',
-  'settings.account.sessionInvalidNotInSheet':
-    'Your session was ended: this email is no longer registered as a member.',
-  'settings.account.sessionInvalidNotMember':
-    'Your session was ended: account no longer has member access.',
-  'settings.account.sessionInvalidGeneric': 'Your Google session is no longer valid. Please sign in again.',
-  'settings.account.dismissAlert': 'Dismiss',
+  'settings.openSourceBadge': 'Open Source',
+  'settings.openSourceHint': '100% free, no login required, runs locally on your device.',
 
   'settings.section.siteCookies': 'Site login cookies',
   'settings.siteCookies.hint': 'Paste browser cookies to access chapters that require login.',
@@ -1444,7 +1383,7 @@ export const en = {
   'settings.backup.errNotBackup': 'File is not a valid app backup.',
   'settings.backup.errDecrypt': 'Could not decrypt — check the password.',
   'settings.backup.note':
-    'Google sign-in session is not included. Temporary cache (if any) lives in sessionStorage and is not exported.',
+    'Temporary data (if any) lives in sessionStorage and is not included in the backup export.',
 
   'settings.duplicate.recursiveLabel': 'Include subfolders (up to 8 levels) — turn on if pages are not directly in the chapter folder',
   'settings.duplicate.addFolders': 'Add folders',

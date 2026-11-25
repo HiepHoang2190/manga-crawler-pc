@@ -1,7 +1,7 @@
 import { useI18n } from '../../context/I18nContext';
 import { useBranding } from '../../context/BrandingContext';
 
-export default function TitleBar({ endSlot = null, beforeWindowControls = null }) {
+export default function TitleBar({ endSlot = null }) {
   const { t } = useI18n();
   const { appName, currentIconUrl, showTitleBarIcon = true } = useBranding();
   const handleMinimize = () => window.electronAPI?.minimize();
@@ -31,7 +31,6 @@ export default function TitleBar({ endSlot = null, beforeWindowControls = null }
         )}
       </div>
       <div className="flex items-center gap-2 shrink-0" style={{ WebkitAppRegion: 'no-drag' }}>
-        {beforeWindowControls}
         {endSlot}
         <button
           type="button"

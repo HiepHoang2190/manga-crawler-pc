@@ -1,5 +1,4 @@
 import React, { Component } from 'react';
-import { AuthProvider } from '../auth';
 import { AppLogProvider } from '../shared';
 import { SettingsProvider } from '../features/settings';
 import { ConnectorsProvider } from '../platform/connectors';
@@ -72,25 +71,23 @@ class GlobalErrorBoundary extends Component {
 export default function App() {
   return (
     <GlobalErrorBoundary>
-      <AuthProvider>
-        <AppLogProvider>
-          <SettingsProvider>
-            <ConnectorsProvider>
-              <ShellNavProvider>
-                <DownloadProvider>
-                  <ReaderProvider>
-                    <LibraryProvider>
-                      <ExportProvider>
-                        <ShellLayout />
-                      </ExportProvider>
-                    </LibraryProvider>
-                  </ReaderProvider>
-                </DownloadProvider>
-              </ShellNavProvider>
-            </ConnectorsProvider>
-          </SettingsProvider>
-        </AppLogProvider>
-      </AuthProvider>
+      <AppLogProvider>
+        <SettingsProvider>
+          <ConnectorsProvider>
+            <ShellNavProvider>
+              <DownloadProvider>
+                <ReaderProvider>
+                  <LibraryProvider>
+                    <ExportProvider>
+                      <ShellLayout />
+                    </ExportProvider>
+                  </LibraryProvider>
+                </ReaderProvider>
+              </DownloadProvider>
+            </ShellNavProvider>
+          </ConnectorsProvider>
+        </SettingsProvider>
+      </AppLogProvider>
     </GlobalErrorBoundary>
   );
 }

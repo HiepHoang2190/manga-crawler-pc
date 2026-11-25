@@ -23,11 +23,6 @@ export default function MangaInfo({
   onOpenpdfExport,
   onOpenReader,
   onOpenEbookStudio,
-  /** Ẩn nút xuất CBZ (guest). */
-  showCbzExport = true,
-  /** Guest: chặn yêu thích, gọi onGuestFavoriteBlocked thay vì onToggleFavorite. */
-  guestFavoriteLocked = false,
-  onGuestFavoriteBlocked,
 }) {
   const { t } = useI18n();
   const title = manga?.title?.trim();
@@ -142,10 +137,6 @@ export default function MangaInfo({
                   aria-label={isFavorite ? t('mangaInfo.favoriteRemove') : t('mangaInfo.favoriteAdd')}
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (guestFavoriteLocked && typeof onGuestFavoriteBlocked === 'function') {
-                      onGuestFavoriteBlocked();
-                      return;
-                    }
                     onToggleFavorite();
                   }}
                   className={`absolute right-2 top-2 z-10 flex h-7 w-7 cursor-pointer items-center justify-center rounded-full shadow-md transition-all ${
@@ -154,11 +145,9 @@ export default function MangaInfo({
                       : 'border border-white/25 bg-black/40 text-white/95 shadow-black/10 backdrop-blur-sm hover:bg-black/55'
                   }`}
                   data-tooltip={
-                    guestFavoriteLocked
-                      ? t('guestCredit.favoritePrompt')
-                      : isFavorite
-                        ? t('mangaInfo.favoriteRemove')
-                        : t('mangaInfo.favoriteAdd')
+                    isFavorite
+                      ? t('mangaInfo.favoriteRemove')
+                      : t('mangaInfo.favoriteAdd')
                   }
                 >
                   <span

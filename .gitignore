@@ -28,15 +28,6 @@ pnpm-debug.log*
 **/.DS_Store
 Thumbs.db
 
-# OAuth / service account nhúng build (copy từ manga-downloader resources hoặc CI)
-# electron/data/client_secret*.json
-# electron/data/service-account*.json
-electron/data/mangadownloader*.json
-electron/data/suu-tam*.json
-
-# Google service account trong thư mục config (private key — không commit)
-config/*.json
-
 # Test artifacts
 focused-test-downloads/
 test-downloads/
@@ -47,9 +38,6 @@ playwright-report/
 
 # Coverage reports
 coverage/
-
-# Supabase CLI local cache
-supabase/.temp/
 
 # Python virtual environments
 manga_ocr_venv/

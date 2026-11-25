@@ -41,7 +41,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "build": {
     "appId": "org.manga-crawler.app",
     "productName": "Manga Crawler",
@@ -140,7 +140,6 @@
     "@napi-rs/canvas-darwin-x64": "^1.0.0",
     "@napi-rs/canvas-win32-x64-msvc": "^1.0.0",
     "@noble/ciphers": "^2.4.0",
-    "@supabase/supabase-js": "^2.104.1",
     "archiver": "^7.0.1",
     "axios": "^1.13.5",
     "cheerio": "^1.0.0",

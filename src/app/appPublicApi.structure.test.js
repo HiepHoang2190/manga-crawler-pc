@@ -6,7 +6,7 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 
 test('src/app/App.jsx is a thin provider tree that mounts ShellLayout', () => {
   const src = fs.readFileSync(path.join(dirname, 'App.jsx'), 'utf8');
-  expect(src).toMatch(/<AuthProvider>/);
+  expect(src).not.toMatch(/AuthProvider/);
   expect(src).toMatch(/<AppLogProvider>/);
   expect(src).toMatch(/<SettingsProvider>/);
   expect(src).toMatch(/<ConnectorsProvider>/);
@@ -21,7 +21,6 @@ test('src/app/App.jsx is a thin provider tree that mounts ShellLayout', () => {
   expect(src).not.toMatch(/menuView/);
   expect(src).not.toMatch(/QueuePanel/);
   expect(src).not.toMatch(/TitleBar/);
-  const auth_idx = src.indexOf('<AuthProvider>');
   const log_idx = src.indexOf('<AppLogProvider>');
   const settings_idx = src.indexOf('<SettingsProvider>');
   const connectors_idx = src.indexOf('<ConnectorsProvider>');
@@ -31,8 +30,7 @@ test('src/app/App.jsx is a thin provider tree that mounts ShellLayout', () => {
   const library_idx = src.indexOf('<LibraryProvider>');
   const export_idx = src.indexOf('<ExportProvider>');
   const layout_idx = src.indexOf('<ShellLayout />');
-  expect(auth_idx).toBeGreaterThan(0);
-  expect(log_idx).toBeGreaterThan(auth_idx);
+  expect(log_idx).toBeGreaterThan(0);
   expect(settings_idx).toBeGreaterThan(log_idx);
   expect(connectors_idx).toBeGreaterThan(settings_idx);
   expect(shell_nav_idx).toBeGreaterThan(connectors_idx);

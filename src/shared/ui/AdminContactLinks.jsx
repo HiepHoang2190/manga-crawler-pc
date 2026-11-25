@@ -4,7 +4,6 @@ import { useI18n } from '../../context/I18nContext';
 export const ADMIN_EMAIL = 'suutamebooktruyentranh@gmail.com';
 export const ADMIN_TELEGRAM_ALEX = 'https://t.me/alexdandan';
 export const ADMIN_TELEGRAM_CHANNEL = 'https://t.me/suutamebooktruyentranh';
-export const ADMIN_TELEGRAM_REGISTER = 'https://t.me/suutamebooktruyentranhdangky';
 
 function useOpenExternal() {
   return useCallback((url) => {
@@ -20,9 +19,9 @@ function useOpenExternal() {
 }
 
 /**
- * Liên hệ quản trị: email + Telegram (dùng chọn Auth gate / Cài đặt).
+ * Liên hệ quản trị: email + Telegram (dùng trong Cài đặt & Ủng hộ).
  */
-export default function AdminContactLinks({ className = '', hideRegisterLink = false }) {
+export default function AdminContactLinks({ className = '' }) {
   const { t } = useI18n();
   const openExternal = useOpenExternal();
   const mailto = `mailto:${ADMIN_EMAIL}`;
@@ -63,18 +62,6 @@ export default function AdminContactLinks({ className = '', hideRegisterLink = f
             {t('contact.telegramChannel')}
           </button>
         </li>
-        {!hideRegisterLink && (
-          <li className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-            <span className="text-on-surface-variant shrink-0 w-[4rem]">{t('contact.telegramLabel')}</span>
-            <button
-              type="button"
-              onClick={() => openExternal(ADMIN_TELEGRAM_REGISTER)}
-              className="text-primary font-medium hover:opacity-80 transition-opacity cursor-pointer text-left"
-            >
-              {t('contact.telegramRegister')}
-            </button>
-          </li>
-        )}
       </ul>
     </div>
   );

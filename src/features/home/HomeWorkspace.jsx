@@ -7,7 +7,6 @@ import {
   useStudioLayout,
 } from '../../shared';
 import { isHomePrimaryTabBusy } from './homePrimaryTabBusy';
-import { useAuth } from '../../auth';
 import { useSettings } from '../settings';
 import { useConnectorList } from '../../platform/connectors';
 import { useDownload, QueuePanel, Sidebar, dedupeChaptersByNumber } from '../download';
@@ -38,10 +37,6 @@ const TABS = [
   { id: 'queue', icon: 'queue_play_next' },
   { id: 'offlineRead', icon: 'auto_stories' },
 ];
-
-function visibleTabsForUser(_isGuestUser) {
-  return TABS;
-}
 
 const MAIN_SIDEBAR_WIDTH_KEY = 'mangaMainSidebarWidthPx';
 const MAIN_SIDEBAR_WIDTH_MIN = 320;
@@ -76,7 +71,6 @@ export default function HomeWorkspace({
 } = {}) {
   const { t } = useI18n();
   const { appendLog } = useAppLog();
-  const { isSignedIn } = useAuth();
   const {
     savePath,
     setSavePath,
@@ -209,11 +203,10 @@ export default function HomeWorkspace({
   }, [pinnedTabCount]);
 
   const visibleTabs = useMemo(() => {
-    const userTabs = visibleTabsForUser(!isSignedIn);
     const hiddenSet = new Set(hiddenTabIds);
-    const filtered = userTabs.filter((tab) => tab.id === 'queue' || !hiddenSet.has(tab.id));
+    const filtered = TABS.filter((tab) => tab.id === 'queue' || !hiddenSet.has(tab.id));
     return sortTabsByOrder(filtered, tabOrder);
-  }, [isSignedIn, hiddenTabIds, tabOrder]);
+  }, [hiddenTabIds, tabOrder]);
 
   const { primaryTabs, toolsTabs } = useMemo(() => {
     const primary = visibleTabs.slice(0, pinnedTabCount);
@@ -577,17 +570,9 @@ export default function HomeWorkspace({
               }}
               onEnqueueAllToQueue={handleEnqueueAllFromHome}
               onOpenCbzExport={() => {
-                if (!isSignedIn) {
-                  appendLog(t('guestCredit.cbzLockedToast'), 'warn');
-                  return;
-                }
                 setCbzExportDrawerOpen(true);
               }}
               onOpenpdfExport={() => {
-                if (!isSignedIn) {
-                  appendLog(t('guestCredit.cbzLockedToast'), 'warn');
-                  return;
-                }
                 setpdfExportOpen(true);
               }}
               onOpenReader={() => openReader()}
@@ -595,9 +580,6 @@ export default function HomeWorkspace({
               downloadedChapterCount={downloadedCountForReaderCbz}
               threads={threads}
               setThreads={setThreadsClamped}
-              showCbzExport={isSignedIn}
-              guestFavoriteLocked={!isSignedIn}
-              onGuestFavoriteBlocked={() => appendLog(t('guestCredit.favoritePrompt'), 'warn')}
             />
           )}
         </StudioLayout.LeftSidebar>

@@ -1,10 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { applyQueueStopState, normalizeQueueForRestore } from './queueSnapshot';
-import { evaluateFreeUserChapterGate } from '../../utils/freeUserCreditGate.mjs';
 import { pushRecentDownload } from '../../utils/recentDownloadsLog';
 import { useI18n } from '../../context/I18nContext';
 import { useAppLog } from '../../shared';
-import { useAuth } from '../../auth';
 import { useSettings } from '../settings';
 import {
   shouldPersistQueue,
@@ -55,14 +53,6 @@ export function DownloadProvider({ children }) {
   const { t } = useI18n();
   const { appendLog } = useAppLog();
   const { savePath, setSavePath, threads, autoRetryMax, mangadexVolumeFolderGrouping } = useSettings();
-  const {
-    authSession,
-    isSignedIn,
-    freeUserRemainingTokens,
-    setFreeUserRemainingTokens,
-    setFreeUserTokenExhaustedOpen,
-    shouldConsumeFreeUserToken,
-  } = useAuth();
   const manga_session = useCurrentMangaSession();
   const { mangadexLanguage, comickLanguage, mangaballLanguage } = manga_session;
   const [queue, setQueue] = useState([]);
@@ -361,42 +351,6 @@ export function DownloadProvider({ children }) {
         if (!chapter || !group) break;
         if (runId !== queueRunGenerationRef.current || queueAbortRef.current) break;
 
-        if (shouldConsumeFreeUserToken) {
-          const email = String(authSession?.email || '').trim();
-          if (!email) {
-            appendLog(t('app.log.noEmailForToken'), 'warn');
-            break;
-          }
-          const ensureRes = await api.ensureFreeUserCreditsByEmail?.({
-            email,
-            userType: authSession?.userType,
-            impliedSupabaseFree: authSession?.impliedSupabaseFree,
-            entitlements: authSession?.entitlements,
-            isAdmin: authSession?.isAdmin,
-          });
-          const credit_gate = evaluateFreeUserChapterGate({
-            shouldConsume: true,
-            ensureResult: ensureRes,
-          });
-          if (credit_gate.remaining != null) {
-            setFreeUserRemainingTokens(credit_gate.remaining);
-          }
-          if (credit_gate.showExhaustedModal) {
-            appendLog(t('freeUserToken.modalBody'), 'warn');
-            setFreeUserTokenExhaustedOpen(true);
-            break;
-          }
-          if (credit_gate.block) {
-            appendLog(
-              t('app.log.tokenCheckBeforeDownload', {
-                error: credit_gate.error || t('app.log.fetchErrorUnknown'),
-              }),
-              'warn'
-            );
-            break;
-          }
-        }
-
         const downloadingQueue = (queueRef.current || []).map((gg) =>
           gg.id !== group.id
             ? gg
@@ -449,40 +403,7 @@ export function DownloadProvider({ children }) {
             break;
           }
           const ok = Boolean(res?.ok || res?.skipped);
-          const downloadedOk = Boolean(res?.ok);
           const isFatalSaveDirError = Boolean(res?.fatal || res?.errorType === 'INVALID_SAVE_PATH');
-          let tokenConsumeError = '';
-          let tokenConsumeNeedLogin = false;
-          if (downloadedOk && shouldConsumeFreeUserToken) {
-            const email = String(authSession?.email || '').trim();
-            if (!email) {
-              tokenConsumeError = t('app.log.noEmailForTokenAuth');
-            } else {
-              const consumeRes = await api.consumeFreeUserDownloadCredit?.({
-                email,
-                userType: authSession?.userType,
-                impliedSupabaseFree: authSession?.impliedSupabaseFree,
-                mangaUrl: group.mangaUrl,
-                chapterUrl: chapter.chapterUrl,
-              });
-              if (!consumeRes || consumeRes.ok !== true) {
-                if (consumeRes?.needLogin) {
-                  tokenConsumeNeedLogin = true;
-                  tokenConsumeError = t('freeUserToken.modalBody');
-                } else {
-                  tokenConsumeError = t('app.log.tokenVerifyFailed', {
-                    error: consumeRes?.error || t('app.log.fetchErrorUnknown'),
-                  });
-                }
-              } else {
-                setFreeUserRemainingTokens(
-                  Number.isFinite(Number(consumeRes?.remainingTokens))
-                    ? Math.max(0, Math.floor(Number(consumeRes.remainingTokens)))
-                    : freeUserRemainingTokens
-                );
-              }
-            }
-          }
           if (runId !== queueRunGenerationRef.current || queueAbortRef.current) {
             break;
           }
@@ -580,15 +501,6 @@ export function DownloadProvider({ children }) {
               path: savePath.trim(),
               message: errDetail,
             });
-            break;
-          }
-          if (tokenConsumeError) {
-            if (tokenConsumeNeedLogin) {
-              setFreeUserRemainingTokens(0);
-              setFreeUserTokenExhaustedOpen(true);
-            }
-            appendLog(tokenConsumeError, 'warn');
-            appendLog(t('app.log.queuePausedAfterTokenError'), 'warn');
             break;
           }
 
@@ -718,10 +630,6 @@ export function DownloadProvider({ children }) {
     mangadexLanguage,
     comickLanguage,
     mangaballLanguage,
-    isSignedIn,
-    shouldConsumeFreeUserToken,
-    authSession,
-    freeUserRemainingTokens,
     t,
   ]);
 

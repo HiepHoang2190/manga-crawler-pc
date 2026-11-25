@@ -23,7 +23,8 @@ describe('MangaInfo Component Structure & Normalization', () => {
   test('action buttons and favorite button have data-tooltip attribute', () => {
     expect(content).toMatch(/data-testid="open-drawer-btn"[\s\S]*?data-tooltip=/);
     expect(content).toMatch(/data-testid="enqueue-all-btn"[\s\S]*?data-tooltip=/);
-    expect(content).toMatch(/data-tooltip=\{\s*guestFavoriteLocked/);
+    expect(content).toMatch(/data-tooltip=\{\s*isFavorite\s*\?\s*t\('mangaInfo\.favoriteRemove'\)/);
+    expect(content).not.toMatch(/guestFavoriteLocked/);
   });
 
   test('does not contain underline classes', () => {

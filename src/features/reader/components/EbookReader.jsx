@@ -54,7 +54,7 @@ function EbookErrorFallback({ onClose }) {
 // Main EbookReader component
 // ---------------------------------------------------------------------------
 
-function EbookReaderInner({ ebookPath, onClose, guestBookmarkLocked = false, onEbookResolved }) {
+function EbookReaderInner({ ebookPath, onClose, onEbookResolved }) {
   const { t } = useI18n();
 
   // Book metadata
@@ -275,11 +275,6 @@ function EbookReaderInner({ ebookPath, onClose, guestBookmarkLocked = false, onE
   const isBookmarked = bookmarks.some((bm) => bm.index === currentIndex);
 
   const handleToggleBookmark = useCallback(() => {
-    if (guestBookmarkLocked) {
-      setBookmarkWarning(t('guestCredit.ebookBookmarkLocked'));
-      setTimeout(() => setBookmarkWarning(null), 4000);
-      return;
-    }
     const bms = loadBookmarks(ebookPath);
     const existing = bms.find((bm) => bm.index === currentIndex);
     if (existing) {
@@ -296,7 +291,7 @@ function EbookReaderInner({ ebookPath, onClose, guestBookmarkLocked = false, onE
     }
     // Force re-render by toggling a dummy state — bookmarks are read from localStorage
     setCurrentIndex((i) => i);
-  }, [ebookPath, currentIndex, guestBookmarkLocked, t]);
+  }, [ebookPath, currentIndex]);
 
   const handleDeleteBookmark = useCallback((bookmarkId) => {
     deleteBookmark(ebookPath, bookmarkId);
@@ -411,11 +406,6 @@ function EbookReaderInner({ ebookPath, onClose, guestBookmarkLocked = false, onE
         onToggleBookmark={handleToggleBookmark}
         onOpenChapterPanel={() => setChapterPanelOpen(true)}
         onOpenBookmarkPanel={() => {
-          if (guestBookmarkLocked) {
-            setBookmarkWarning(t('guestCredit.ebookBookmarkLocked'));
-            setTimeout(() => setBookmarkWarning(null), 4000);
-            return;
-          }
           setBookmarkPanelOpen(true);
         }}
         onOpenSettings={() => setSettingsPanelOpen(true)}
@@ -472,13 +462,12 @@ function EbookReaderInner({ ebookPath, onClose, guestBookmarkLocked = false, onE
 // Exported component — wrapped in error boundary
 // ---------------------------------------------------------------------------
 
-export default function EbookReader({ ebookPath, onClose, guestBookmarkLocked = false, onEbookResolved }) {
+export default function EbookReader({ ebookPath, onClose, onEbookResolved }) {
   return (
     <EbookErrorBoundary onClose={onClose}>
       <EbookReaderInner
         ebookPath={ebookPath}
         onClose={onClose}
-        guestBookmarkLocked={guestBookmarkLocked}
         onEbookResolved={onEbookResolved}
       />
     </EbookErrorBoundary>

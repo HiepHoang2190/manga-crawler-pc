@@ -1,5 +1,4 @@
 import { createContext, useContext, useMemo, useState } from 'react';
-import { useAuth } from '../../auth';
 import { useSettings } from '../settings';
 import { useDownload } from '../download';
 import CbzExportDrawer from './cbz/CbzExportDrawer.jsx';
@@ -8,7 +7,6 @@ import PdfExportDrawer from './pdf/PdfExportDrawer.jsx';
 const ExportContext = createContext(null);
 
 export function ExportProvider({ children }) {
-  const { authBootstrapped, isSignedIn } = useAuth();
   const { savePath } = useSettings();
   const { manga, chapters, sourceUrl } = useDownload();
   const [cbzExportDrawerOpen, setCbzExportDrawerOpen] = useState(false);
@@ -27,7 +25,7 @@ export function ExportProvider({ children }) {
   return (
     <ExportContext.Provider value={value}>
       {children}
-      {authBootstrapped && isSignedIn && cbzExportDrawerOpen && manga ? (
+      {cbzExportDrawerOpen && manga ? (
         <CbzExportDrawer
           open={cbzExportDrawerOpen}
           onClose={() => setCbzExportDrawerOpen(false)}
@@ -38,7 +36,7 @@ export function ExportProvider({ children }) {
           offlineMangaDirAbsolute={String(manga?.offlineMangaDirAbsolute || '').trim()}
         />
       ) : null}
-      {authBootstrapped && isSignedIn && pdfExportOpen && manga ? (
+      {pdfExportOpen && manga ? (
         <PdfExportDrawer
           open={pdfExportOpen}
           onClose={() => setpdfExportOpen(false)}

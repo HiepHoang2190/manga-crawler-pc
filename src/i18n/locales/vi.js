@@ -1,47 +1,12 @@
 /** Chuỗi giao diện tiếng Việt — khóa phải khớp en.js */
 export const vi = {
-  'auth.gate.title': 'Đăng nhập để tiếp tục',
-  'auth.gate.body':
-    'Đăng nhập để dùng app với 300 token miễn phí.\nĐăng ký tài khoản thành viên để sử dụng không giới hạn.',
-  'auth.gate.registerLine': 'Chưa có tài khoản thành viên? Đăng ký tại:',
-  'auth.gate.registerLinkLabel': 'Google Form',
-  'auth.gate.signIn': 'Đăng nhập với Google',
-  'auth.gate.checking': 'Đang kiểm tra phiên…',
-  'auth.gate.sessionMissing': 'Đăng nhập không lưu được phiên. Thử lại.',
-  'auth.gate.loginFailed': 'Đăng nhập thất bại.',
-  'auth.gate.noElectron': 'Chỉ bản ứng dụng desktop (Electron) mới hỗ trợ đăng nhập Google.',
-  'auth.gate.clearCacheHint': 'Nếu đã đăng ký mà đăng nhập không thành công, hãy thử nhấn Ctrl + R (hoặc ⌘ R trên Mac) để xóa cache, sau đó đăng nhập lại.',
-
-  'guestCredit.modalTitle': 'Bạn đã dùng hết credit miễn phí',
-  'guestCredit.modalBody':
-    'Bạn đã tải 100 chapter miễn phí. Đăng nhập hoặc tạo tài khoản để tiếp tục không giới hạn.',
-  'guestCredit.benefit1': 'Tải chapter không giới hạn',
-  'guestCredit.benefit2': 'Lưu lịch sử đọc',
-  'guestCredit.benefit3': 'Đánh dấu yêu thích',
-  'guestCredit.benefit4': 'Nhận thông báo chapter mới',
-  'guestCredit.signIn': 'Đăng nhập',
-  'guestCredit.register': 'Tạo tài khoản miễn phí',
-  'guestCredit.continueTrial': 'Tiếp tục dùng thử (chỉ duyệt, không tải được)',
-  'guestCredit.modalClose': 'Đóng',
-  'guestCredit.bannerLow': 'Bạn còn {n} credit. Đăng nhập để không bị gián đoạn.',
-  'guestCredit.bannerUrgent': 'Sắp hết credit ({n}). Đăng nhập ngay để tải không giới hạn.',
-  'guestCredit.bannerCta': 'Đăng nhập',
-  'guestCredit.titleBarSignIn': 'Đăng nhập',
-  'guestCredit.favoritePrompt': 'Đăng nhập để lưu yêu thích',
-  'guestCredit.cbzLockedToast': 'Đăng nhập để xuất CBZ / gói volume.',
-  'guestCredit.ebookBookmarkLocked': 'Đăng nhập để dùng bookmark sách.',
-  'freeUserToken.modalTitle': 'Hết token miễn phí',
-  'freeUserToken.modalBody': 'Bạn đã dùng hết token miễn phí của tài khoản. Vui lòng nâng cấp Member.',
-  'freeUserToken.register': 'Đăng ký thành viên',
-  'freeUserToken.modalClose': 'Đóng',
-  'settings.guestAccountHint': 'Đăng nhập bằng nút trên thanh tiêu đề để mở khóa tải không giới hạn và yêu thích.',
+  'common.close': 'Đóng',
 
   'contact.adminHeading': 'Liên hệ Admin',
   'contact.emailLabel': 'Email:',
   'contact.telegramLabel': 'Telegram:',
   'contact.telegramAlex': 't.me/alexdandan',
   'contact.telegramChannel': 't.me/suutamebooktruyentranh',
-  'contact.telegramRegister': 't.me/suutamebooktruyentranhdangky',
 
   'menu.dashboard': 'Dashboard',
   'menu.home': 'Crawler',
@@ -1153,15 +1118,9 @@ export const vi = {
     'Chọn ít nhất một truyện trong hàng đợi (checkbox) rồi bấm Start.',
   'app.log.queueNoWaitingChapters':
     'Không có chương chờ trong các truyện đã chọn (hoặc đang tạm dừng).',
-  'app.log.noEmailForToken': 'Không tìm thấy email phiên đăng nhập để kiểm tra token.',
-  'app.log.tokenCheckBeforeDownload': 'Không thể kiểm tra token tài khoản trước khi tải: {error}',
   'app.log.queueChapterStart': 'Bắt đầu: {mangaTitle} — {chapterTitle}',
   'app.log.queueStoppedMidDownload':
     'Đã dừng — chương đang tải được đặt lại chờ (bấm Start để tiếp).',
-  'app.log.noEmailForTokenAuth': 'Không tìm thấy email phiên đăng nhập để xác thực token.',
-  'app.log.tokenVerifyFailed': 'Không thể xác thực token tài khoản: {error}',
-  'app.log.queuePausedAfterTokenError':
-    'Đã tạm dừng hàng đợi do lỗi cập nhật token sau khi tải chương thành công.',
   'app.log.retryChapter': 'Thử lại lần {retryCount}/{maxRetry}: {mangaTitle} — {chapterTitle}',
   'app.log.downloadChapterWarn': '{mangaTitle} — {chapterTitle}: {error}',
   'app.log.downloadIncompleteFallback': 'Thiếu file hoặc lỗi trang (chi tiết: History).',
@@ -1170,8 +1129,6 @@ export const vi = {
   'app.log.stoppingDownload': 'Đang dừng tải…',
   'favorites.syncMissingUrl': 'Thiếu URL',
   'favorites.syncFetchError': 'Lỗi fetch',
-
-  'settings.account.loginDesktopOnly': 'Đăng nhập Google chỉ khả dụng trên bản ứng dụng desktop.',
 
   'sidebar.cookieLabelSession': 'Cookie phiên',
   'sidebar.cookieLabel': 'Cookie',
@@ -1198,7 +1155,6 @@ export const vi = {
 
   'settings.tab.all': 'Tất cả',
   'settings.tab.general': 'Chung',
-  'settings.tab.account': 'Tài khoản',
   'settings.tab.appearance': 'Giao diện & Ngôn ngữ',
   'settings.tab.appearanceShort': 'Giao diện',
   'settings.tab.downloads': 'Tải xuống',
@@ -1371,25 +1327,8 @@ export const vi = {
   'settings.languageHint': 'Chọn ngôn ngữ giao diện. Lựa chọn được lưu trên máy này.',
   'settings.language.en': 'English',
   'settings.language.vi': 'Tiếng Việt',
-  'settings.section.account': 'Tài khoản Google',
-  'settings.account.signedIn': 'Đã đăng nhập',
-  'settings.account.type': 'Loại tài khoản',
-  'settings.account.appPackage': 'Gói App',
-  'settings.account.lifetime': 'Vĩnh viễn',
-  'settings.account.notSubscribed': 'Chưa đăng ký',
-  'settings.account.expiresOn': 'Hết hạn {date}',
-  'settings.account.registeredAt': 'Ngày đăng ký',
-  'settings.account.notWhitelisted': 'Email chưa được đăng ký thành viên. Liên hệ admin.',
-  'settings.account.notMember': 'Tài khoản chưa được cấp quyền thành viên. Liên hệ admin để được nâng cấp.',
-  'settings.account.login': 'Đăng nhập với Google',
-  'settings.account.logout': 'Đăng xuất',
-  'settings.account.busy': 'Đang mở trình duyệt…',
-  'settings.account.sessionInvalidNotInSheet':
-    'Phiên đăng nhập đã bị kết thúc: email không còn trong danh sách thành viên.',
-  'settings.account.sessionInvalidNotMember':
-    'Phiên đăng nhập đã bị kết thúc: tài khoản không còn quyền thành viên.',
-  'settings.account.sessionInvalidGeneric': 'Phiên đăng nhập Google không còn hợp lệ. Vui lòng đăng nhập lại.',
-  'settings.account.dismissAlert': 'Đóng thông báo',
+  'settings.openSourceBadge': 'Mã nguồn mở',
+  'settings.openSourceHint': '100% miễn phí, không cần đăng nhập, chạy cục bộ trên máy.',
 
   'settings.section.siteCookies': 'Cookie đăng nhập site',
   'settings.siteCookies.hint': 'Dán cookie từ DevTools trình duyệt để truy cập chapter yêu cầu đăng nhập.',
@@ -1444,7 +1383,7 @@ export const vi = {
   'settings.backup.errNotBackup': 'File không đúng định dạng sao lưu của ứng dụng.',
   'settings.backup.errDecrypt': 'Không giải mã được — kiểm tra mật khẩu.',
   'settings.backup.note':
-    'Phiên đăng nhập Google không nằm trong file. Dữ liệu tạm (nếu có) nằm trong sessionStorage và không được xuất.',
+    'Dữ liệu tạm (nếu có) nằm trong sessionStorage và không được xuất vào file sao lưu.',
 
   'settings.duplicate.recursiveLabel': 'Quét cả thư mục con (tối đa 8 cấp) — nên bật nếu ảnh không nằm ngay trong thư mục chương',
   'settings.duplicate.addFolders': 'Thêm thư mục',

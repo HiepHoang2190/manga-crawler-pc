@@ -123,7 +123,6 @@ function registerConnectorImageRefererHeaders() {
 }
 
 const connectors = require('./lib/platform/connectors');
-const googleAuth = require('./lib/auth/googleAuthService');
 
 const cookieManager = require('./lib/platform/cookies/cookieManager');
 
@@ -136,8 +135,6 @@ let mangaDownloadAbortRequested = false;
 const isDev = !app.isPackaged;
 
 let mainWindow = null;
-let membershipValidateIntervalId = null;
-let membershipFocusDebounceId = null;
 
 /** Thư mục giải nén CBZ tạm (dưới temp); dọn khi mở CBZ khác hoặc renderer gọi release.
  *  Còn dùng cho các định dạng khác (ZIP/RAR/EPUB/PDF/MOBI) vẫn cần extract thật. */
@@ -262,23 +259,6 @@ async function materializeIfSession(absoluteMangaDir, chapters, onProgress) {
       try { await fs.promises.rm(tempRoot, { recursive: true, force: true }); } catch { /* */ }
     },
   };
-}
-
-function broadcastSessionInvalidated(reason) {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('auth:sessionInvalidated', { reason });
-  }
-}
-
-async function runMembershipValidationAndNotify() {
-  try {
-    const r = await googleAuth.validateMembershipSession(app.getPath('userData'));
-    if (!r.ok && r.reason) {
-      broadcastSessionInvalidated(r.reason);
-    }
-  } catch {
-    /* ignore */
-  }
 }
 
 function settingsPath() {
@@ -414,24 +394,12 @@ function createWindow() {
       zoomSaveTimer = null;
     }
     pendingZoomFactor = null;
-    if (membershipFocusDebounceId) {
-      clearTimeout(membershipFocusDebounceId);
-      membershipFocusDebounceId = null;
-    }
     mainWindow = null;
   });
 
   if (process.platform === 'darwin' && app.dock && !nativeIcon.isEmpty()) {
     app.dock.setIcon(nativeIcon);
   }
-
-  mainWindow.on('focus', () => {
-    if (membershipFocusDebounceId) clearTimeout(membershipFocusDebounceId);
-    membershipFocusDebounceId = setTimeout(() => {
-      membershipFocusDebounceId = null;
-      runMembershipValidationAndNotify();
-    }, 1500);
-  });
 
   const savedZoom = clampZoomFactor(readSettings()?.zoomFactor);
 
@@ -446,7 +414,6 @@ function createWindow() {
       mainWindow.webContents.setZoomFactor(savedZoom);
       mainWindow.webContents.send('window:zoomChanged', { zoomFactor: savedZoom, source: 'init' });
     }
-    setTimeout(() => runMembershipValidationAndNotify(), 4000);
   });
 
   mainWindow.webContents.on('zoom-changed', (_event, zoomDirection) => {
@@ -570,20 +537,9 @@ if (gotSingleInstanceLock) {
     } catch (e) {
       console.error('createWindow failed:', e);
     }
-    membershipValidateIntervalId = setInterval(() => {
-      runMembershipValidationAndNotify();
-    }, 30 * 60 * 1000);
   });
 
   app.on('before-quit', () => {
-    if (membershipValidateIntervalId) {
-      clearInterval(membershipValidateIntervalId);
-      membershipValidateIntervalId = null;
-    }
-    if (membershipFocusDebounceId) {
-      clearTimeout(membershipFocusDebounceId);
-      membershipFocusDebounceId = null;
-    }
     closeActiveReaderSessions();
     purgeCbzTempRootSync();
   });

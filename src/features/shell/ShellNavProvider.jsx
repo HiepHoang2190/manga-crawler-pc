@@ -1,5 +1,4 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState } from 'react';
-import { useAuth } from '../../auth';
 import { migrateHiddenMenuIds } from '../bulk-scan';
 import {
   loadMenuOrder,
@@ -72,7 +71,6 @@ function loadMenuHiddenIds() {
 }
 
 export function ShellNavProvider({ children }) {
-  const { authBootstrapped, authSession } = useAuth();
   /** Hidden menu tabs (latestUpdates, help, ...) — persisted in localStorage. */
   const [hiddenMenuIds, setHiddenMenuIds] = useState(() => loadMenuHiddenIds());
   const [menuView, setMenuView] = useState(() => loadInitialMenuView(hiddenMenuIds));
@@ -157,15 +155,6 @@ export function ShellNavProvider({ children }) {
       setMenuView(firstVisible);
     }
   }, [hiddenMenuIds, menuView, menuOrder]);
-
-  useEffect(() => {
-    const api = typeof window !== 'undefined' ? window.electronAPI : null;
-    if (!api?.subscribeAuthSessionInvalidated) return undefined;
-    const unsub = api.subscribeAuthSessionInvalidated(() => {
-      setMenuView('home');
-    });
-    return () => unsub?.();
-  }, []);
 
   const value = useMemo(
     () => ({

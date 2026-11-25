@@ -146,13 +146,6 @@ const CHANNEL_MAP = {
     'plugin:testGeneratedSource',
     'plugin:generateAndInstall',
   ],
-  'auth.js': [
-    'auth:getSession',
-    'auth:loginGoogle',
-    'auth:logout',
-    'trial:ensureFreeUserCreditsByEmail',
-    'trial:consumeFreeUserDownloadCredit',
-  ],
   'kindle.js': [
     'kindle:getChapterSizes',
     'kindle:isLoggedIn',

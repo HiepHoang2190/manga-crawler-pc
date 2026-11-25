@@ -13,10 +13,10 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/phiên%20bản-3.0.46-blue.svg" alt="Phiên bản 3.0.46" />
-  <img src="https://img.shields.io/badge/Electron-35+-47848F?logo=electron&logoColor=white" alt="Electron" />
+  <img src="https://img.shields.io/badge/phiên%20bản-3.0.55-blue.svg" alt="Phiên bản 3.0.55" />
+  <img src="https://img.shields.io/badge/Electron-34+-47848F?logo=electron&logoColor=white" alt="Electron" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black" alt="React 19" />
-  <img src="https://img.shields.io/badge/Vite-6-646CFF?logo=vite&logoColor=white" alt="Vite" />
+  <img src="https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white" alt="Vite" />
   <img src="https://img.shields.io/badge/TailwindCSS-v4-38B2AC?logo=tailwind-css&logoColor=white" alt="Tailwind CSS" />
   <img src="https://img.shields.io/badge/nền%20tảng-macOS%20%7C%20Windows-lightgrey.svg" alt="Nền tảng" />
   <img src="https://img.shields.io/badge/giấy%20phép-MIT-green.svg" alt="Giấy phép" />
@@ -83,12 +83,12 @@
 
 ## 🛠️ Công Nghệ Nền Tảng
 
-* **Nhân Ứng Dụng**: [Electron](https://www.electronjs.org/) (v35+) chạy trên nền Node.js 22
-* **Giao Diện Frontend**: [React 19](https://react.dev/), [Vite 6](https://vitejs.dev/)
+* **Nhân Ứng Dụng**: [Electron](https://www.electronjs.org/) (v34+) chạy trên nền Node.js 22
+* **Giao Diện Frontend**: [React 19](https://react.dev/), [Vite 8](https://vitejs.dev/)
 * **Giao Diện Đồ Hoạ**: [Tailwind CSS v4](https://tailwindcss.com/)
 * **Xử Lý Hình Ảnh Lõi**: [Sharp](https://sharp.pixelplumbing.com/) (libvips), [Canvas](https://github.com/Automattic/node-canvas), [pdf-lib](https://pdf-lib.js.org/)
 * **Trí Tuệ Nhân Tạo & Học Máy**: Bộ thực thi NCNN-Vulkan, [ONNX Runtime Node](https://onnxruntime.ai/)
-* **Hậu Cần & Đám Mây (Tuỳ chọn)**: [Supabase](https://supabase.com/) Edge Functions (Deno runtime) quản lý gói người dùng & đồng bộ đám mây
+* **Kiến Trúc 100% Cục Bộ & Nguồn Mở**: Không yêu cầu đăng nhập, không máy chủ xác thực, mọi tính năng chạy hoàn toàn trên máy cá nhân
 
 ---
 
@@ -111,15 +111,7 @@
    ```bash
    npm install --force
    ```
-
-3. **Thiết lập biến môi trường (tuỳ chọn)**:
-   > **Lưu ý**: Nếu bạn chỉ sử dụng ứng dụng thông thường và **không dùng chức năng đăng nhập qua Supabase** thì **KHÔNG CẦN** tạo file `.env`. Toàn bộ tính năng cốt lõi (tải truyện, đọc offline, xử lý ảnh AI, đóng gói ebook) đều hoạt động đầy đủ mà không cần cấu hình.
-   > 
-   > *(Lưu ý: Chỉ bản ứng dụng desktop (Electron) mới hỗ trợ đăng nhập Google).*
-   ```bash
-   cp .env.example .env
-   # Chỉ cấu hình nếu bạn tự triển khai máy chủ Supabase riêng để quản lý tài khoản
-   ```
+   > Ứng dụng chạy hoàn toàn cục bộ và miễn phí 100% — không cần tài khoản hay file `.env`.
 
 ### Chạy Môi Trường Phát Triển (Dev Mode)
 
@@ -168,7 +160,7 @@ npm run electron:build:all
 ├── electron/             # Quy trình chính (Main Process) của Electron
 │   ├── config/           # Cấu hình link tải bản phát hành và các module bổ sung
 │   ├── ipc/              # Bộ xử lý IPC (tải truyện, xử lý ảnh, xuất file, đọc truyện...)
-│   ├── lib/              # Dịch vụ backend Node.js (connectors, upscale, auth, ebook)
+│   ├── lib/              # Dịch vụ backend Node.js (connectors, upscale, ebook)
 │   ├── main.js           # Điểm khởi động chính của Electron
 │   └── preload.js        # Cầu nối Context Bridge & bảo mật IPC
 ├── public/               # Tài nguyên tĩnh, icon nguồn truyện và hình ảnh hướng dẫn
@@ -180,7 +172,6 @@ npm run electron:build:all
 │   ├── platform/         # Kết nối nguồn truyện và bộ điều hợp nền tảng
 │   ├── shared/           # Hệ thống component chuẩn hoá (StudioLayout, ResizeSplitter...)
 │   └── utils/            # Tiện ích phía client, sao lưu dữ liệu và cài đặt cá nhân
-├── supabase/             # Edge Functions & migrations cho các tính năng tài khoản
 └── vite.config.js        # Cấu hình đóng gói Vite
 ```
 

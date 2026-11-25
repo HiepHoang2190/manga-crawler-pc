@@ -28,12 +28,12 @@ test('ShellLayout consumes shell/app-log/reader hooks and renders chrome', () =>
   expect(src).toMatch(/from '\.\/ConsolePanel/);
   expect(src).toMatch(/UpdateBadge/);
   expect(src).toMatch(/FavoriteUpdateBell/);
-  expect(src).toMatch(/GuestCreditBadge/);
-  expect(src).toMatch(/onLoggedIn=\{handleAuthGateLoggedIn\}/);
-  expect(src).toMatch(/finishAuthLogin/);
+  expect(src).not.toMatch(/GuestCreditBadge/);
+  expect(src).not.toMatch(/AuthRequiredView/);
+  expect(src).not.toMatch(/FreeUserTokenExhaustedModal/);
   expect(src).toMatch(/setMenuView\('home'\)/);
   expect(src).toMatch(/from '\.\.\/settings'/);
-  expect(src).toMatch(/from '\.\.\/\.\.\/auth'/);
+  expect(src).not.toMatch(/from '\.\.\/\.\.\/auth'/);
   expect(src).not.toMatch(/from '\.\.\/\.\.\/components\//);
   expect(src).not.toMatch(/from '\.\.\/download\/.*TitleBar/);
 });

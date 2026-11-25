@@ -2,10 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { flushSync } from 'react-dom';
 import { useI18n } from '../../context/I18nContext';
 import { useAppLog } from '../../shared';
-import { useAuth } from '../../auth';
 import { useSettings } from '../settings';
 import { useDownload } from '../download';
-import { evaluateFreeUserChapterGate } from '../../utils/freeUserCreditGate.mjs';
 import {
   getReaderProgressKey,
   getSavedChapterIndex,
@@ -46,14 +44,6 @@ function loadRecentExtractedCbzEntries() {
 export function ReaderProvider({ children }) {
   const { t } = useI18n();
   const { appendLog } = useAppLog();
-  const {
-    authBootstrapped,
-    authSession,
-    isSignedIn,
-    shouldConsumeFreeUserToken,
-    setFreeUserRemainingTokens,
-    setFreeUserTokenExhaustedOpen,
-  } = useAuth();
   const { savePath, threads } = useSettings();
   const {
     manga,
@@ -196,40 +186,6 @@ export function ReaderProvider({ children }) {
   }, [readerProgressKey, activeChapters]);
 
   const handleStreamingReadEnd = useCallback(() => setReaderStreamingRead(null), []);
-  const handleStreamingDownloadSettled = useCallback(
-    async (detail) => {
-      if (!shouldConsumeFreeUserToken) return;
-      if (!detail?.ok || detail.skipped || detail.aborted) return;
-      const api = typeof window !== 'undefined' ? window.electronAPI : null;
-      const email = String(authSession?.email || '').trim();
-      if (!api?.consumeFreeUserDownloadCredit || !email) return;
-      try {
-        const consume_result = await api.consumeFreeUserDownloadCredit({
-          email,
-          userType: authSession?.userType,
-          impliedSupabaseFree: authSession?.impliedSupabaseFree,
-          entitlements: authSession?.entitlements,
-          isAdmin: authSession?.isAdmin,
-          mangaUrl: detail.mangaUrl,
-          chapterUrl: detail.chapterUrl,
-        });
-        if (consume_result?.ok && Number.isFinite(Number(consume_result.remainingTokens))) {
-          setFreeUserRemainingTokens(Math.max(0, Math.floor(Number(consume_result.remainingTokens))));
-        }
-        if (consume_result?.needLogin) {
-          setFreeUserTokenExhaustedOpen(true);
-        }
-      } catch (e) {
-        appendLog(
-          t('app.log.tokenVerifyFailed', {
-            error: String(e?.message || e || t('app.log.fetchErrorUnknown')),
-          }),
-          'warn'
-        );
-      }
-    },
-    [appendLog, authSession, shouldConsumeFreeUserToken, t, setFreeUserRemainingTokens, setFreeUserTokenExhaustedOpen]
-  );
 
   const openReaderAtChapter = useCallback((index) => {
     const list = chaptersRef.current;
@@ -295,42 +251,6 @@ export function ReaderProvider({ children }) {
       const m = mangaRef.current;
       const i = list.findIndex((c) => c.url === ch.url);
       if (i < 0) return;
-      if (shouldConsumeFreeUserToken) {
-        const api = typeof window !== 'undefined' ? window.electronAPI : null;
-        const email = String(authSession?.email || '').trim();
-        if (!email || !api?.ensureFreeUserCreditsByEmail) {
-          appendLog(t('app.log.noEmailForToken'), 'warn');
-          return;
-        }
-        const ensureRes = await api.ensureFreeUserCreditsByEmail({
-          email,
-          userType: authSession?.userType,
-          impliedSupabaseFree: authSession?.impliedSupabaseFree,
-          entitlements: authSession?.entitlements,
-          isAdmin: authSession?.isAdmin,
-        });
-        const credit_gate = evaluateFreeUserChapterGate({
-          shouldConsume: true,
-          ensureResult: ensureRes,
-        });
-        if (credit_gate.remaining != null) {
-          setFreeUserRemainingTokens(credit_gate.remaining);
-        }
-        if (credit_gate.showExhaustedModal) {
-          appendLog(t('freeUserToken.modalBody'), 'warn');
-          setFreeUserTokenExhaustedOpen(true);
-          return;
-        }
-        if (credit_gate.block) {
-          appendLog(
-            t('app.log.tokenCheckBeforeDownload', {
-              error: credit_gate.error || t('app.log.fetchErrorUnknown'),
-            }),
-            'warn'
-          );
-          return;
-        }
-      }
       const request_id =
         typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
           ? crypto.randomUUID()
@@ -357,10 +277,6 @@ export function ReaderProvider({ children }) {
       mangadexLanguage,
       comickLanguage,
       mangaballLanguage,
-      shouldConsumeFreeUserToken,
-      authSession,
-      setFreeUserRemainingTokens,
-      setFreeUserTokenExhaustedOpen,
     ]
   );
 
@@ -729,20 +645,15 @@ export function ReaderProvider({ children }) {
     []
   );
 
-  const handleAppDragOver = useCallback(
-    (e) => {
-      if (!authBootstrapped || !isSignedIn) return;
-      const types = e.dataTransfer?.types;
-      if (!types?.includes?.('Files')) return;
-      e.preventDefault();
-      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
-    },
-    [authBootstrapped, isSignedIn]
-  );
+  const handleAppDragOver = useCallback((e) => {
+    const types = e.dataTransfer?.types;
+    if (!types?.includes?.('Files')) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+  }, []);
 
   const handleAppDrop = useCallback(
     async (e) => {
-      if (!authBootstrapped || !isSignedIn) return;
       e.preventDefault();
       const list = e.dataTransfer?.files;
       if (!list?.length) return;
@@ -760,7 +671,7 @@ export function ReaderProvider({ children }) {
       }
       await openArchivePath(p);
     },
-    [authBootstrapped, isSignedIn, openArchivePath, appendLog, t, SUPPORTED_DROP_ARCHIVE_EXT]
+    [openArchivePath, appendLog, t, SUPPORTED_DROP_ARCHIVE_EXT]
   );
 
   useEffect(() => {
@@ -813,7 +724,7 @@ export function ReaderProvider({ children }) {
   return (
     <ReaderContext.Provider value={value}>
       {children}
-      {authBootstrapped && isSignedIn && readerOpen && activeManga ? (
+      {readerOpen && activeManga ? (
         <MangaReader
           open={readerOpen}
           onClose={closeReader}
@@ -842,16 +753,14 @@ export function ReaderProvider({ children }) {
           }}
           streamingRead={readerStreamingRead}
           onStreamingReadEnd={handleStreamingReadEnd}
-          onStreamingDownloadSettled={handleStreamingDownloadSettled}
           onStreamingReadChapter={activeManga?.offlineOnly ? undefined : handleReadChapterOnline}
         />
       ) : null}
-      {authBootstrapped && isSignedIn && ebookOpen && ebookPath ? (
+      {ebookOpen && ebookPath ? (
         <EbookReader
           ebookPath={ebookPath}
           onClose={closeEbook}
           onEbookResolved={handleEbookResolved}
-          guestBookmarkLocked={!isSignedIn}
         />
       ) : null}
     </ReaderContext.Provider>

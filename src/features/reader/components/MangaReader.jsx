@@ -53,7 +53,7 @@ export default function MangaReader({
    */
   streamingRead = null,
   onStreamingReadEnd,
-  /** Gọi khi downloadChapter (streaming) kết thúc — để UI cha làm mới danh sách chương có trên đĩa và trừ token. */
+  /** Gọi khi downloadChapter (streaming) kết thúc — để UI cha làm mới danh sách chương có trên đĩa. */
   onStreamingDownloadSettled,
   /** Callback (ch) → stream chương chưa tải (giống handleReadChapterOnline). */
   onStreamingReadChapter,

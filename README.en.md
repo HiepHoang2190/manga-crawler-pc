@@ -13,10 +13,10 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-3.0.46-blue.svg" alt="Version 3.0.46" />
-  <img src="https://img.shields.io/badge/Electron-35+-47848F?logo=electron&logoColor=white" alt="Electron" />
+  <img src="https://img.shields.io/badge/version-3.0.55-blue.svg" alt="Version 3.0.55" />
+  <img src="https://img.shields.io/badge/Electron-34+-47848F?logo=electron&logoColor=white" alt="Electron" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black" alt="React 19" />
-  <img src="https://img.shields.io/badge/Vite-6-646CFF?logo=vite&logoColor=white" alt="Vite" />
+  <img src="https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white" alt="Vite" />
   <img src="https://img.shields.io/badge/TailwindCSS-v4-38B2AC?logo=tailwind-css&logoColor=white" alt="Tailwind CSS" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg" alt="Platform" />
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" />
@@ -83,12 +83,12 @@
 
 ## 🛠️ Tech Stack
 
-* **Shell & Core**: [Electron](https://www.electronjs.org/) (v35+) with Node.js 22 runtime
-* **UI Framework**: [React 19](https://react.dev/), [Vite 6](https://vitejs.dev/)
+* **Shell & Core**: [Electron](https://www.electronjs.org/) (v34+) with Node.js 22 runtime
+* **UI Framework**: [React 19](https://react.dev/), [Vite 8](https://vitejs.dev/)
 * **Styling**: [Tailwind CSS v4](https://tailwindcss.com/)
 * **Image Processing**: [Sharp](https://sharp.pixelplumbing.com/) (libvips), [Canvas](https://github.com/Automattic/node-canvas), [pdf-lib](https://pdf-lib.js.org/)
 * **AI & Machine Learning**: NCNN-Vulkan Binaries, [ONNX Runtime Node](https://onnxruntime.ai/)
-* **Backend & Cloud (Optional)**: [Supabase](https://supabase.com/) Edge Functions (Deno runtime) for user entitlements & credit sync
+* **100% Local & Open Source**: Zero sign-in, zero auth servers — all features run locally out of the box
 
 ---
 
@@ -111,15 +111,7 @@
    ```bash
    npm install --force
    ```
-
-3. **Set up environment variables (optional)**:
-   > **Note**: If you are using the app normally and **do not use Supabase login**, you **DO NOT NEED** to create a `.env` file. All core features (manga downloading, offline reading, AI image processing, and ebook export) work completely out-of-the-box without it.
-   > 
-   > *(Note: Google sign-in is only supported in the desktop (Electron) application).*
-   ```bash
-   cp .env.example .env
-   # Only required if you deploy your own Supabase backend for member authentication
-   ```
+   > 100% free, local-first, and open source — no account or `.env` configuration required.
 
 ### Development Mode
 
@@ -168,7 +160,7 @@ npm run electron:build:all
 ├── electron/             # Electron main process
 │   ├── config/           # Release links & remote extras manifests
 │   ├── ipc/              # IPC handlers (download, tools, export, reader, etc.)
-│   ├── lib/              # Core Node.js services (connectors, upscale, auth, ebook)
+│   ├── lib/              # Core Node.js services (connectors, upscale, ebook)
 │   ├── main.js           # Electron main entry point
 │   └── preload.js        # Context bridge & secure API exposure
 ├── public/               # Static assets, connector icons, and help guides
@@ -180,7 +172,6 @@ npm run electron:build:all
 │   ├── platform/         # Connector UI hooks and platform adapters
 │   ├── shared/           # Design system components (StudioLayout, ResizeSplitter, SearchableSelect)
 │   └── utils/            # Client utilities, storage backups, and preferences
-├── supabase/             # Edge Functions & migrations for cloud features
 └── vite.config.js        # Vite bundler configuration
 ```
 

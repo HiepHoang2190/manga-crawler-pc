@@ -1113,7 +1113,7 @@ export default function SiteCheckerPanel({ connectors = [], onBusyChange }) {
                 onClick={() => setMessageDialog(null)}
                 className={BTN_PRIMARY}
               >
-                {t('guestCredit.modalClose')}
+                {t('siteChecker.closeDialog')}
               </button>
             </div>
           </div>

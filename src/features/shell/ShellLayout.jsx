@@ -37,12 +37,8 @@ import {
   FavoriteUpdateBell,
 } from '../library';
 import { useExport } from '../export';
-import { useAuth, AuthRequiredView, GuestCreditBadge, FreeUserTokenExhaustedModal } from '../../auth';
 import HomeWorkspace from '../home';
 import { ExtrasInstallModal } from '../extras';
-import {
-  FREE_USER_TOKEN_MAX,
-} from '../../utils/authSession';
 import { useI18n } from '../../context/I18nContext';
 import { scheduleAutoBackup } from '../../utils/autoBackup';
 import DashboardPanel, {
@@ -132,20 +128,6 @@ export default function ShellLayout() {
   const { t } = useI18n();
   const { toggleDarkMode } = useTheme();
   const { logs, appendLog, clearLogs } = useAppLog();
-  const { handleAuthGateLoggedIn: finishAuthLogin, ...auth } = useAuth();
-  const {
-    authBootstrapped,
-    authSession,
-    setAuthSession,
-    authInvalidReason,
-    setAuthInvalidReason,
-    isSignedIn,
-    freeUserRemainingTokens,
-    setFreeUserRemainingTokens,
-    freeUserTokenExhaustedOpen,
-    setFreeUserTokenExhaustedOpen,
-    shouldConsumeFreeUserToken,
-  } = auth;
   const {
     savePath,
     setSavePath,
@@ -539,7 +521,6 @@ export default function ShellLayout() {
   }, [readerOpen, menuView, handleStepZoom, handleResetZoom]);
 
   useEffect(() => {
-    if (!authBootstrapped || !isSignedIn) return undefined;
     const handleGlobalKeyDown = (e) => {
       if (e.defaultPrevented || readerOpen) return;
       if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
@@ -566,7 +547,7 @@ export default function ShellLayout() {
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [authBootstrapped, isSignedIn, readerOpen, menuView, toggleLogFooter, visibleOrderedViews, setMenuView]);
+  }, [readerOpen, menuView, toggleLogFooter, visibleOrderedViews, setMenuView]);
 
   const commandPaletteItems = useMemo(() => {
     const tabGroupLabel = t('commandPalette.group.tabs');
@@ -822,9 +803,8 @@ export default function ShellLayout() {
 
   /** Sao lưu tự động 24h (Electron): ghi đè userData/manga-clawer-auto-backup.json khi dữ liệu đổi. */
   useEffect(() => {
-    if (!authBootstrapped) return undefined;
     return scheduleAutoBackup();
-  }, [authBootstrapped]);
+  }, []);
 
   useEffect(() => {
     const api = window.electronAPI;
@@ -834,11 +814,6 @@ export default function ShellLayout() {
     });
     return () => unsub?.();
   }, [appendLog]);
-
-  const handleAuthGateLoggedIn = useCallback(async () => {
-    await finishAuthLogin();
-    setMenuView('home');
-  }, [finishAuthLogin, setMenuView]);
 
   const handleQueueRestoreConfirm = useCallback(() => {
     const hadIncompleteWork = Boolean(pendingRestoreQueue?.length);
@@ -1584,90 +1559,43 @@ export default function ShellLayout() {
     >
       <header className="relative z-50 flex w-full shrink-0 flex-col bg-surface-dim">
         <TitleBar
-          beforeWindowControls={
-            shouldConsumeFreeUserToken && Number.isFinite(Number(freeUserRemainingTokens)) ? (
-              <GuestCreditBadge
-                remaining={Math.max(0, Math.floor(Number(freeUserRemainingTokens)))}
-                max={FREE_USER_TOKEN_MAX}
-              />
-            ) : null
-          }
           endSlot={
-            authBootstrapped && isSignedIn ? (
-              <>
-                <UpdateBadge
-                  remoteVersion={updateAvailableVersion}
-                  onGoToSettings={() => {
-                    setMenuView('settings');
-                    setScrollSettingsToUpdate(true);
-                  }}
-                />
-                <FavoriteUpdateBell
-                  items={favoritesWithNewChaptersList}
-                  onSelectFavorite={handleBellFetchFavorite}
-                  onMarkUnreadItem={handleBellMarkUnreadOne}
-                  onMarkAllRead={handleBellMarkAllRead}
-                  onRemoveItem={handleBellRemoveOne}
-                  onRemoveAll={handleBellRemoveAll}
-                />
-              </>
-            ) : null
+            <>
+              <UpdateBadge
+                remoteVersion={updateAvailableVersion}
+                onGoToSettings={() => {
+                  setMenuView('settings');
+                  setScrollSettingsToUpdate(true);
+                }}
+              />
+              <FavoriteUpdateBell
+                items={favoritesWithNewChaptersList}
+                onSelectFavorite={handleBellFetchFavorite}
+                onMarkUnreadItem={handleBellMarkUnreadOne}
+                onMarkAllRead={handleBellMarkAllRead}
+                onRemoveItem={handleBellRemoveOne}
+                onRemoveAll={handleBellRemoveAll}
+              />
+            </>
           }
         />
-        {authBootstrapped && isSignedIn ? (
-          <>
-            <MenuBar
-              activeView={menuView}
-              onViewChange={setMenuView}
-              hiddenMenuIds={hiddenMenuIds}
-              menuOrder={menuOrder}
-              tabBusyMap={tabBusyMap}
-              onHelpClick={setMenuHelpTabId}
-              onMoveMenu={handleMoveMenu}
-              onReorderMenu={handleReorderMenu}
-              onToggleHiddenMenu={toggleHiddenMenu}
-              onResetMenuPrefs={handleResetMenuPrefs}
-              onOpenCommandPalette={() => setCommandPaletteOpen(true)}
-            />
-            <div className="bg-surface-container-low h-px w-full" />
-          </>
-        ) : null}
+        <MenuBar
+          activeView={menuView}
+          onViewChange={setMenuView}
+          hiddenMenuIds={hiddenMenuIds}
+          menuOrder={menuOrder}
+          tabBusyMap={tabBusyMap}
+          onHelpClick={setMenuHelpTabId}
+          onMoveMenu={handleMoveMenu}
+          onReorderMenu={handleReorderMenu}
+          onToggleHiddenMenu={toggleHiddenMenu}
+          onResetMenuPrefs={handleResetMenuPrefs}
+          onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+        />
+        <div className="bg-surface-container-low h-px w-full" />
       </header>
 
-      {!authBootstrapped ? (
-        <div className="flex-1 flex flex-col items-center justify-center text-on-surface-variant text-sm min-h-0">
-          {t('auth.gate.checking')}
-        </div>
-      ) : null}
-
-      {authBootstrapped && !isSignedIn ? (
-        <AuthRequiredView blockedReason={authInvalidReason} onLoggedIn={handleAuthGateLoggedIn} />
-      ) : null}
-
-      {authBootstrapped && isSignedIn ? (
-        <div className="relative z-0 flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
-      {authInvalidReason ? (
-        <div
-          role="alert"
-          className="shrink-0 px-4 py-2.5 bg-error/12 border-b border-error/25 text-sm text-on-surface flex items-start justify-between gap-3 z-40"
-        >
-          <span className="leading-snug pt-0.5">
-            {authInvalidReason === 'NOT_IN_WHITELIST'
-              ? t('settings.account.sessionInvalidNotInSheet')
-              : authInvalidReason === 'NOT_MEMBER'
-                ? t('settings.account.sessionInvalidNotMember')
-                : t('settings.account.sessionInvalidGeneric')}
-          </span>
-          <button
-            type="button"
-            onClick={() => setAuthInvalidReason(null)}
-            className="shrink-0 rounded-md p-1 text-on-surface-variant hover:bg-error/10 hover:text-on-surface cursor-pointer"
-            aria-label={t('settings.account.dismissAlert')}
-          >
-            <span className="material-symbols-outlined text-[20px] leading-none">close</span>
-          </button>
-        </div>
-      ) : null}
+      <div className="relative z-0 flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
 
       {/* Giữ nguyên phiên làm việc của Workflow Studio không bị reset khi chuyển qua lại giữa các menu */}
       {visitedTabs.has('workflow') ? (
@@ -1890,9 +1818,6 @@ export default function ShellLayout() {
           setFavoriteAutoDownloadMode={setFavoriteAutoDownloadMode}
           favoriteAutoDownloadWorkflowId={favoriteAutoDownloadWorkflowId}
           setFavoriteAutoDownloadWorkflowId={setFavoriteAutoDownloadWorkflowId}
-          onAfterLogout={() => {
-            setMenuView('home');
-          }}
           scrollToUpdate={scrollSettingsToUpdate}
           onScrollToUpdateDone={() => setScrollSettingsToUpdate(false)}
           scrollSettingsToSection={scrollSettingsToSection}
@@ -1909,8 +1834,6 @@ export default function ShellLayout() {
           setAppUpdateDownloadedPath={setAppUpdateDownloadedPath}
           autoCheckUpdate={autoCheckUpdate}
           setAutoCheckUpdate={setAutoCheckUpdate}
-          authSession={authSession}
-          onAuthSessionChange={setAuthSession}
         />
       ) : menuView === 'plugins' ? (
         <PluginManagementPanel onPluginsChanged={refreshConnectorList} />
@@ -1952,21 +1875,15 @@ export default function ShellLayout() {
         onResetZoom={() => void handleResetZoom('ui')}
       />
 
-        </div>
-      ) : null}
+      </div>
 
-      {authBootstrapped && isSignedIn && pendingRestoreQueue ? (
+      {pendingRestoreQueue ? (
         <QueueRestoreModal
           stats={snapshotStats(pendingRestoreQueue)}
           onRestore={handleQueueRestoreConfirm}
           onDiscard={handleQueueRestoreDiscard}
         />
       ) : null}
-
-      <FreeUserTokenExhaustedModal
-        open={freeUserTokenExhaustedOpen}
-        onClose={() => setFreeUserTokenExhaustedOpen(false)}
-      />
 
       {menuHelpTabId ? (
         <Suspense fallback={null}>
